@@ -1,0 +1,178 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project state
+
+Stage 2 done (2026-08-16 late): **the game is playable end to end** on the emulated
+Amiga (256 MB test machine) — main menu → new game → Geoscape → base → New Battle →
+briefing → inventory → Battlescape with a unit walking around, no Guru anywhere.
+The game being played is **TFTD**: the data in `data/UFO/` is TFTD's, so the deploy
+runs the `xcom2` ruleset (details and proof in `LEFTOFF.md`; treat "wrong graphics"
+as a data question before a code question). Globe performance: throttles + fixed-point
+`drawShadow` brought the geoscape from 5 to **22 fps** without JIT; the remaining plan
+(Amiga options tab first, then span fills, radar cache, sin/cos LUTs, flat sun-shaded
+polygons) is written out step by step in `LEFTOFF.md`, and the user's rules for it are:
+**backup zip before every step, one change per build, test it yourself.** Timing claims
+use `winuae/oxc-aga-nojit-ram256.uae` (JIT off, 256 MB). `build.sh` now tracks header
+dependencies — it did not, and one evening was lost to the resulting heap corruption
+(PROGRESS.md, "night, 3"). **Read `LEFTOFF.md` first** — it is the hand-off:
+what was fixed, what is open, how to run and drive the game. `PROGRESS.md` has the
+facts and proofs, newest first.
+
+## Layout and build
+
+The repository never stores a modified copy of OpenXcom. The port is
+`upstream/openxcom-00fbacde.tar.gz` (pristine) + `build/apply-amiga-patches.py`
+(mechanical, idempotent) + `native/` (everything new), rebuilt from scratch on every run —
+the same model as `openttd_amiga_68k`.
+
+```
+native/sdlmini/     SDL 1.2 API shim on top of amiga_gfx.c / amiga_audio.c
+native/oxc-replace/ whole-file replacements dropped into src/ by the patch script
+native/*.c          amiga_gfx, amiga_audio, amiga_adpcm, amiga_startup, c2p (from the OpenTTD port)
+native/cgx-include/ CyberGraphX developer headers (not redistributable, supplied locally)
+build/build.sh      the build; run it inside WSL
+winuae/             configs, boot.hdf, shared work folder, host-side harness
+```
+
+```sh
+# build all three binaries (aga / rtg / ask) and deploy to winuae/work
+wsl sh /mnt/i/GITHUB/Amiga_OpenXCOM/build/build.sh
+wsl sh /mnt/i/GITHUB/Amiga_OpenXCOM/build/build.sh clean   # re-unpack upstream first
+```
+
+Toolchain: bebbo amiga-gcc 6.5.0b at `/opt/amiga/bin` inside WSL (Ubuntu 22.04, WSL1).
+`/mnt/i` drops out of WSL regularly — every command starts with
+`ls /mnt/i/GITHUB >/dev/null 2>&1 || sudo -n mount -t drvfs I: /mnt/i`.
+
+Three toolchain defects shape this build; each one looks exactly like a bug in the game.
+They are documented with their proofs in `PROGRESS.md`:
+
+1. **Never strip.** `m68k-amigaos-strip` produces a Hunk executable that halts the machine
+   (WinUAE `HALT1`, black screen, no Guru, no output).
+2. **Never use `std::ifstream`/`std::ofstream`.** libstdc++'s `close()` never returns on an
+   open file. Use `AmigaIFStream` / `AmigaOFStream` from `native/amiga_fstream.h`; the patch
+   script swaps them in across the game and rewrites `YAML::LoadFile` to stdio.
+3. **The Hunk format has no COMDAT.** Duplicated template instantiations are de-duplicated by
+   the linker, which warns `duplicate section ... has different size` and sometimes keeps the
+   wrong one. That made `YAML::LoadFile` loop forever until yaml-cpp was built as a single
+   translation unit. Those warnings are not cosmetic — treat them as a live suspect whenever
+   something behaves impossibly.
+4. **Never call `sprintf`.** It produces nonsense on this libc — wrong values, shifted
+   arguments, empty `%s`. `fprintf`, `snprintf`, `vsprintf` and `vsnprintf` are all correct;
+   use `snprintf`. This defect lies to you in your own diagnostics, so a log line that makes
+   no sense is a `sprintf` until proven otherwise (proof and numbers in `PROGRESS.md`).
+5. **`float * float` and `float / float` must never reach the ROM.** With `-msoft-float`
+   libgcc has no float arithmetic; libnix's `-lm` maps it onto the AmigaOS IEEE libraries,
+   and Kickstart 3.1's `mathieeesingbas.library` has broken `IEEESPMul`/`IEEESPDiv` entries
+   on machines without an FPU (they point into the function table itself → Line-F,
+   Guru `#8000000B`). `native/fp_single.c` provides `__mulsf3`/`__divsf3` and is linked
+   ahead of `-lm`; keep it there. Everything else in the IEEE path (SP add/sub, all DP,
+   `sqrt`/`sin`/`pow`) is verified good. `#8000000B` is **Line-F**, not a bus error.
+
+Two things that make the next crash cheap instead of a day: every Guru is logged with its
+PC by `native/amiga_trap.c` (armed in `main.cpp`; look for `CPU TRAP` in `sdlmini.log`,
+then `wsl python3 winuae/harness/trapmap.py`, which maps the PC and the stack dump to symbols), and a ten-line probe linked exactly like
+the game (`C:\temp\oxctest\*.c`, deployed to `Work:` and run from `Work:run`) settles
+"toolchain or game?" faster than any amount of reading. Restore `Work:run` to
+`openxcom-aga` afterwards — a forgotten probe in `run` looks like a regression.
+
+Two more traps that are the game's code, not the toolchain, and that the patch script fixes:
+`Surface::loadImage` runs the filename through `wstrToUtf8(fsToWstr(...))` before `IMG_Load`,
+which libnix's wide-character conversion turns into garbage; and a missing sound CAT aborts
+mod loading, so one absent data file reads as a port bug.
+
+The port writes only to `Work:` (`PROGDIR:`), never to the boot hardfile — and since
+2026-08-16 that is enforced rather than trusted: every `winuae/*.uae` config mounts the
+hardfile `ro`. AmigaOS boots fine write-protected (`T:` and `ENV:` are in `RAM:`).
+
+Flags that are not negotiable (all inherited from the OpenTTD port, each cost real time to find):
+`-O1` (not `-O2`: it breaks C++ exception unwinding), `-mcpu=68020 -msoft-float`
+(not `-m68040`: it silently selects the 68881 multilib), never `-lpthread` or `-lc`
+(they pull newlib in beside libnix), `-std=gnu++11` (yaml-cpp 0.6.3 needs it), RTTI on
+(the game uses `dynamic_cast`).
+
+## Running it
+
+WinUAE 2.8.1 lives in the OpenTTD repo (`I:\GITHUB\Amiga_OpenTTD\tools\winuae281\winuae.exe`).
+**Always launch it as `winuae.exe -f <config>` with `use_gui=no` in the config** — anything else
+opens the configuration window and waits for a human. `winuae/harness/run-oxc.ps1` does this and
+waits for `winuae/work/oxc.log`. The HDF's User-Startup runs `Work:run` from the shared folder,
+so binaries and data are swapped on the host and the HDF image is never touched (it is mounted
+read-only, so it *cannot* be).
+
+**Never `Stop-Process -Name winuae`.** Other Amiga machines run from the same `winuae.exe`
+(other agents, the author's own sessions) and killing by name shoots them down mid-run. Kill the
+PID you started, or use `winuae/harness/kill_ours.ps1`, which matches the command line against
+`oxc-*.uae` and prints what it deliberately left alone. `capture_ours.ps1` picks the window the
+same way.
+
+**Never synthesise mouse or keyboard input on the host** (`mouse_event`, `SetCursorPos`,
+`SendInput`, the retired `click_*.ps1`/`drive_*.ps1`). WinUAE drops the mouse trap silently
+and the clicks then go to whatever the user has on screen — it once posted a half-written
+forum message from their browser. Drive the game from **inside** the guest instead: sdlmini
+reads `Work:autoinput.txt` and feeds its own SDL event queue (`sdlmini_autoinput.c`).
+Screenshots via `capture_ours.ps1` (PrintWindow) are fine — they take control of nothing.
+
+`winuae/oxc-aga-ram256.uae` is the same machine with 256 MB of Z3 fast RAM. It exists to answer
+"is this symptom just memory pressure?" in one run — it is a diagnostic, never a target machine.
+The real targets are `oxc-aga.uae` and `oxc-rtg.uae` at 32 MB.
+
+## What this project is
+
+A native AmigaOS 68k port of **OpenXcom** (X-COM: UFO Defense + **X-COM: Terror from the Deep**),
+targeting *classic* hardware (020+, AGA and RTG), not PiStorm/Vampire/Emu68.
+It is the follow-up to the same author's `openttd_amiga_68k` port, and deliberately reuses that
+port's platform layer.
+
+`PORT_RESEARCH.md` is the authoritative research/plan document — read it before proposing work.
+Key conclusions it records (do not re-derive them):
+
+- Upstream is https://github.com/SupSuper/OpenXcom (mirror `OpenXcom/OpenXcom`). **No tagged release
+  ever contained TFTD** — the last tag is `v1.0` (2014-06); everything after is nightly-only.
+- TFTD becomes playable only from commit `f1e6f01` (2015-08-03, "Summon the Kraken!", adds the TFTD
+  ruleset). The chosen practical base is `00fbacde` (2016-06-27) — TFTD matured, upstream activity
+  then goes near-dormant.
+- Vanilla upstream master is **not** bloated (~175k LOC, still SDL 1.2, still ~C++03). The "modern
+  bloat" is the separate **OXCE** fork (`MeridianOXC/OpenXcom`) — do not base work on it.
+- yaml-cpp cannot be avoided; rulesets are the engine core since 0.9.
+- Rebuilding TFTD on top of `v1.0` is *more* work than debloating the 2016 base (the v1.0→Kraken
+  diff is ~82k lines across 562 files — 14 months of unrelated development, not a TFTD delta).
+
+## Porting constraints that shape every code decision
+
+- **Target CPU is plain 68020, no FPU.** Do not introduce `float`/`double` in ported code; convert to
+  fixed-point (+ sin/cos LUTs). The FP hotspots are `src/Engine/` and `src/Geoscape/` (spherical
+  coordinates, dogfight, trajectories); `src/Savegame/` and `src/Ruleset/` FP is mostly YAML parsing
+  and can be converted at load time. 040/060 FPUs are partly trap-emulated, so FPU code is a
+  pessimisation, not an optimisation.
+- **SDL is replaced, not ported.** Video (c2p for AGA, RTG, and windowed WB mode with palette
+  negotiation) and audio come from `openttd_amiga_68k`. That code is MIT — the only obligation is a
+  credit line in `README`; nothing else needs to be bundled.
+- **Audio is deliberately primitive**: Paula directly, 4 channels (2 music streamed from disk,
+  2 SFX), ADPCM 22 kHz instead of OGG. When all SFX channels are busy, steal one with a fast
+  fade-out rather than dropping the new sound. No mixer — CPU is the scarce resource and this is a
+  turn-based game.
+- **Debloat rather than reimplement**: OpenGL (`src/Engine/OpenGL.*`), `Zoom.*`/scalers and the
+  video option surface are removable; force 320x200 8bpp. Upstream has exactly one thread
+  (`src/Menu/StartState.cpp`, resource loading) — trivial to serialise.
+- **RAM is the top unresolved risk**, ahead of CPU speed. Measure real RSS of the base build on PC
+  for both UFO and TFTD before committing to a hardware floor.
+- TFTD needs PC game data; the Amiga never had a TFTD release.
+
+## Testing / iteration setup (planned)
+
+WinUAE 2.8 with a WB 3.x HDF and RTG, plus a shared folder next to the HDF so binaries can be
+swapped without touching the HDF image. Autostart the build and log to a file so runs can be checked
+without a human in the loop; ask the user for feedback only when a log cannot answer the question.
+Agent-driven test runs may use JIT / max speed for turnaround; final performance calibration must be
+done **without** JIT (JIT distorts results by roughly -70% slowdown when disabled) and cross-checked
+with sysinfo.
+
+## Working style for this repo
+
+- Take backups/branch points before each layered change — the port proceeds in layers
+  (debloat → platform layer → audio → FPU removal), and each layer must stay independently bisectable.
+- Prefer simple, Amiga-friendly non-FPU C++ over clever generic code; upstream idioms are C++03 and
+  the m68k-amigaos GCC toolchain should not be pushed past that.

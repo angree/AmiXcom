@@ -1,0 +1,16 @@
+# Commercial / not redistributable - never in the repository
+*.ROM
+*.rom
+winuae/boot.hdf
+winuae/work/
+native/cgx-include/
+# game data
+data/
+# build leftovers
+build/__pycache__/
+*.pyc
+*.o
+*.d
+# host junk
+winuae/harness/_retired_host_input/
+Thumbs.db

@@ -1,0 +1,64 @@
+config_description=Amiga OpenXcom - plain 68020, 256 MB fast: RAM-headroom probe only, NOT a target machine
+; Adapted from the openttd_amiga_68k test configs. Rules carried over from
+; there, each of which cost a wasted test cycle to learn:
+;   - use_gui=no plus launching as "winuae.exe -f <config>" boots straight into
+;     the emulation. Anything else opens the configuration window and waits.
+;   - win32.posx/posy must be set: winuae.ini remembers the last window
+;     position, and a remembered monitor that no longer exists leaves the
+;     emulation window off-screen - which looks exactly like WinUAE failing to
+;     start (process alive, no window, no output).
+;   - JIT ON is for TESTING throughput only. Timing that is meant to say
+;     something about real hardware needs JIT OFF.
+;
+; RUNTIME LIVES ON THE SSD, NOT IN THE REPOSITORY. The Kickstart, the boot
+; hardfile and the WORK: folder are all under C:\temp\amiga_oxcom. The repo is
+; on a network drive: copying the game data there took ~15 minutes, and WinUAE
+; mounting a directory filesystem of ~10k small files across it is the prime
+; suspect for the emulator stalling and exiting during boot. build.sh deploys
+; the binaries straight to the SSD copy.
+;
+; --- CPU: 68040 with JIT, for turnaround. The BINARY is plain 68020 code. ---
+cpu_type=68020
+cpu_model=68020
+fpu_model=0
+cpu_compatible=false
+cpu_24bit_addressing=false
+cpu_speed=max
+cpu_throttle=0.0
+cachesize=8192
+; --- Chipset: A4000 AGA ---
+chipset=aga
+chipset_compatible=A4000
+chipmem_size=4
+fastmem_size=0
+z3mem_size=256
+; --- Kickstart 3.1 (A4000, 40.70) ---
+kickstart_rom_file=C:\temp\amiga_oxcom\ROM3.1_A4000.40.70.ROM
+; --- Boot: plain AGA Workbench 3.1 ---
+hardfile2=ro,DH0:C:\temp\amiga_oxcom\boot.hdf,32,1,2,512,0,,uae
+; --- WORK: the shared folder. Binaries and game data are swapped here from
+;     the host without ever touching the HDF image. ---
+filesystem2=rw,WORK:Work:C:\temp\amiga_oxcom\work,-128
+; --- DELIBERATELY NO gfxcard_size: no uaegfx board exists, so the display
+;     code MUST take the AGA c2p path. This config is the AGA proof. ---
+; --- Display: DirectDraw, so host-side PrintWindow capture works ---
+gfx_api=0
+gfx_width_windowed=800
+gfx_height_windowed=600
+gfx_fullscreen_amiga=false
+win32.posx=100
+win32.posy=60
+; --- Mouse: magic mouse ON, so the host pointer is NOT captured and the mouse
+;     stays usable outside the emulator window. ---
+magic_mouse=true
+magic_mousecursor=1
+input.mouse_speed=100
+; --- Boot straight into emulation ---
+use_gui=no
+show_leds=true
+sound_output=normal
+sound_channels=stereo
+sound_frequency=44100
+sound_interpol=none
+sound_filter=emulated
+sound_stereo_separation=10

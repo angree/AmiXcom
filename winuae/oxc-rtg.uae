@@ -1,0 +1,42 @@
+config_description=Amiga OpenXcom - RTG (uaegfx / Picasso96), JIT ON
+; Same machine and same boot.hdf as oxc-aga.uae, with a uaegfx board added.
+; boot.hdf already carries Picasso96, rtg.library and cybergraphics.library;
+; it only ever lacked the hardware, which is what gfxcard_size supplies.
+; See oxc-aga.uae for why use_gui, win32.posx/posy, JIT and the C:\temp
+; runtime location are set as they are.
+cpu_type=68020
+cpu_model=68020
+fpu_model=0
+cpu_compatible=false
+cpu_24bit_addressing=false
+cpu_speed=max
+cpu_throttle=0.0
+cachesize=8192
+chipset=aga
+chipset_compatible=A4000
+chipmem_size=4
+fastmem_size=0
+z3mem_size=32
+kickstart_rom_file=C:\temp\amiga_oxcom\ROM3.1_A4000.40.70.ROM
+hardfile2=ro,DH0:C:\temp\amiga_oxcom\boot.hdf,32,1,2,512,0,,uae
+filesystem2=rw,WORK:Work:C:\temp\amiga_oxcom\work,-128
+; --- The RTG board ---
+gfxcard_size=16
+gfxcard_type=uaegfx
+gfx_api=0
+gfx_width_windowed=800
+gfx_height_windowed=600
+gfx_fullscreen_amiga=false
+win32.posx=100
+win32.posy=60
+magic_mouse=true
+magic_mousecursor=1
+input.mouse_speed=100
+use_gui=no
+show_leds=true
+sound_output=normal
+sound_channels=stereo
+sound_frequency=44100
+sound_interpol=none
+sound_filter=emulated
+sound_stereo_separation=10
