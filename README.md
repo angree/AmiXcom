@@ -54,9 +54,10 @@ copies work).
    - TFTD: the same set of folders (`GEODATA GEOGRAPH MAPS ROUTES SOUND TERRAIN UFOGRAPH
      UNITS`, plus `ANIMS FLOP_INT` if present) into `data/TFTD/`
    File and folder names must keep their case as on the PC (upper case is fine).
-3. Start with the `run` script from a Shell (`cd Work:AmiXcom` then `run`) — it sets
-   the 1 MB stack the game needs and starts `openxcom-aga`. Do not run the binary from
-   Workbench without a stack of at least 1 MB.
+3. Start from a Shell: `cd Work:AmiXcom` then `execute run` — the script sets the
+   1 MB stack the game needs and starts `openxcom-aga` (`run-rtg` / `run-ask` for the
+   other two binaries; log goes to `oxc.log`). Do not run the binary from Workbench
+   without a stack of at least 1 MB.
 4. The first start creates `user/options.cfg`. UFO is the default ruleset; to play TFTD
    open *Options → Mods* in the game and switch from *X-COM: UFO Defense* to
    *X-COM: Terror from the Deep*, or edit `user/options.cfg` (`xcom1` → `active: false`,
