@@ -227,6 +227,110 @@ def main():
         '\t_info.push_back(OptionInfo("fpsCounter", &fpsCounter, true)); /* AMIGA-PORT: default on */\n',
         "fps counter default")))
 
+    # 3d. The "Amiga" options tab (step 1 of the user's plan, 2026-08-16):
+    #     first tab of the options screen, holding the port's own settings -
+    #     Amiga screen title bar on/off and mouse pointer original/Amiga-only.
+    #     The screen itself is a new file pair (native/oxc-replace/Menu/
+    #     OptionsAmigaState.*); everything below wires it in.
+    results.append(("Menu/OptionsAmigaState.h", replace_file(src, os.path.join("Menu", "OptionsAmigaState.h"))))
+    results.append(("Menu/OptionsAmigaState.cpp", replace_file(src, os.path.join("Menu", "OptionsAmigaState.cpp"))))
+    results.append(("Options.inc.h (amiga options)", edit(
+        os.path.join(src, "Engine", "Options.inc.h"),
+        "OPT std::string language, useOpenGLShader;\n",
+        "OPT std::string language, useOpenGLShader;\n"
+        "// AMIGA-PORT: the \"Amiga\" options tab\n"
+        "OPT bool amigaAppBar;\n"
+        "OPT int amigaCursor;\n",
+        "amiga option variables")))
+    results.append(("Options.cpp (amiga OptionInfo)", edit(
+        os.path.join(src, "Engine", "Options.cpp"),
+        "\t_info.push_back(OptionInfo(\"fpsCounter\", &fpsCounter, true)); /* AMIGA-PORT: default on */\n",
+        "\t_info.push_back(OptionInfo(\"fpsCounter\", &fpsCounter, true)); /* AMIGA-PORT: default on */\n"
+        "\t_info.push_back(OptionInfo(\"amigaAppBar\", &amigaAppBar, false));\n"
+        "\t_info.push_back(OptionInfo(\"amigaCursor\", &amigaCursor, 1)); /* default: Amiga pointer */\n",
+        "amiga OptionInfo")))
+    results.append(("OptionsBaseState.h (btnAmiga)", edit(
+        os.path.join(src, "Menu", "OptionsBaseState.h"),
+        "\tTextButton *_btnVideo, *_btnAudio, *_btnControls, *_btnGeoscape, *_btnBattlescape, *_btnAdvanced, *_btnMods;\n",
+        "\tTextButton *_btnAmiga, *_btnVideo, *_btnAudio, *_btnControls, *_btnGeoscape, *_btnBattlescape, *_btnAdvanced, *_btnMods;\n",
+        "amiga tab button member")))
+    results.append(("OptionsBaseState.cpp (include)", edit(
+        os.path.join(src, "Menu", "OptionsBaseState.cpp"),
+        "#include \"OptionsVideoState.h\"\n",
+        "#include \"OptionsVideoState.h\"\n"
+        "#include \"OptionsAmigaState.h\"\n",
+        "amiga tab include")))
+    results.append(("OptionsBaseState.cpp (buttons)", edit(
+        os.path.join(src, "Menu", "OptionsBaseState.cpp"),
+        "\t_btnVideo = new TextButton(80, 16, 8, 8);\n"
+        "\t_btnAudio = new TextButton(80, 16, 8, 28);\n"
+        "\t_btnControls = new TextButton(80, 16, 8, 48);\n"
+        "\t_btnGeoscape = new TextButton(80, 16, 8, 68);\n"
+        "\t_btnBattlescape = new TextButton(80, 16, 8, 88);\n"
+        "\t_btnAdvanced = new TextButton(80, 16, 8, 108);\n"
+        "\t_btnMods = new TextButton(80, 16, 8, 128);\n",
+        "\t/* AMIGA-PORT: an eighth tab, \"Amiga\", first; the column is packed to 17 px\n"
+        "\t * per button so the tooltip at y=148 keeps its place. */\n"
+        "\t_btnAmiga = new TextButton(80, 16, 8, 8);\n"
+        "\t_btnVideo = new TextButton(80, 16, 8, 25);\n"
+        "\t_btnAudio = new TextButton(80, 16, 8, 42);\n"
+        "\t_btnControls = new TextButton(80, 16, 8, 59);\n"
+        "\t_btnGeoscape = new TextButton(80, 16, 8, 76);\n"
+        "\t_btnBattlescape = new TextButton(80, 16, 8, 93);\n"
+        "\t_btnAdvanced = new TextButton(80, 16, 8, 110);\n"
+        "\t_btnMods = new TextButton(80, 16, 8, 127);\n",
+        "amiga tab button")))
+    results.append(("OptionsBaseState.cpp (add)", edit(
+        os.path.join(src, "Menu", "OptionsBaseState.cpp"),
+        "\tadd(_btnVideo, \"button\", \"optionsMenu\");\n",
+        "\tadd(_btnAmiga, \"button\", \"optionsMenu\");\n"
+        "\tadd(_btnVideo, \"button\", \"optionsMenu\");\n",
+        "amiga tab add")))
+    results.append(("OptionsBaseState.cpp (text)", edit(
+        os.path.join(src, "Menu", "OptionsBaseState.cpp"),
+        "\t_btnVideo->setText(tr(\"STR_VIDEO\"));\n",
+        "\t_btnAmiga->setText(tr(\"STR_AMIGA\"));\n"
+        "\t_btnAmiga->onMousePress((ActionHandler)&OptionsBaseState::btnGroupPress, SDL_BUTTON_LEFT);\n"
+        "\n"
+        "\t_btnVideo->setText(tr(\"STR_VIDEO\"));\n",
+        "amiga tab text")))
+    results.append(("OptionsBaseState.cpp (group)", edit(
+        os.path.join(src, "Menu", "OptionsBaseState.cpp"),
+        "\t_group = button;\n"
+        "\t_btnVideo->setGroup(&_group);\n",
+        "\t_group = button;\n"
+        "\t_btnAmiga->setGroup(&_group);\n"
+        "\t_btnVideo->setGroup(&_group);\n",
+        "amiga tab group")))
+    results.append(("OptionsBaseState.cpp (press)", edit(
+        os.path.join(src, "Menu", "OptionsBaseState.cpp"),
+        "\t\tif (sender == _btnVideo)\n"
+        "\t\t{\n"
+        "\t\t\t_game->pushState(new OptionsVideoState(_origin));\n"
+        "\t\t}\n",
+        "\t\tif (sender == _btnAmiga)\n"
+        "\t\t{\n"
+        "\t\t\t_game->pushState(new OptionsAmigaState(_origin));\n"
+        "\t\t}\n"
+        "\t\telse if (sender == _btnVideo)\n"
+        "\t\t{\n"
+        "\t\t\t_game->pushState(new OptionsVideoState(_origin));\n"
+        "\t\t}\n",
+        "amiga tab press")))
+    results.append(("en-US.yml (amiga strings)", edit(
+        os.path.join(src, "..", "bin", "common", "Language", "en-US.yml"),
+        "  STR_MODS: \"MODS\"\n",
+        "  STR_MODS: \"MODS\"\n"
+        "  STR_AMIGA: \"AMIGA\"\n"
+        "  STR_AMIGA_APP_BAR: \"Amiga screen title bar\"\n"
+        "  STR_AMIGA_APP_BAR_DESC: \"Keep the Amiga screen title bar (with the depth gadget) so you can flip to Workbench. Opens a 320x256 screen. Takes effect at the next start.\"\n"
+        "  STR_AMIGA_CURSOR: \"Mouse pointer\"\n"
+        "  STR_AMIGA_CURSOR_DESC: \"Original: the game draws its own cursor. Amiga: only the system pointer is shown - nothing to redraw, so it moves smoothly.\"\n"
+        "  STR_AMIGA_CURSOR_ORIGINAL: \"Original (game-drawn)\"\n"
+        "  STR_AMIGA_CURSOR_AMIGA: \"Amiga pointer only\"\n"
+        "  STR_AMIGA_OFF: \"Off\"\n"
+        "  STR_AMIGA_ON: \"On\"\n",
+        "amiga language strings")))
     # 4. Startup markers. An early crash on this hardware does not produce a
     #    Guru - the CPU double-faults and the emulator stops dead - so the only
     #    way to know how far the game got is a line written and flushed at each
@@ -851,7 +955,20 @@ def main():
         "\t\t\t\tAMIGA_FRAME(\"fps blit\");\n"
         "\t\t\t\t_fpsCounter->blit(_screen->getSurface());\n"
         "\t\t\t\tAMIGA_FRAME(\"cursor blit\");\n"
-        "\t\t\t\t_cursor->blit(_screen->getSurface());\n"
+        "\t\t\t\t{\n"
+        "\t\t\t\t\t/* AMIGA-PORT: Options::amigaCursor (Amiga tab): 1 = show the Intuition\n"
+        "\t\t\t\t\t * pointer and do not blit the game cursor; 0 = as upstream. Checked\n"
+        "\t\t\t\t\t * every frame so an options change takes effect at once. */\n"
+        "\t\t\t\t\tstatic int pointerShown_ = -1;\n"
+        "\t\t\t\t\tint want = Options::amigaCursor ? 1 : 0;\n"
+        "\t\t\t\t\tif (want != pointerShown_)\n"
+        "\t\t\t\t\t{\n"
+        "\t\t\t\t\t\tSDL_ShowCursor(want ? SDL_ENABLE : SDL_DISABLE);\n"
+        "\t\t\t\t\t\tpointerShown_ = want;\n"
+        "\t\t\t\t\t}\n"
+        "\t\t\t\t\tif (!want)\n"
+        "\t\t\t\t\t\t_cursor->blit(_screen->getSurface());\n"
+        "\t\t\t\t}\n"
         "\t\t\t\tAMIGA_FRAME(\"screen flip\");\n"
         "\t\t\t\t_screen->flip();\n"
         "\t\t\t\tAMIGA_FRAME(\"screen flip done\");",
@@ -1078,6 +1195,27 @@ def main():
         "\t\t\treturn _muteSound; /* AMIGA-PORT: same */\n"
         "\t\t}\n",
         "null-safe getSound")))
+
+    # Screen title bar: sdlmini reads SDLmini_show_bar when it opens the
+    # display, so it has to be set before Screen is constructed.
+    results.append(("Game.cpp (amiga app bar)", edit(
+        os.path.join(src, "Engine", "Game.cpp"),
+        "\t// Create display\n"
+        "\t_screen = new Screen();\n",
+        "\t// Create display\n"
+        "#ifdef __AMIGA__\n"
+        "\tSDLmini_show_bar = Options::amigaAppBar ? 1 : 0;\n"
+        "#endif\n"
+        "\t_screen = new Screen();\n",
+        "amiga app bar option")))
+    results.append(("Game.cpp (amiga app bar extern)", edit(
+        os.path.join(src, "Engine", "Game.cpp"),
+        "#include \"Game.h\"\n",
+        "#include \"Game.h\"\n"
+        "#ifdef __AMIGA__\n"
+        "extern \"C\" int SDLmini_show_bar; /* AMIGA-PORT: sdlmini_video.c */\n"
+        "#endif\n",
+        "amiga app bar extern")))
 
     # 5x. Globe blit diagnostics (temporary): the globe draws (first
     #     filledCircle/texturedPolygon are logged by sdlmini) but the screen

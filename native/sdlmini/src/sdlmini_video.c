@@ -524,6 +524,9 @@ empty:
 
 /* ------------------------------------------------------------ video mode -- */
 
+int SDLmini_show_bar = 0;          /* Options::amigaAppBar, set before SDL_SetVideoMode */
+static int s_req_w = 0, s_req_h = 0; /* what the game asked for (the screen may be taller) */
+
 SDL_Surface *SDL_SetVideoMode(int width, int height, int bpp, Uint32 flags)
 {
 	char msg[128];
@@ -538,14 +541,25 @@ SDL_Surface *SDL_SetVideoMode(int width, int height, int bpp, Uint32 flags)
 		/* Reopening the same geometry is what OpenXcom does on every options
 		 * change; there is nothing to do, and reopening the screen would
 		 * flash the display for no reason. */
-		if (s_screen->w == width && s_screen->h == height) return s_screen;
+		if (s_req_w == width && s_req_h == height) return s_screen;
 		SDLmini_VideoQuit();
 		s_video_ready = 1;
 	}
+	s_req_w = width;
+	s_req_h = height;
 
-	if (amigagfx_open(width, height, 0, s_backend) != 0) {
-		SDL_SetError("SDLmini: amigagfx_open(%d, %d, backend %d) failed", width, height, s_backend);
-		return NULL;
+	{
+		/* The "Amiga screen title bar" option (SDLmini_show_bar, set by the
+		 * game from Options::amigaAppBar): keep Intuition's bar with the depth
+		 * gadget. The bar eats lines, so the screen is opened 256 lines tall
+		 * (PAL) and the game keeps drawing its 320x200 at the top; SDL_Flip
+		 * converts only those rows. Meaningless for the WB window backend. */
+		int h = height;
+		if (SDLmini_show_bar && h < 256) h = 256;
+		if (amigagfx_open(width, h, SDLmini_show_bar, s_backend) != 0) {
+			SDL_SetError("SDLmini: amigagfx_open(%d, %d, backend %d) failed", width, h, s_backend);
+			return NULL;
+		}
 	}
 
 	s_screen = new_surface(amigagfx_game_width(), amigagfx_game_height(), 8,
@@ -590,7 +604,7 @@ int SDL_Flip(SDL_Surface *screen)
 			if (--SDLmini_diag_armed <= 0) SDLmini_diag_armed = 0;
 		}
 	}
-	amigagfx_blit(0, 0, screen->w, screen->h);
+	amigagfx_blit(0, 0, screen->w, (s_req_h > 0 && s_req_h < screen->h) ? s_req_h : screen->h);
 	return 0;
 }
 

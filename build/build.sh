@@ -246,6 +246,8 @@ link_variant ask -1    # Intuition requester at startup
 log "deploying game data (no overwrite)"
 mkdir -p "$DEPLOY/data"
 cp -rn "$SRC/bin/." "$DEPLOY/data/" 2>/dev/null || true
+# the port adds strings to the common language file - always refresh that one
+cp "$SRC/bin/common/Language/en-US.yml" "$DEPLOY/data/common/Language/en-US.yml"
 
 log "deployed to $DEPLOY"
 log "done"
