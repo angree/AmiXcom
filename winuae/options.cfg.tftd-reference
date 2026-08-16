@@ -1,0 +1,266 @@
+options:
+  displayWidth: 320
+  displayHeight: 200
+  fullscreen: true
+  asyncBlit: false
+  keyboardMode: 1
+  maxFrameSkip: 0
+  traceAI: false
+  verboseLogging: false
+  StereoSound: true
+  geoscapeScale: 0
+  battlescapeScale: 0
+  useScaleFilter: false
+  useHQXFilter: false
+  useXBRZFilter: false
+  useOpenGL: false
+  checkOpenGLErrors: false
+  useOpenGLShader: Shaders/Raw.OpenGL.shader
+  vSyncForOpenGL: true
+  useOpenGLSmoothing: true
+  debug: false
+  debugUi: false
+  soundVolume: 84
+  musicVolume: 84
+  uiVolume: 42
+  language: en-US
+  battleScrollSpeed: 8
+  battleEdgeScroll: 2
+  battleDragScrollButton: 2
+  dragScrollTimeTolerance: 300
+  dragScrollPixelTolerance: 10
+  battleFireSpeed: 6
+  battleXcomSpeed: 30
+  battleAlienSpeed: 30
+  battleNewPreviewPath: 0
+  fpsCounter: true
+  globeDetail: true
+  globeRadarLines: true
+  globeFlightPaths: true
+  globeAllRadarsOnBaseBuild: true
+  audioSampleRate: 22050
+  audioBitDepth: 16
+  pauseMode: 0
+  battleNotifyDeath: false
+  showFundsOnGeoscape: false
+  allowResize: false
+  windowedModePositionX: 0
+  windowedModePositionY: 0
+  borderless: false
+  captureMouse: false
+  battleTooltips: true
+  keepAspectRatio: true
+  nonSquarePixelRatio: false
+  cursorInBlackBandsInFullscreen: false
+  cursorInBlackBandsInWindow: true
+  cursorInBlackBandsInBorderlessWindow: false
+  saveOrder: 3
+  geoClockSpeed: 80
+  dogfightSpeed: 30
+  geoScrollSpeed: 20
+  geoDragScrollButton: 2
+  preferredMusic: 0
+  preferredSound: 0
+  preferredVideo: 0
+  musicAlwaysLoop: false
+  touchEnabled: false
+  rootWindowedMode: false
+  playIntro: false
+  autosave: true
+  autosaveFrequency: 5
+  newSeedOnLoad: false
+  mousewheelSpeed: 3
+  changeValueByMouseWheel: 0
+  soldierDiaries: true
+  maximizeInfoScreens: false
+  geoDragScrollInvert: false
+  aggressiveRetaliation: false
+  customInitialBase: false
+  allowBuildingQueue: false
+  craftLaunchAlways: false
+  storageLimitsEnforced: false
+  canSellLiveAliens: false
+  anytimePsiTraining: false
+  globeSeasons: false
+  psiStrengthEval: false
+  canTransferCraftsWhileAirborne: false
+  retainCorpses: false
+  fieldPromotions: false
+  meetingPoint: false
+  battleDragScrollInvert: false
+  sneakyAI: false
+  battleUFOExtenderAccuracy: false
+  showMoreStatsInInventoryView: false
+  battleHairBleach: true
+  battleInstantGrenade: false
+  includePrimeStateInSavedLayout: false
+  battleExplosionHeight: 0
+  battleAutoEnd: false
+  battleSmoothCamera: false
+  disableAutoEquip: false
+  battleConfirmFireMode: false
+  weaponSelfDestruction: false
+  allowPsionicCapture: false
+  allowPsiStrengthImprovement: false
+  strafe: false
+  forceFire: true
+  skipNextTurnScreen: false
+  noAlienPanicMessages: false
+  alienBleeding: false
+  keyOk: 13
+  keyCancel: 27
+  keyScreenshot: 293
+  keyFps: 288
+  keyQuickSave: 286
+  keyQuickLoad: 290
+  keyGeoLeft: 276
+  keyGeoRight: 275
+  keyGeoUp: 273
+  keyGeoDown: 274
+  keyGeoZoomIn: 43
+  keyGeoZoomOut: 45
+  keyGeoSpeed1: 49
+  keyGeoSpeed2: 50
+  keyGeoSpeed3: 51
+  keyGeoSpeed4: 52
+  keyGeoSpeed5: 53
+  keyGeoSpeed6: 54
+  keyGeoIntercept: 105
+  keyGeoBases: 98
+  keyGeoGraphs: 103
+  keyGeoUfopedia: 117
+  keyGeoOptions: 27
+  keyGeoFunding: 102
+  keyGeoToggleDetail: 9
+  keyGeoToggleRadar: 114
+  keyBaseSelect1: 49
+  keyBaseSelect2: 50
+  keyBaseSelect3: 51
+  keyBaseSelect4: 52
+  keyBaseSelect5: 53
+  keyBaseSelect6: 54
+  keyBaseSelect7: 55
+  keyBaseSelect8: 56
+  keyBattleLeft: 276
+  keyBattleRight: 275
+  keyBattleUp: 273
+  keyBattleDown: 274
+  keyBattleLevelUp: 280
+  keyBattleLevelDown: 281
+  keyBattleCenterUnit: 278
+  keyBattlePrevUnit: 304
+  keyBattleNextUnit: 9
+  keyBattleDeselectUnit: 92
+  keyBattleUseLeftHand: 113
+  keyBattleUseRightHand: 101
+  keyBattleInventory: 105
+  keyBattleMap: 109
+  keyBattleOptions: 27
+  keyBattleEndTurn: 8
+  keyBattleAbort: 97
+  keyBattleStats: 115
+  keyBattleKneel: 107
+  keyBattleReload: 114
+  keyBattlePersonalLighting: 108
+  keyBattleReserveNone: 282
+  keyBattleReserveSnap: 283
+  keyBattleReserveAimed: 284
+  keyBattleReserveAuto: 285
+  keyBattleReserveKneel: 106
+  keyBattleZeroTUs: 127
+  keyBattleCenterEnemy1: 49
+  keyBattleCenterEnemy2: 50
+  keyBattleCenterEnemy3: 51
+  keyBattleCenterEnemy4: 52
+  keyBattleCenterEnemy5: 53
+  keyBattleCenterEnemy6: 54
+  keyBattleCenterEnemy7: 55
+  keyBattleCenterEnemy8: 56
+  keyBattleCenterEnemy9: 57
+  keyBattleCenterEnemy10: 48
+  keyBattleVoxelView: 291
+  keyInvCreateTemplate: 99
+  keyInvApplyTemplate: 118
+  keyInvClear: 120
+  keyInvAutoEquip: 122
+  FPS: 60
+  FPSInactive: 30
+mods:
+  - id: xcom2
+    active: true
+  - id: xcom1
+    active: false
+  - id: Aliens_Pick_Up_Weapons
+    active: false
+  - id: Aliens_Pick_Up_Weapons_TFTD
+    active: false
+  - id: Limit_Craft_Item_Capacities
+    active: false
+  - id: Limit_Craft_Item_Capacities_TFTD
+    active: false
+  - id: OpenXCom_Unlimited_Waypoints
+    active: false
+  - id: PSX_Static_Cydonia_Map
+    active: false
+  - id: StrategyCore_Swap_Small_USOs_TFTD
+    active: false
+  - id: TFTD_Damage
+    active: false
+  - id: UFOextender_Gun_Melee
+    active: false
+  - id: UFOextender_Gun_Melee_TFTD
+    active: false
+  - id: UFOextender_Psionic_Line_Of_Fire
+    active: false
+  - id: UFOextender_Psionic_Line_Of_Fire_TFTD
+    active: false
+  - id: UFOextender_Starting_Avalanches
+    active: false
+  - id: XCOM_Damage
+    active: false
+  - id: XcomUtil_Always_Daytime
+    active: false
+  - id: XcomUtil_Always_Daytime_TFTD
+    active: false
+  - id: XcomUtil_Always_Nighttime
+    active: false
+  - id: XcomUtil_Always_Nighttime_TFTD
+    active: false
+  - id: XcomUtil_Fighter_Transports
+    active: false
+  - id: XcomUtil_High_Explosive_Damage
+    active: false
+  - id: XcomUtil_High_Explosive_Damage_TFTD
+    active: false
+  - id: XcomUtil_Improved_Gauss
+    active: false
+  - id: XcomUtil_Improved_Ground_Tanks
+    active: false
+  - id: XcomUtil_Improved_Heavy_Laser
+    active: false
+  - id: XcomUtil_Infinite_Gauss
+    active: false
+  - id: XcomUtil_No_Psionics
+    active: false
+  - id: XcomUtil_No_Psionics_TFTD
+    active: false
+  - id: XcomUtil_Pistol_Auto_Shot
+    active: false
+  - id: XcomUtil_Pistol_Auto_Shot_TFTD
+    active: false
+  - id: XcomUtil_Skyranger_Weapon_Slot
+    active: false
+  - id: XcomUtil_Starting_Defensive_Base
+    active: false
+  - id: XcomUtil_Starting_Defensive_Base_TFTD
+    active: false
+  - id: XcomUtil_Starting_Defensive_Improved_Base
+    active: false
+  - id: XcomUtil_Starting_Defensive_Improved_Base_TFTD
+    active: false
+  - id: XcomUtil_Starting_Improved_Base
+    active: false
+  - id: XcomUtil_Starting_Improved_Base_TFTD
+    active: false
+  - id: XcomUtil_Statstrings
+    active: false

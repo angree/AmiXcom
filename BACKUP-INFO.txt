@@ -1,0 +1,7 @@
+﻿Backup: Amiga OpenXCOM, 2026-08-16 21:40  -  ZNANY DOBRY, 22 FPS na globusie bez JIT
+Stan: throttle globu (1 przerysowanie / 250 ms, cachePolygons tylko przy zmianie rzutowania)
+  + drawShadow na liczbach calkowitych (Q1.14) + tekstury ladu. Cala gra dziala.
+build.sh: NAPRAWIONY - sledzi zaleznosci od naglowkow (-MMD); wczesniej zmiana .h
+  zostawiala stale obiekty (new Globe ze starym sizeof -> uszkodzona sterta).
+Harness: run-oxc.ps1 wymusza okno WinUAE na glownym monitorze (DirectDraw na drugim = czern).
+Szczegoly: LEFTOFF.md, PROGRESS.md.
