@@ -2,123 +2,45 @@
 
 Read this, then `CLAUDE.md` (rules), then the top entry of `PROGRESS.md` (proofs).
 
-## Where the port stands
+## Where the port stands (2026-08-17, after 0.3.0)
 
-**The game is playable end to end: main menu → new game → Geoscape → base →
-New Battle → briefing → inventory → Battlescape, with a unit walking around.**
-Every step is screenshotted in `C:\temp\amiga_oxcom\tftd_*.png` and listed in the
-top entry of `PROGRESS.md`. No `CPU TRAP` anywhere along that path.
+**Released**: github.com/angree/AmiXcom - v0.1.0/0.2.0/0.3.0 (code without
+ROM/HDF/CGX-headers/game data; releases without X-COM data; mkicon.py icons
+carry the 1 MB stack). Game shows "AmiXcom 0.3.0 alpha" (version.h is the one
+source). Main branch = everything; step1-amiga-wip branch merged and obsolete.
 
-- Binary: `openxcom-aga` (+ `-rtg`, `-ask`), built by `build/build.sh`, deployed to
-  `C:\temp\amiga_oxcom\work\` (= `Work:` on the emulated Amiga).
-- Test machines: `winuae/oxc-aga-ram256.uae` (68020, no FPU, **JIT on**, 256 MB) for
-  turnaround, and `winuae/oxc-aga-nojit-ram256.uae` (**JIT off**, 256 MB) for every
-  timing claim — `CLAUDE.md` requires that, and the older `oxc-aga-nojit.uae` is
-  useless here because it has only 32 MB and cannot load the game. Note both still
-  run `cpu_speed=max`, so they are "no JIT", not "a real A1200".
-  The real target `oxc-aga.uae` (32 MB) still runs out of memory while loading —
-  **parked** by the user ("get it running first, optimise later").
-- **The game being played is TFTD**, because that is the data the user has. See below.
+**Performance today** (numbers in PROGRESS.md top entry):
+- Geoscape ~40 fps (was 5): draw-only-on-change globe + colorkey blit A/B/C
+  in sdlmini + the 20 ms SDL_Delay(1) nap removed.
+- Battlescape playable: unit step ~0.3 s (was ~6 s): mover-only FOV, pair
+  spotting, incremental discovery (Amiga tab: Fast/Accurate[default]/Test),
+  integer addLight; map render 10-16 ms (was 100): blitNShade in plain C;
+  battle anim tick 200 ms by default (option).
+- Amiga options tab: screen bar (screen opens TALLER, game keeps 320x200,
+  mouse 1:1), Amiga pointer (default), map reveal, anim speed.
 
-### Data setup — read this before debugging anything that looks like wrong graphics
+**THE PLAN** - remaining, in the user's priority (details LISTA-ROBOT.txt):
+1. Dirty rectangles (c2p_rect.s ready in native/) - menu/Bases/geoscape.
+2. Globe leftovers: span fills, radar-circle cache, sin/cos LUTs, flat
+   sun-shaded land polygons (user demands DIFFERENT shades per sun angle).
+3. Fast game save (~1 min now: yaml double->text on soft-float).
+4. Cleanup TEMP probes (perf:/slow frame/step:/fov:/map:/globe:) before 0.4.0.
+5. Keyboard "6", sound (Paula/ADPCM), RTG test, 32 MB RAM reduction.
 
-`data/UFO/` contains **TFTD's** files (proof in `PROGRESS.md`: `AQUA.PCK`,
-`DEEPONE.PCK`, `ATLANTIS.MCD`, `UP*.BDY`, a 3-palette `PALETTES.DAT`, and 39
-underwater globe textures). Running it under the `xcom1` (UFO) ruleset produced a
-globe of blue speckle, which cost a session to chase as a "port bug". It was not.
+**Rules** (user, unchanged): backup zip before each step (harness/backup.ps1
+-Label X -Note Y), one change per build, self-test via autoinput+log, revert
+rather than stack fixes. RESTORE heavily-patched files from the tarball before
+each build (sh /mnt/c/temp/amiga_oxcom/restore_file.sh Battlescape/TileEngine.cpp
+Battlescape/UnitWalkBState.cpp Battlescape/Map.cpp Engine/Game.cpp ...) - some
+overlapping patches are not idempotent on an already-patched file and stack
+duplicate declarations. `build.sh clean` is always safe.
 
-The live deploy is now set up as:
-
-- `C:\temp\amiga_oxcom\work\data\TFTD\` — a **copy** of the TFTD data
-  (`data/UFO/` was left untouched; nothing was deleted).
-- `C:\temp\amiga_oxcom\work\user\options.cfg` — `xcom2` active, `xcom1` inactive.
-  The previous file is kept as `options.cfg.bak-xcom1`.
-- `standard/xcom1/metadata.yml` says `loadResources: [UFO]`,
-  `standard/xcom2/metadata.yml` says `[TFTD]` — that mapping is the whole story.
-
-`build.sh` deploys game data with `cp -rn` (no overwrite), so a rebuild does not
-disturb any of this. If the user ever supplies real UFO data, drop it in
-`data/UFO/` and flip the two `active:` flags back.
-
-### THE PLAN THE USER SET (2026-08-16 21:45) — do these, in this order
-
-Rules for every step, set by the user after an evening of regressions:
-**full backup zip before each step** (`I:\GITHUB\Amiga_OpenXCOM_backup_<date>_<HHMM>_<label>.zip`,
-convention in "Backups" below), **one change per build**, **test it yourself without the
-user** (no-JIT config, drive with autoinput, screenshot, read `globe: 10 draws` /
-`globe: ms/draw` in `oxc.log`), and only then the next step. If a step makes anything
-worse, revert to its backup — do not stack a fix on top.
-
-Baseline you start from (backup `..._2140_globus-22fps-znany-dobry.zip`): all of the game
-works, globe = throttles + fixed-point shadow + textured land, cap 250 ms, **22 fps**
-geoscape without JIT, redraw ~40 ms (shadow 22, land 14–20). `build.sh` tracks header
-dependencies now (see PROGRESS.md top entry — that was the cause of the whole evening).
-
-1. **"Amiga" options tab, placed BEFORE "General" (i.e. first) in the options screen**, with
-   two settings copied from the OpenTTD port ("more things will land there"):
-   - **Amiga application bar** on/off — the window title bar in window/WB mode:
-     `amigagfx_open(w, h, show_bar, backend)` already takes it (`native/amiga_gfx.h`;
-     sdlmini passes 0 today in `sdlmini_video.c:546`). OpenTTD calls it `wb_bar`.
-   - **Cursor: original (game-drawn) / Amiga cursor only** — the platform layer already has
-     `amigagfx_set_hide_system_pointer(on)`; sdlmini's `SDL_ShowCursor`/`SDL_SetCursor`
-     drive it (`sdlmini_events.c:436-453`). "Amiga cursor only" = show the Intuition
-     pointer and suppress the game's `Cursor` blit (`Game::run` blits `_cursor` every
-     frame — skip it under the option); "original" = today's behaviour.
-   - Where: `src/Menu/OptionsBaseState.cpp` builds the tab buttons at fixed y (Video 8,
-     Audio 28, Controls 48, Geoscape 68, Battlescape 88, Advanced 108, Mods 128); add an
-     "Amiga" button first and shift the rest, or reuse the Video screen pattern
-     (`OptionsVideoState.cpp`) for the new `OptionsAmigaState`. Options live in
-     `Engine/Options.cpp/.h` (`OptionInfo` list; the Amiga defaults block is already
-     patched there — see the "small-screen video defaults" patch). New options need
-     language strings: add them to `bin/common/Language/en-US.yml` via the patch script or
-     use plain literals for now. Persist in `options.cfg` like the others.
-   - Do it in the patch script (whole-file replacements in `native/oxc-replace/` are fine
-     for a NEW file such as `OptionsAmigaState.cpp/.h`; remember to add it to the game
-     source list — check how `build.sh` collects sources).
-2. **Span fills** (`native/sdlmini/src/sdlmini_gfx.c`): `hspan()` (clip once per row,
-   `memset` for 8bpp) for `filledCircleColor`/`span_flat`, and `span_textured` with ONE
-   modulo per span then incremental wrap instead of two `%` per pixel. Already written and
-   measured (ocean 0 ms, land 0 ms) — the code is in `C:\temp\amiga_oxcom\gfx_body.txt`,
-   `gfx_tex.txt`, `gfx_idx.txt` (`SDLmini_FilledPolygon8`, index fill; keep it, step 5
-   needs it) and `gfx_patch.py`/`gfx_patch2.py` apply them. Expect redraw 40 → ~25 ms.
-3. **Radar surface cache** (patch script, Globe.h/.cpp): redraw `_radars` only when the
-   projection changed, `_hover`, the base/craft/facility key changed, or 2 s passed.
-   Written: `C:\temp\amiga_oxcom\radar_patch.py` (applies onto the current script; it
-   adds `_radarKey/_radarTime` members — a header change, which is exactly why build.sh
-   had to be fixed). Saves ~20 ms per base per redraw.
-4. **`polarToCart` / `pointBack` on sin/cos LUTs** (Q16, ~4096 entries) so `cachePolygons`
-   (~400 ms per rotation/zoom today) and `getSunDirection` stop going through the ROM.
-   Then `XuLine` (radar circles, coastlines at zoom ≥ 1: ~40 ms) as integer Bresenham.
-5. **Flat sun-shaded land polygons** — the user's stated preference: NO textures, but each
-   polygon a different shade by its angle to the sun (dominant texture index, darkened
-   0..5 steps by the dot product of the centre normal from `_earthFix` and the sun),
-   still per-pixel day/night shaded on top. Written: `C:\temp\amiga_oxcom\shadepoly2.py`
-   (needs `SDLmini_FilledPolygon8` from step 2). Do it LAST and show a screenshot; the
-   user was explicit that "one flat colour for all land" is not acceptable.
-6. When the redraw is ~20 ms, lower `AMIGA_GLOBE_MIN_MS` (Globe.cpp marker-include patch)
-   from 250 towards 100.
-
-Later, not now: dirty rectangles in sdlmini/amiga_gfx (the c2p of the whole 320x200 is
-~35–40 ms/frame = the ~25 fps ceiling; the OpenTTD/StarCraft ports have it), the
-keyboard ("6" for every key — see below), removing temporary diagnostics, sound.
-
-### Still open, unrelated
-
-- **Keyboard: typing produces only "6".** Real keypresses logged
-  `event: key raw 0x13 down -> sym 54`, but the compiled key table maps raw 0x13 to 114
-  (`r`) — verified byte by byte (`C:\temp\amiga_oxcom\keytab.py`; `sizeof(AmigaKey)` is
-  10 on m68k). Either `lookup()` in `sdlmini_events.c` returns the wrong entry or the log
-  lies (CLAUDE.md rule 4). The log now prints index / entry.raw / sym / sizeof on three
-  short lines. Needs a human at the keyboard: autoinput injects at the SDL level.
-- Temporary diagnostics still compiled in (list at the end of the "evening" entry in
-  PROGRESS.md, plus the Globe draw timing — keep the timing until the globe work is done).
-
-### Globe work already in place (do not re-derive)
-
-- One full globe redraw per `AMIGA_GLOBE_MIN_MS` (250), unconditional, `_redraw` left set.
-- `cachePolygons()` only when `_cenLon/_cenLat/_radius` changed (`_cache*` members).
-- `drawShadow` in Q1.14: `CordFix`/`_earthFix` (Globe.h), `CreateShadowFix`/`cordToFix`
-  (Globe.cpp); double `CreateShadow` kept for `getPolygonTextureAndShade`.
+**Measuring**: the user toggles JIT/cpu_throttle by hand in the WinUAE GUI (F12)
+- launch with JIT (oxc-aga-ram256.uae) for fast load, they switch, then read
+the probes from oxc.log (Monitor on `tail -f`). Timer resolution is 20 ms -
+only averaged numbers mean anything. NEVER leave a Work:autoinput.txt behind
+(the f12-in-file incident cost a night: game replays it on every boot and the
+in-game screenshot path (8->24bpp) halts the machine).
 
 ## What was fixed, and how it was proven
 

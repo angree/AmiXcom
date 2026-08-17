@@ -4,21 +4,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project state
 
-Stage 2 done (2026-08-16 late): **the game is playable end to end** on the emulated
-Amiga (256 MB test machine) — main menu → new game → Geoscape → base → New Battle →
-briefing → inventory → Battlescape with a unit walking around, no Guru anywhere.
-The game being played is **TFTD**: the data in `data/UFO/` is TFTD's, so the deploy
-runs the `xcom2` ruleset (details and proof in `LEFTOFF.md`; treat "wrong graphics"
-as a data question before a code question). Globe performance: throttles + fixed-point
-`drawShadow` brought the geoscape from 5 to **22 fps** without JIT; the remaining plan
-(Amiga options tab first, then span fills, radar cache, sin/cos LUTs, flat sun-shaded
-polygons) is written out step by step in `LEFTOFF.md`, and the user's rules for it are:
-**backup zip before every step, one change per build, test it yourself.** Timing claims
-use `winuae/oxc-aga-nojit-ram256.uae` (JIT off, 256 MB). `build.sh` now tracks header
-dependencies — it did not, and one evening was lost to the resulting heap corruption
-(PROGRESS.md, "night, 3"). **Read `LEFTOFF.md` first** — it is the hand-off:
-what was fixed, what is open, how to run and drive the game. `PROGRESS.md` has the
-facts and proofs, newest first.
+0.3.0 released (2026-08-17): **github.com/angree/AmiXcom** - code (no ROM/HDF/
+CGX headers/game data) + release zips (no X-COM data). The game calls itself
+AmiXcom; the ONE version source is the version.h patch in the patch script.
+Playable end to end with TFTD data (`data/UFO/` holds TFTD files, ruleset
+xcom2); geoscape ~40 fps, battlescape unit step ~0.3 s (was 6 s), map render
+10-16 ms - the day's optimizations, numbers and proofs are the top entry of
+`PROGRESS.md`. Remaining work, in the user's order: `LISTA-ROBOT.txt`
+(1. dirty rects, 2. globe leftovers incl. sun-shaded flat polygons, 3. fast
+saves, 4. remove TEMP probes, 5. keyboard/sound/RTG/RAM). Rules unchanged:
+**backup zip before every step (winuae/harness/backup.ps1), one change per
+build, test it yourself** (launch JIT config, the user flips to no-JIT -70%
+themselves via F12; read probes from oxc.log). Before each build restore
+heavily-patched files from the tarball (restore_file.sh) - overlapping patches
+stack duplicates on an already-patched tree; `build.sh clean` is always safe.
+Never leave `Work:autoinput.txt` behind (boot-replay incident, PROGRESS.md).
+**Read `LEFTOFF.md` first** - it is the hand-off.
 
 ## Layout and build
 

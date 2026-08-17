@@ -2,6 +2,72 @@
 
 Newest first. Facts and measurements only; plans live in `PORT_RESEARCH.md`.
 
+## 2026-08-17: 0.1.0-0.3.0 wydane; geoscape 5->40 fps; bitwa grywalna (krok 6 s -> 0.3 s)
+
+**Wydania**: github.com/angree/AmiXcom - kod (bez ROM/HDF/CGX/danych gry, .gitignore
+pilnuje) + release zipy (binaria+ikony+data/common+standard, bez danych X-COM).
+v0.1.0 (wieczor 16.08), v0.2.0 (rano: geoscape), v0.3.0 (popoludnie: bitwa).
+Wersja gry z jednego zrodla: patch version.h (OPENXCOM_VERSION_SHORT).
+
+**Nocna lekcja**: "uszkodzona binarka" ktora wieszala kazda wersje = zostawiony
+Work:autoinput.txt z klawiszem f12 (gra odtwarzala go po kazdym starcie; f12 w grze
+= screenshot = konwersja 8->24bpp = HALT). Kasacja pliku = 8/10 czystych testow.
+Suma md5 binarek identyczna przed/po - build deterministyczny.
+
+**Geoscape 5 -> ~40 fps** (pomiary: sondy perf:/globe: w oxc.log):
+1. Blity colorkey byly 5 ekranow/klatke (4 warstwy globu + UI). Wariant A: 4 px
+   na raz (trick (x-0x01010101)&~x&0x80808080). B: flaga "powierzchnia bez klucza"
+   w unused1 -> memcpy. C: cache spanow per powierzchnia w hwdata (runy nie-klucza
+   per wiersz; niewazniane w FillRect/Lock/Unlock/SetColorKey/blit-dst). 11->16 fps.
+2. GLOWNY zlodziej: SDL_Delay(1) na koncu KAZDEJ klatki (upstream "save CPU")
+   zaokraglane w SDLmini_Sleep do 1 tiku = 20 ms; z 20-ms zegarem limiter FPS
+   gubil klatki i spal 1-2x na klatke. Fix: opoznienia <=2 ms = no-op. 16->40 fps.
+   c2p okazal sie NIE byc problemem (~7 ms/klatke) - uzytkownik mial racje.
+
+**Bitwa: krok 6 s -> ~0.3 s** (sondy slow frame/step:/fov: z rozbiciem):
+- fovAll 3.2-3.5 s = pelne FOV KAZDEJ jednostki w 20 kratkach po kazdym kroku,
+  w tym raycast odkrywania mapy do ~1700 kafli na jednostke. Naprawy kolejno:
+  (1) pelne FOV tylko dla ruszajacego (tiles=false dla reszty), (2) spotting
+  po liscie jednostek zamiast enumeracji stozka (enumeracja ~170 ms/jednostke!),
+  (3) spotting par: po kroku zmienily sie tylko pary "ktos<->ruszajacy" -
+  reszta list nietykana (vu->erase(remove)+addToVisibleUnits, test stozka int),
+  (4) przyrostowe odkrywanie (mapa<int,pair<Position,int>> lastDisco_; needRay_
+  pomija cele w starym stozku JUZ odkryte - k1korner-peek zachowany bo nieodkryte
+  dostaja promien), (5) obroty w marszu = spotting only. Tryby w zakladce AMIGA:
+  Fast (krawedzie stozka+przyrost) / Accurate (bez przyrostu; DOMYSLNY - po (3)
+  kosztuje tyle samo) / Test (krawedzie+pierscien). Regres "odkrywa mniej"
+  z wersji krawedziowej naprawiony powrotem do promienia per kafel + przyrost.
+- unitLighting 550->100 ms: addLight na intach (najblizszy pierwiastek
+  przyrostowo, wyniesiony przed petle z, 1 lookup/narozn). [Wklad innej sesji
+  Claude, przywrocony po jej sprzataniu.]
+- render mapy 100 -> 10-16 ms: blitNShade w golym C zamiast ShaderDraw
+  (StandardShade/ColorReplace: dolny nibble+off, saturacja 15, gorny nibble
+  zachowany/zamieniony; przeskok przezroczystych po 4 px; cien 0 = czysta kopia).
+  Timer animacji bitwy: opcja, domyslnie 200 ms (bylo 100 = zadanie pelnego
+  renderu 10x/s = nasycenie = 3-6 fps nawet bez ruchu).
+- ogien reakcyjny zmierzony <100 ms - NIE byl problemem (teoria obalona sondami).
+
+**Original research**: 1994 robil to tak jak my teraz: LOFTEMPS.DAT = prekalk.
+bitmapy 16x16 (LOS/LOF bez geometrii), 1 promien miedzy srodkami kafli tylko do
+KANDYDATOW, odkrywanie przyrostowe, przeliczenie tylko ruszajacego. A500 7MHz
+wcale nie bylo plynne (tury obcych = minuty); punkt odniesienia = 486.
+
+**Zakladka AMIGA** (OptionsAmigaState w native/oxc-replace/Menu/): pasek ekranu
+Amigi (amigagfx otwiera ekran WYZSZY o pasek: 320x211, gra pelne 320x200 pod nim,
+mysz 1:1 - a nie zmniejsza pola gry jak OpenTTD), kursor amigowy (domyslny;
+Intuition pointer, gra nie blituje kursora), map reveal, tempo animacji.
+Tytul paska = SDL_WM_SetCaption -> amigagfx_set_screen_title (zywe SetWindowTitles).
+
+**Gotcha buildowe**: czesc lat nakladajacych sie na te same miejsca nie jest
+idempotentna na juz zlatanym pliku (duplikaty deklaracji). Przed buildem:
+sh /mnt/c/temp/amiga_oxcom/restore_file.sh Battlescape/TileEngine.cpp itd.
+`build.sh clean` zawsze bezpieczny. Pomiar: 20-ms zegar - liczby tylko usrednione.
+
+**Sondy TYMCZASOWE aktywne** (do usuniecia przed nastepnym wydaniem): perf: co 100
+klatek (sdlmini_video), slow frame >=300ms (Game.cpp), step: >=100ms
+(UnitWalkBState), fov: per pelne FOV (TileEngine), map: co 20 renderow (Map.cpp),
+globe: co 50 wywolan (Globe.cpp).
+
 ## 2026-08-16 (night, 3) - the "every change makes it worse" evening: it was build.sh
 
 Symptoms over ~2 hours: a globe surface with half its pixels zeroed by a shader

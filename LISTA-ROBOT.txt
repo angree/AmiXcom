@@ -1,86 +1,65 @@
-AMIXCOM - LISTA POZOSTALYCH ROBOT (2026-08-17)
+AMIXCOM - LISTA POZOSTALYCH ROBOT (stan 2026-08-17 po wydaniu 0.3.0)
 Zasady: przed kazdym punktem pelny backup zip, jedna zmiana na build,
-Claude testuje sam (config -70% = oxc-aga-nojit-040-40.uae). Kolejnosc ponizej.
+Claude testuje sam; pomiary czytane z oxc.log (sondy perf:/fov:/map:/step:).
+UWAGA POMIAROWA: uzytkownik przelacza JIT/throttle recznie w F12 - przy
+porownaniach patrzec na liczby wzgledne z tej samej sesji, nie miedzy sesjami.
 
-1. POMIAR BLITOW (w toku)
-   Licznik w sdlmini: ile milisekund na klatke schodzi na kopiowanie
-   powierzchni (blity), ile na c2p, ile na reszte. Bez tego nie wiadomo,
-   ktora optymalizacja sie oplaca. Jedna linijka w logu co 100 klatek.
+1. DIRTY RECTANGLES (najwiekszy pozostaly skok plynnosci)
+   Kazda klatka = pelne skladanie ekranu przez wszystkie elementy UI
+   + pelna konwersja c2p 320x200 (~7 ms) + blity/fills ~5 ekranow na klatke.
+   Dirty rects = przerysowywac/konwertowac tylko zmienione prostokaty.
+   c2p_rect.s (konwersja wycinka) lezy gotowy w native/ z portu OpenTTD.
+   Po tym menu/Bases/geoscape powinny chodzic jak OpenTTD.
 
-2. SZYBSZE BLITY - wariant A (potem ew. B, C - OSOBNO, po jednym)
-   Blit = kopiowanie obrazka na ekran z pominieciem "przezroczystego"
-   koloru (colorkey); dzis gra porownuje kazdy piksel osobno.
-   A: porownywac po 4 piksele naraz (dluzsze slowa procesora); obszary
-      calkiem puste/calkiem pelne ida wtedy 4x szybciej.
-   B: zapamietac raz, ze dany obrazek w ogole nie ma przezroczystych
-      pikseli -> kopiowac go wtedy wprost, bez zadnych porownan.
-   C: dla obrazkow, ktore sie nigdy nie zmieniaja (sprite'y, czcionki),
-      policzyc raz liste "pomin N, skopiuj M" na kazdy wiersz; potem blit
-      to same szybkie kopie, zero porownan. Najwiekszy zysk, najwiecej pracy.
+2. GLOBUS - dokonczenie listy
+   a) span fills oceanu/ladu (kod z 16.08: gfx_body/gfx_tex/gfx_idx.txt
+      w C:\temp\amiga_oxcom + gfx_patch*.py) - lad ~15 ms -> ~1 ms
+   b) cache kolek radarow (radar_patch.py) - nadal rysuja sie przy kazdym
+      przerysowaniu globu (~20 ms/baza); przy stawianiu bazy co klatke
+   c) sin/cos z tablic dla cachePolygons (obrot/zoom ~400 ms -> ~15 ms)
+      + XuLine na intach (Bresenham)
+   d) plaskie poligony ladu cieniowane wg slonca (shadepoly2.py; WYMOG:
+      rozne odcienie wg kata do slonca, NIE jeden kolor, NIE tekstury;
+      pokazac zrzut do akceptacji)
+   e) gdy przerysowanie tanie: AMIGA_GLOBE_MIN_MS 1000 -> ~250
 
-3. SPAN FILLS (wypelnienia globusa)
-   Ocean i lad globusa rysowane sa dzis piksel po pikselu. Zamiast tego
-   wypelniac cale poziome odcinki naraz (memset/kopiowanie wierszami).
-   Kod juz napisany i zmierzony wczesniej - do wlaczenia i przetestowania.
-   Oczekiwane: rysowanie ladu z ~15 ms do ~1 ms.
+3. SZYBKI ZAPIS GRY (~1 min -> cel: sekundy)
+   YAML tekstowy: tysiace double->tekst przez soft-float + emitter.
+   Fix: szybka konwersja liczb, mniejsza precyzja wspolrzednych,
+   bufor put w AmigaFileBuf (dzis strona zapisu bez bufora).
 
-4. CACHE KOLEK RADAROW
-   Kolka zasiegu radarow przerysowuja sie za kazdym rysowaniem globusa
-   (~20 ms na baze), chociaz zmieniaja sie tylko przy obrocie/zoomie albo
-   nowej bazie. Trzymac je narysowane obok i tylko kopiowac.
-   UWAGA: przy stawianiu bazy kolko pod myszka odswieza sie co klatke -
-   to tez tu naprawic (klucz odswiezania ma nie zalezec od samej myszki).
+4. BITWA - dalsze (jesli user zechce)
+   - trawersa drawTerrain (petle kolumny x pietra z lancuchami getTile) -
+     to wiekszosc pozostalego kosztu renderu przy cieniu >0
+   - visible() (raycast wokselowy) nadal per para przy obrocie jednostki
+   - ogien reakcyjny/AI tury obcych - niezmierzone porzadnie
 
-5. SIN/COS Z TABLIC (LUT)
-   Obrot i zoom globusa przelicza wspolrzedne wszystkich poligonow swiata
-   przez wolne funkcje sin/cos z ROM-u (~400 ms na jeden obrot).
-   Zamiast tego gotowa tablica ~4096 wartosci - odczyt zamiast liczenia.
-   Do tego samo rysowanie linii wybrzeza (XuLine) przejsc na liczby
-   calkowite (algorytm Bresenhama).
+5. PORZADKI PRZED NASTEPNYM WYDANIEM
+   - usunac TYMCZASOWE sondy: perf: (sdlmini_video), globe:/blit diag
+     (Globe.cpp + SDLmini_diag), slow frame (Game.cpp), step:
+     (UnitWalkBState), fov: licznik (TileEngine), map: (Map.cpp)
+   - klawiatura ("6"): tablica w binarce dobra; F12 w grze = screenshot
+     8->24bpp = crash portu - zabezpieczyc
+   - 40 s po OK w opcjach na wolnej maszynie - zmierzyc Options::save
+   - RTG nietestowane; 32 MB nie laduje gry (redukcja RAM nieruszona)
+   - dzwiek (Paula/ADPCM z OpenTTD) - nieruszony
 
-6. PLASKIE POLIGONY LADU CIENIOWANE WG SLONCA
-   Zamiast tekstur ladu: kazdy poligon w JEDNYM kolorze, ale odcien
-   zalezny od kata do slonca (jasniej w dzien, ciemniej przy terminatorze).
-   WYMAGANIE UZYTKOWNIKA: rozne odcienie, NIE jeden plaski kolor.
-   Kod przygotowany (shadepoly2.py), wymaga wypelniania poligonow z pkt 3.
-   Na koncu pokazac zrzut ekranu do akceptacji.
+GOTCHA BUILDOWE (koszt: kilka builds dzisiaj):
+   Przed buildem przywracac z tarballa pliki mocno latane
+   (restore_file.sh Battlescape/TileEngine.cpp itd.) - niektore laty
+   nie sa idempotentne na juz zlatanym pliku (nachodza na siebie)
+   i sztapluja duplikaty. build.sh clean zawsze bezpieczny.
 
-7. DIRTY RECTANGLES (najwiekszy zysk plynnosci)
-   Dzis KAZDA klatka = przerysowanie calego ekranu przez wszystkie
-   elementy UI + pelna konwersja c2p 320x200 (~35-40 ms) - nawet gdy nic
-   sie nie zmienilo. Dirty rects = zapamietywac, ktore prostokaty ekranu
-   sie zmienily, i tylko je przerysowac/skonwertowac. Plik c2p_rect.s
-   (konwersja wycinka) juz jest w native/ - zostal z portu OpenTTD.
-   Po tym ekrany typu Bases powinny chodzic jak w OpenTTD.
-
-8. SZYBKI ZAPIS GRY
-   Zapis stanu gry trwa ~minute, bo silnik zapisuje YAML tekstowo:
-   tysiace liczb zmiennoprzecinkowych zamienianych na tekst przez wolna
-   emulacje FPU. Naprawa: wlasna szybka konwersja liczb + mniejsza
-   precyzja wspolrzednych + bufor zapisu. Cel: kilka sekund.
-
-9. KLAWIATURA ("6" przy kazdym klawiszu)
-   Prawdziwe klawisze daja zly znak (tablica w binarce jest dobra, blad
-   gdzies w odczycie). Potrzebny czlowiek przy klawiaturze do testu -
-   autoinput wstrzykuje klawisze z pominieciem tej sciezki.
-   UWAGA: F12 wcisniete W GRZE (nie w oknie WinUAE) = funkcja screenshot
-   gry, ktora wywala port (konwersja 8->24bpp) - do zabezpieczenia.
-
-10. DZWIEK (Paula/ADPCM z portu OpenTTD) - jeszcze nie ruszony.
-
-11. DROBIAZGI
-    - licznik FPS raz zniknal po OK w opcjach (nie umiemy powtorzyc)
-    - 40 s po OK w opcjach na -70% - wstawic pomiar czasu wokol zapisu
-      opcji, zeby ustalic co je zjada
-    - RTG build nietestowany; maszyna 32 MB nadal nie wczytuje gry
-    - usunac tymczasowa diagnostyke z sdlmini/Globe przed wydaniem 0.2.0
-    - wydac 0.2.0 na GitHub (kod + release) po zamknieciu punktow 2-7
-
-ZROBIONE (dla porzadku):
-- glob: rysuje sie tylko gdy cos sie zmienilo (obrot/zoom/slonce/radar),
-  limit 1 przerysowanie/sekunde; bez ruchu = 0 rysowania
-- zakladka "Amiga" w opcjach (przed Video): pasek ekranu Amigi + wybor
-  kursora; oba domyslnie wlaczone; pasek NIE zabiera juz gry (ekran
-  otwiera sie wyzszy o pasek, mysz pasuje 1:1)
-- tytul paska = nazwa gry z jednego zrodla wersji (version.h): 0.2.0
-- wyjasnione nocne zwiechy: zostawiony plik autoinput.txt z klawiszem F12
+ZROBIONE 17.08 (wydane jako 0.3.0):
+- geoscape ~40 fps: glob rysuje sie tylko przy zmianie; blity colorkey
+  A (4px) + B (flaga pelnych) + C (cache spanow w hwdata); usunieta
+  drzemka 20 ms/klatke (SDL_Delay(1) zaokraglane do tiku)
+- bitwa: krok 6 s -> ~0.3 s (FOV tylko dla ruszajacego + spotting par
+  "kto widzi ruszajacego" + przyrostowe odkrywanie Fast/Accurate/Test
+  + obroty bez odkrywania + addLight na intach); render mapy 100 ->
+  10-16 ms (blitNShade w C, przeskok 4px, kopia przy cieniu 0);
+  animacja bitwy domyslnie co 200 ms (opcja)
+- zakladka AMIGA: pasek ekranu (ekran wyzszy o pasek, mysz 1:1),
+  kursor amigowy (domyslny), map reveal, tempo animacji
+- wersja z jednego zrodla (version.h): 0.3.0; wydania 0.1.0/0.2.0/0.3.0
+  na github.com/angree/AmiXcom (kod bez assetow, release bez danych gry)
