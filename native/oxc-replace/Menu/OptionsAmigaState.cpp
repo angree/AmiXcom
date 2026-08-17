@@ -29,18 +29,33 @@ OptionsAmigaState::OptionsAmigaState(OptionsOrigin origin) : OptionsBaseState(or
 	_txtCursor = new Text(218, 9, 94, 40);
 	_cbxCursor = new ComboBox(this, 104, 16, 94, 50);
 
+	_txtFov = new Text(218, 9, 94, 72);
+	_cbxFov = new ComboBox(this, 104, 16, 94, 82);
+
+	_txtAnim = new Text(218, 9, 94, 104);
+	_cbxAnim = new ComboBox(this, 104, 16, 94, 114);
+
 	add(_txtAppBar, "text", "videoMenu");
 	add(_txtCursor, "text", "videoMenu");
+	add(_txtFov, "text", "videoMenu");
+	add(_txtAnim, "text", "videoMenu");
+	add(_cbxAnim, "button", "videoMenu");
+	add(_cbxFov, "button", "videoMenu");
 	add(_cbxCursor, "button", "videoMenu");
 	add(_cbxAppBar, "button", "videoMenu");
 
 	centerAllSurfaces();
 
-	std::vector<std::wstring> onOff, cursors;
+	std::vector<std::wstring> onOff, cursors, fovs, anims;
 	onOff.push_back(tr("STR_AMIGA_OFF"));
 	onOff.push_back(tr("STR_AMIGA_ON"));
 	cursors.push_back(tr("STR_AMIGA_CURSOR_ORIGINAL"));
 	cursors.push_back(tr("STR_AMIGA_CURSOR_AMIGA"));
+	fovs.push_back(tr("STR_AMIGA_FOV_FAST"));
+	fovs.push_back(tr("STR_AMIGA_FOV_ACCURATE"));
+	fovs.push_back(tr("STR_AMIGA_FOV_TEST"));
+	anims.push_back(tr("STR_AMIGA_ANIM_NORMAL"));
+	anims.push_back(tr("STR_AMIGA_ANIM_HALF"));
 
 	_txtAppBar->setText(tr("STR_AMIGA_APP_BAR"));
 	_cbxAppBar->setOptions(onOff);
@@ -57,6 +72,22 @@ OptionsAmigaState::OptionsAmigaState(OptionsOrigin origin) : OptionsBaseState(or
 	_cbxCursor->setTooltip("STR_AMIGA_CURSOR_DESC");
 	_cbxCursor->onMouseIn((ActionHandler)&OptionsAmigaState::txtTooltipIn);
 	_cbxCursor->onMouseOut((ActionHandler)&OptionsAmigaState::txtTooltipOut);
+
+	_txtFov->setText(tr("STR_AMIGA_FOV"));
+	_cbxFov->setOptions(fovs);
+	_cbxFov->setSelected((size_t)Options::amigaAccurateFov);
+	_cbxFov->onChange((ActionHandler)&OptionsAmigaState::cbxFovChange);
+	_cbxFov->setTooltip("STR_AMIGA_FOV_DESC");
+	_cbxFov->onMouseIn((ActionHandler)&OptionsAmigaState::txtTooltipIn);
+	_cbxFov->onMouseOut((ActionHandler)&OptionsAmigaState::txtTooltipOut);
+
+	_txtAnim->setText(tr("STR_AMIGA_ANIM"));
+	_cbxAnim->setOptions(anims);
+	_cbxAnim->setSelected(Options::amigaAnimMs >= 200 ? 1 : 0);
+	_cbxAnim->onChange((ActionHandler)&OptionsAmigaState::cbxAnimChange);
+	_cbxAnim->setTooltip("STR_AMIGA_ANIM_DESC");
+	_cbxAnim->onMouseIn((ActionHandler)&OptionsAmigaState::txtTooltipIn);
+	_cbxAnim->onMouseOut((ActionHandler)&OptionsAmigaState::txtTooltipOut);
 }
 
 OptionsAmigaState::~OptionsAmigaState()
@@ -71,6 +102,16 @@ void OptionsAmigaState::cbxAppBarChange(Action *)
 void OptionsAmigaState::cbxCursorChange(Action *)
 {
 	Options::amigaCursor = (int)_cbxCursor->getSelected();
+}
+
+void OptionsAmigaState::cbxFovChange(Action *)
+{
+	Options::amigaAccurateFov = (int)_cbxFov->getSelected();
+}
+
+void OptionsAmigaState::cbxAnimChange(Action *)
+{
+	Options::amigaAnimMs = _cbxAnim->getSelected() == 1 ? 200 : 100;
 }
 
 }

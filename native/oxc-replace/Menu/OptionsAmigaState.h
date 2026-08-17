@@ -15,13 +15,15 @@ class ComboBox;
 class OptionsAmigaState : public OptionsBaseState
 {
 private:
-	Text *_txtAppBar, *_txtCursor;
-	ComboBox *_cbxAppBar, *_cbxCursor;
+	Text *_txtAppBar, *_txtCursor, *_txtFov, *_txtAnim;
+	ComboBox *_cbxAppBar, *_cbxCursor, *_cbxFov, *_cbxAnim;
 public:
 	OptionsAmigaState(OptionsOrigin origin);
 	~OptionsAmigaState();
 	void cbxAppBarChange(Action *action);
 	void cbxCursorChange(Action *action);
+	void cbxFovChange(Action *action);
+	void cbxAnimChange(Action *action);
 };
 
 }

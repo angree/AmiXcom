@@ -197,15 +197,15 @@ def main():
         "display backend selection include")))
 
     # 3b. Name and version of the port. The main menu and the window title
-    #     say "AmiXcom 0.2.0 alpha" instead of "OpenXcom 1.0 Dev".
+    #     say "AmiXcom 0.3.0 alpha" instead of "OpenXcom 1.0 Dev".
     results.append(("version.h (AmiXcom)", edit(
         os.path.join(src, "version.h"),
         '#define OPENXCOM_VERSION_SHORT "1.0"\n'
         '#define OPENXCOM_VERSION_LONG "1.0.0.0"\n'
         '#define OPENXCOM_VERSION_NUMBER 1,0,0,0\n',
-        '#define OPENXCOM_VERSION_SHORT "0.2.0"\n'
-        '#define OPENXCOM_VERSION_LONG "0.2.0.0"\n'
-        '#define OPENXCOM_VERSION_NUMBER 0,2,0,0\n'
+        '#define OPENXCOM_VERSION_SHORT "0.3.0"\n'
+        '#define OPENXCOM_VERSION_LONG "0.3.0.0"\n'
+        '#define OPENXCOM_VERSION_NUMBER 0,3,0,0\n'
         '#define OPENXCOM_VERSION_GIT " alpha"\n',
         "port version")))
     results.append(("MainMenuState.cpp (AmiXcom title)", edit(
@@ -240,14 +240,16 @@ def main():
         "OPT std::string language, useOpenGLShader;\n"
         "// AMIGA-PORT: the \"Amiga\" options tab\n"
         "OPT bool amigaAppBar;\n"
-        "OPT int amigaCursor;\n",
+        "OPT int amigaCursor;\n"
+        "OPT int amigaAccurateFov; /* 0 fast, 1 accurate, 2 test */\n",
         "amiga option variables")))
     results.append(("Options.cpp (amiga OptionInfo)", edit(
         os.path.join(src, "Engine", "Options.cpp"),
         "\t_info.push_back(OptionInfo(\"fpsCounter\", &fpsCounter, true)); /* AMIGA-PORT: default on */\n",
         "\t_info.push_back(OptionInfo(\"fpsCounter\", &fpsCounter, true)); /* AMIGA-PORT: default on */\n"
         "\t_info.push_back(OptionInfo(\"amigaAppBar\", &amigaAppBar, true));\n"
-        "\t_info.push_back(OptionInfo(\"amigaCursor\", &amigaCursor, 1)); /* default: Amiga pointer */\n",
+        "\t_info.push_back(OptionInfo(\"amigaCursor\", &amigaCursor, 1)); /* default: Amiga pointer */\n"
+        "\t_info.push_back(OptionInfo(\"amigaAccurateFov\", &amigaAccurateFov, 1)); /* default: Accurate - same speed since the pair-update */\n",
         "amiga OptionInfo")))
     results.append(("OptionsBaseState.h (btnAmiga)", edit(
         os.path.join(src, "Menu", "OptionsBaseState.h"),
@@ -328,6 +330,11 @@ def main():
         "  STR_AMIGA_CURSOR_DESC: \"Original: the game draws its own cursor. Amiga: only the system pointer is shown - nothing to redraw, so it moves smoothly.\"\n"
         "  STR_AMIGA_CURSOR_ORIGINAL: \"Original (game-drawn)\"\n"
         "  STR_AMIGA_CURSOR_AMIGA: \"Amiga pointer only\"\n"
+        "  STR_AMIGA_FOV: \"Map reveal\"\n"
+        "  STR_AMIGA_FOV_DESC: \"Fast: quick fog reveal, may leave the odd tile covered. Accurate: fuller reveal after every step, noticeably slower on real hardware.\"\n"
+        "  STR_AMIGA_FOV_FAST: \"Fast\"\n"
+        "  STR_AMIGA_FOV_ACCURATE: \"Accurate (slower)\"\n"
+        "  STR_AMIGA_FOV_TEST: \"Test\"\n"
         "  STR_AMIGA_OFF: \"Off\"\n"
         "  STR_AMIGA_ON: \"On\"\n",
         "amiga language strings")))
@@ -746,6 +753,8 @@ def main():
         "\t{\n"
         "\t\t// Clean up states",
         "#ifdef __AMIGA__\n"
+        "#include <typeinfo>\n"
+        "static Uint32 AmigaSlow_think, AmigaSlow_blit;\n"
         "#define AMIGA_FRAME(x) do { static int o_; if (!o_) { o_ = 1; SDLmini_Log(\"frame: \" x); } } while (0)\n"
         "\tSDLmini_Log(\"frame: entering Game::run loop\");\n"
         "#else\n"
@@ -796,7 +805,9 @@ def main():
         "#ifdef __AMIGA__\n"
         "\t\t\tAMIGA_FRAME(\"state: think\");\n"
         "#endif\n"
+        "\t\t\tAmigaSlow_think = SDL_GetTicks();\n"
         "\t\t\t_states.back()->think();\n"
+        "\t\t\tAmigaSlow_think = SDL_GetTicks() - AmigaSlow_think;\n"
         "#ifdef __AMIGA__\n"
         "\t\t\tAMIGA_FRAME(\"state: think done\");\n"
         "#endif",
@@ -935,6 +946,7 @@ def main():
     results.append(("Engine/Game.cpp (draw markers)", edit(
         os.path.join(src, "Engine", "Game.cpp"),
         "\t\t\t\t_screen->clear();",
+        "\t\t\t\tAmigaSlow_blit = SDL_GetTicks();\n"
         "\t\t\t\tAMIGA_FRAME(\"screen clear\");\n"
         "\t\t\t\t_screen->clear();",
         "Game::run clear marker")))
@@ -970,7 +982,23 @@ def main():
         "\t\t\t\t\t\t_cursor->blit(_screen->getSurface());\n"
         "\t\t\t\t}\n"
         "\t\t\t\tAMIGA_FRAME(\"screen flip\");\n"
-        "\t\t\t\t_screen->flip();\n"
+        "\t\t\t\t{\n"
+        "\t\t\t\t\tUint32 tf_ = SDL_GetTicks();\n"
+        "\t\t\t\t\tAmigaSlow_blit = tf_ - AmigaSlow_blit;\n"
+        "\t\t\t\t\t_screen->flip();\n"
+        "\t\t\t\t\ttf_ = SDL_GetTicks() - tf_;\n"
+        "\t\t\t\t\t/* AMIGA-PORT TEMP: name any frame that stalls (>=300 ms) and say\n"
+        "\t\t\t\t\t * which phase ate it - the battlescape freezes after every unit\n"
+        "\t\t\t\t\t * step and this pinpoints the eater. */\n"
+        "\t\t\t\t\tif (AmigaSlow_think + AmigaSlow_blit + tf_ >= 300)\n"
+        "\t\t\t\t\t{\n"
+        "\t\t\t\t\t\tchar sb_[160];\n"
+        "\t\t\t\t\t\tsnprintf(sb_, sizeof sb_, \"slow frame: think %lu blit %lu flip %lu ms in %s\",\n"
+        "\t\t\t\t\t\t\t(unsigned long)AmigaSlow_think, (unsigned long)AmigaSlow_blit, (unsigned long)tf_,\n"
+        "\t\t\t\t\t\t\ttypeid(*_states.back()).name());\n"
+        "\t\t\t\t\t\tSDLmini_Log(sb_);\n"
+        "\t\t\t\t\t}\n"
+        "\t\t\t\t}\n"
         "\t\t\t\tAMIGA_FRAME(\"screen flip done\");",
         "Game::run flip markers")))
 
@@ -1216,6 +1244,572 @@ def main():
         "extern \"C\" int SDLmini_show_bar; /* AMIGA-PORT: sdlmini_video.c */\n"
         "#endif\n",
         "amiga app bar extern")))
+
+    # 5w2. TEMP step probe: the battlescape freezes 4-5 s after every unit
+    #      step (slow-frame probe: think 4-5 s in BattlescapeState). The three
+    #      suspects run right after each step - time each one separately.
+    results.append(("UnitWalkBState.cpp (probe include)", edit(
+        os.path.join(src, "Battlescape", "UnitWalkBState.cpp"),
+        '#include "UnitWalkBState.h"\n',
+        '#include "UnitWalkBState.h"\n'
+        '#ifdef __AMIGA__\n'
+        'extern "C" void SDLmini_Log(const char *msg);\n'
+        '#include <cstdio>\n'
+        '#define AMIGA_STEP_T(name, call) do { Uint32 t_ = SDL_GetTicks(); call; t_ = SDL_GetTicks() - t_; \\\n'
+        '\tif (t_ >= 100) { char b_[96]; snprintf(b_, sizeof b_, "step: %s %lu ms", name, (unsigned long)t_); SDLmini_Log(b_); } } while (0)\n'
+        '#else\n'
+        '#define AMIGA_STEP_T(name, call) do { call; } while (0)\n'
+        '#endif\n',
+        "step probe include")))
+    results.append(("UnitWalkBState.cpp (probe lighting+fov)", edit(
+        os.path.join(src, "Battlescape", "UnitWalkBState.cpp"),
+        '\t\t\t// move our personal lighting with us\n'
+        '\t\t\t_terrain->calculateUnitLighting();\n',
+        '\t\t\t// move our personal lighting with us\n'
+        '\t\t\tAMIGA_STEP_T("unitLighting", _terrain->calculateUnitLighting());\n',
+        "step probe lighting")))
+    results.append(("UnitWalkBState.cpp (probe fov)", edit(
+        os.path.join(src, "Battlescape", "UnitWalkBState.cpp"),
+        '\t\t\t_terrain->calculateFOV(_unit->getPosition());\n',
+        '\t\t\tAMIGA_STEP_T("fovAll", _terrain->calculateFOV(_unit->getPosition()));\n',
+        "step probe fov")))
+    results.append(("UnitWalkBState.cpp (probe reaction)", edit(
+        os.path.join(src, "Battlescape", "UnitWalkBState.cpp"),
+        '\t\t\t\tif (_terrain->checkReactionFire(_unit))\n',
+        '\t\t\t\tUint32 tReact_ = SDL_GetTicks();\n'
+        '\t\t\t\tbool reacted_ = _terrain->checkReactionFire(_unit);\n'
+        '#ifdef __AMIGA__\n'
+        '\t\t\t\ttReact_ = SDL_GetTicks() - tReact_;\n'
+        '\t\t\t\tif (tReact_ >= 100) { char rb_[96]; snprintf(rb_, sizeof rb_, "step: reaction %lu ms", (unsigned long)tReact_); SDLmini_Log(rb_); }\n'
+        '#endif\n'
+        '\t\t\t\tif (reacted_)\n',
+        "step probe reaction")))
+
+    # 5w3. FOV split (measured 2026-08-17: every unit step ran a FULL FOV -
+    #      including the map-discovery voxel raycast to every tile in the view
+    #      cone - for EVERY unit within 20 tiles: 3.2-3.5 s per step on the
+    #      -70% machine). For units that did not move, the map they can see
+    #      cannot have changed; only WHO they see can. So: full FOV only for
+    #      the unit standing at the changed position, spotting-only for the
+    #      rest. `tiles` defaults to true, so every other call site is intact.
+    results.append(("TileEngine.h (fov tiles param)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.h"),
+        "\tbool calculateFOV(BattleUnit *unit);\n",
+        "\tbool calculateFOV(BattleUnit *unit, bool tiles = true); /* AMIGA-PORT: tiles=false -> spotting only */\n",
+        "fov tiles param decl")))
+    results.append(("TileEngine.cpp (fov tiles param)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        "bool TileEngine::calculateFOV(BattleUnit *unit)\n",
+        "bool TileEngine::calculateFOV(BattleUnit *unit, bool tiles)\n",
+        "fov tiles param def")))
+    results.append(("TileEngine.cpp (fov clear guard)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        "\tunit->clearVisibleUnits();\n"
+        "\tunit->clearVisibleTiles();\n",
+        "\tunit->clearVisibleUnits();\n"
+        "\tif (tiles)\n"
+        "\t\tunit->clearVisibleTiles();\n",
+        "fov clear guard")))
+    results.append(("TileEngine.cpp (fov setVisible guard)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        "\t\t\t\t\t\t\tif (unit->getFaction() == FACTION_PLAYER)\n"
+        "\t\t\t\t\t\t\t{\n"
+        "\t\t\t\t\t\t\t\tvisibleUnit->getTile()->setVisible(+1);\n"
+        "\t\t\t\t\t\t\t\tvisibleUnit->setVisible(true);\n"
+        "\t\t\t\t\t\t\t}\n",
+        "\t\t\t\t\t\t\tif (unit->getFaction() == FACTION_PLAYER)\n"
+        "\t\t\t\t\t\t\t{\n"
+        "\t\t\t\t\t\t\t\tif (tiles)\n"
+        "\t\t\t\t\t\t\t\t\tvisibleUnit->getTile()->setVisible(+1);\n"
+        "\t\t\t\t\t\t\t\tvisibleUnit->setVisible(true);\n"
+        "\t\t\t\t\t\t\t}\n",
+        "fov setVisible guard")))
+    results.append(("TileEngine.cpp (fov visibleTiles guard)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        "\t\t\t\t\t\t\t\tunit->addToVisibleUnits(visibleUnit);\n"
+        "\t\t\t\t\t\t\t\tunit->addToVisibleTiles(visibleUnit->getTile());\n",
+        "\t\t\t\t\t\t\t\tunit->addToVisibleUnits(visibleUnit);\n"
+        "\t\t\t\t\t\t\t\tif (tiles)\n"
+        "\t\t\t\t\t\t\t\t\tunit->addToVisibleTiles(visibleUnit->getTile());\n",
+        "fov visibleTiles guard")))
+    results.append(("TileEngine.cpp (fov discovery guard)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        "\t\t\t\t\t\tif (unit->getFaction() == FACTION_PLAYER)\n"
+        "\t\t\t\t\t\t{\n"
+        "\t\t\t\t\t\t\t// this sets tiles to discovered if they are in LOS - tile visibility is not calculated in voxelspace but in tilespace\n",
+        "\t\t\t\t\t\t/* AMIGA-PORT: discovery rays to the cone EDGE (plus the\n"
+        "\t\t\t\t\t\t * first 3 tiles); their trajectories sweep the interior.\n"
+        "\t\t\t\t\t\t * needRay_ (incremental, Fast mode only) skips targets\n"
+        "\t\t\t\t\t\t * already discovered in the previous cone. */\n"
+        "\t\t\t\t\t\tif (tiles && needRay_ && unit->getFaction() == FACTION_PLAYER\n"
+        "\t\t\t\t\t\t\t&& (x <= 2 || x == MAX_VIEW_DISTANCE || y == y1 || y == y2\n"
+        "\t\t\t\t\t\t\t\t|| (x+1)*(x+1) + y*y > MAX_VIEW_DISTANCE_SQR\n"
+        "\t\t\t\t\t\t\t\t|| (Options::amigaAccurateFov == 2 && distanceSqr >= 81 && distanceSqr <= 110)))\n"
+        "\t\t\t\t\t\t{\n"
+        "\t\t\t\t\t\t\t// this sets tiles to discovered if they are in LOS - tile visibility is not calculated in voxelspace but in tilespace\n",
+        "fov discovery guard")))
+    results.append(("TileEngine.cpp (fovAll spot-only)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        "\t\tif (distanceSq(position, (*i)->getPosition()) <= MAX_VIEW_DISTANCE_SQR)\n"
+        "\t\t{\n"
+        "\t\t\tcalculateFOV(*i);\n"
+        "\t\t}\n",
+        "\t\tif (distanceSq(position, (*i)->getPosition()) <= MAX_VIEW_DISTANCE_SQR)\n"
+        "\t\t{\n"
+        "\t\t\t/* AMIGA-PORT: after a step only the pairs involving the unit at\n"
+        "\t\t\t * `position` (the mover) can have changed. The mover gets a full\n"
+        "\t\t\t * FOV; everyone else just re-checks the mover: cheap cone test,\n"
+        "\t\t\t * one visibility ray at most. If no unit stands at `position`\n"
+        "\t\t\t * (terrain changed: door, explosion) fall back to full FOVs. */\n"
+        "\t\t\tBattleUnit *mover_ = _save->getTile(position) ? _save->getTile(position)->getUnit() : 0;\n"
+        "\t\t\tif (mover_ == 0)\n"
+        "\t\t\t{\n"
+        "\t\t\t\tcalculateFOV(*i);\n"
+        "\t\t\t}\n"
+        "\t\t\telse if (*i == mover_)\n"
+        "\t\t\t{\n"
+        "\t\t\t\tcalculateFOV(*i, true);\n"
+        "\t\t\t}\n"
+        "\t\t\telse if (!(*i)->isOut())\n"
+        "\t\t\t{\n"
+        "\t\t\t\tBattleUnit *w_ = *i;\n"
+        "\t\t\t\tstd::vector<BattleUnit*> *vu_ = w_->getVisibleUnits();\n"
+        "\t\t\t\tvu_->erase(std::remove(vu_->begin(), vu_->end(), mover_), vu_->end());\n"
+        "\t\t\t\tint dir_;\n"
+        "\t\t\t\tif (Options::strafe && (w_->getTurretType() > -1))\n"
+        "\t\t\t\t\tdir_ = w_->getTurretDirection();\n"
+        "\t\t\t\telse\n"
+        "\t\t\t\t\tdir_ = w_->getDirection();\n"
+        "\t\t\t\t{\n"
+        "\t\t\t\t\tstatic const int sX_[8] = { +1, +1, +1, +1, -1, -1, -1, -1 };\n"
+        "\t\t\t\t\tstatic const int sY_[8] = { -1, -1, -1, +1, +1, +1, -1, -1 };\n"
+        "\t\t\t\t\tconst bool sw_ = (dir_ == 0 || dir_ == 4);\n"
+        "\t\t\t\t\tconst Position d_ = mover_->getPosition() - w_->getPosition();\n"
+        "\t\t\t\t\tconst int xi_ = sw_ ? sY_[dir_]*d_.y : sX_[dir_]*d_.x;\n"
+        "\t\t\t\t\tconst int yi_ = sw_ ? sX_[dir_]*d_.x : sY_[dir_]*d_.y;\n"
+        "\t\t\t\t\tif (xi_ < 0 || xi_ > MAX_VIEW_DISTANCE) continue;\n"
+        "\t\t\t\t\tif (dir_%2) { if (yi_ < 0 || yi_ > MAX_VIEW_DISTANCE) continue; }\n"
+        "\t\t\t\t\telse        { if (yi_ < -xi_ || yi_ > xi_) continue; }\n"
+        "\t\t\t\t\tif (xi_*xi_ + yi_*yi_ > MAX_VIEW_DISTANCE_SQR) continue;\n"
+        "\t\t\t\t}\n"
+        "\t\t\t\tif (visible(w_, mover_->getTile()))\n"
+        "\t\t\t\t{\n"
+        "\t\t\t\t\tif (w_->getFaction() == FACTION_PLAYER)\n"
+        "\t\t\t\t\t\tmover_->setVisible(true);\n"
+        "\t\t\t\t\tif ((mover_->getFaction() == FACTION_HOSTILE && w_->getFaction() == FACTION_PLAYER)\n"
+        "\t\t\t\t\t\t|| (mover_->getFaction() != FACTION_HOSTILE && w_->getFaction() == FACTION_HOSTILE))\n"
+        "\t\t\t\t\t{\n"
+        "\t\t\t\t\t\tw_->addToVisibleUnits(mover_);\n"
+        "\t\t\t\t\t\tif (w_->getFaction() == FACTION_HOSTILE && mover_->getFaction() != FACTION_HOSTILE)\n"
+        "\t\t\t\t\t\t\tmover_->setTurnsSinceSpotted(0);\n"
+        "\t\t\t\t\t}\n"
+        "\t\t\t\t}\n"
+        "\t\t\t}\n"
+        "\t\t}\n",
+        "fovAll spot-only")))
+
+    # 5w4. While TURNING mid-walk the engine ran a FULL FOV (with map
+    #      discovery) after every 45 degrees. Spotting-only there; the full
+    #      FOV at the end of the step / end of the path still discovers.
+    results.append(("UnitWalkBState.cpp (turn fov spot-only)", edit(
+        os.path.join(src, "Battlescape", "UnitWalkBState.cpp"),
+        '\t\t// calculateFOV is unreliable for setting the unitSpotted bool, as it can be called from various other places\n'
+        '\t\t// in the code, ie: doors opening, and this messes up the result.\n'
+        '\t\t_terrain->calculateFOV(_unit);\n',
+        '\t\t// calculateFOV is unreliable for setting the unitSpotted bool, as it can be called from various other places\n'
+        '\t\t// in the code, ie: doors opening, and this messes up the result.\n'
+        '\t\t_terrain->calculateFOV(_unit, false); /* AMIGA-PORT: spotting only while turning; step end discovers */\n',
+        "turn fov spot-only")))
+    results.append(("UnitWalkBState.cpp (path-end turn fov spot-only)", edit(
+        os.path.join(src, "Battlescape", "UnitWalkBState.cpp"),
+        '\t\t\twhile (_unit->getStatus() == STATUS_TURNING)\n'
+        '\t\t\t{\n'
+        '\t\t\t\t_unit->turn();\n'
+        '\t\t\t\t_parent->getTileEngine()->calculateFOV(_unit);\n'
+        '\t\t\t}\n',
+        '\t\t\twhile (_unit->getStatus() == STATUS_TURNING)\n'
+        '\t\t\t{\n'
+        '\t\t\t\t_unit->turn();\n'
+        '\t\t\t\t_parent->getTileEngine()->calculateFOV(_unit, false); /* AMIGA-PORT: spotting only; full FOV follows */\n'
+        '\t\t\t}\n',
+        "path-end turn fov spot-only")))
+
+    # 5w5. addLight without floating point. Upstream computes
+    #      Round(sqrt(float(x*x+y*y))) PER Z LEVEL and looks every tile up
+    #      twice. Integer nearest-sqrt, hoisted out of the z loop, one lookup
+    #      per corner. (Re-adds work an accidental cross-session cleanup
+    #      removed on 2026-08-17.)
+    results.append(("TileEngine.cpp (integer addLight)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        '\t\t\tfor (int z = 0; z < _save->getMapSizeZ(); z++)\n'
+        '\t\t\t{\n'
+        '\t\t\t\tint distance = (int)Round(sqrt(float(x*x + y*y)));\n'
+        '\n'
+        '\t\t\t\tif (_save->getTile(Position(center.x + x,center.y + y, z)))\n'
+        '\t\t\t\t\t_save->getTile(Position(center.x + x,center.y + y, z))->addLight(power - distance, layer);\n'
+        '\n'
+        '\t\t\t\tif (_save->getTile(Position(center.x - x,center.y - y, z)))\n'
+        '\t\t\t\t\t_save->getTile(Position(center.x - x,center.y - y, z))->addLight(power - distance, layer);\n'
+        '\n'
+        '\t\t\t\tif (_save->getTile(Position(center.x - x,center.y + y, z)))\n'
+        '\t\t\t\t\t_save->getTile(Position(center.x - x,center.y + y, z))->addLight(power - distance, layer);\n'
+        '\n'
+        '\t\t\t\tif (_save->getTile(Position(center.x + x,center.y - y, z)))\n'
+        '\t\t\t\t\t_save->getTile(Position(center.x + x,center.y - y, z))->addLight(power - distance, layer);\n'
+        '\t\t\t}\n',
+        '\t\t\t/* AMIGA-PORT: integer nearest-sqrt (unique d with (2d-1)^2 <= 4n < (2d+1)^2),\n'
+        '\t\t\t * hoisted out of the z loop; one tile lookup per corner. Upstream did a\n'
+        '\t\t\t * float sqrt per z level - pure soft-float cost on this CPU. */\n'
+        '\t\t\tconst int nsq_ = x*x + y*y;\n'
+        '\t\t\tint distance = 0;\n'
+        '\t\t\twhile ((2*distance + 1)*(2*distance + 1) <= 4*nsq_)\n'
+        '\t\t\t\t++distance;\n'
+        '\t\t\tconst int light_ = power - distance;\n'
+        '\t\t\tconst int mapZ_ = _save->getMapSizeZ();\n'
+        '\t\t\tfor (int z = 0; z < mapZ_; z++)\n'
+        '\t\t\t{\n'
+        '\t\t\t\tTile *t_;\n'
+        '\t\t\t\tif ((t_ = _save->getTile(Position(center.x + x,center.y + y, z))))\n'
+        '\t\t\t\t\tt_->addLight(light_, layer);\n'
+        '\t\t\t\tif ((t_ = _save->getTile(Position(center.x - x,center.y - y, z))))\n'
+        '\t\t\t\t\tt_->addLight(light_, layer);\n'
+        '\t\t\t\tif ((t_ = _save->getTile(Position(center.x - x,center.y + y, z))))\n'
+        '\t\t\t\t\tt_->addLight(light_, layer);\n'
+        '\t\t\t\tif ((t_ = _save->getTile(Position(center.x + x,center.y - y, z))))\n'
+        '\t\t\t\t\tt_->addLight(light_, layer);\n'
+        '\t\t\t}\n',
+        "integer addLight")))
+
+    # 5w6. Spotting-only FOV walks the UNIT LIST, not the cone. The tile
+    #      enumeration alone (21x21 columns x map height, a getTile per cell)
+    #      costs ~100 ms per unit on the target CPU, and it ran for every
+    #      unit in range after every step. ~30 units x 3 compares instead.
+    results.append(("TileEngine.cpp (spot-only unit walk)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        "\tfor (int x = 0; x <= MAX_VIEW_DISTANCE; ++x)\n"
+        "\t{\n"
+        "\t\tif (direction%2)\n",
+        "#ifdef __AMIGA__\n"
+        "\tif (!tiles)\n"
+        "\t{\n"
+        "\t\t/* AMIGA-PORT: spotting only - check each unit directly against the\n"
+        "\t\t * view cone instead of enumerating every tile of the cone. The\n"
+        "\t\t * cone test inverts the mapping the tile loop below uses. */\n"
+        "\t\tfor (std::vector<BattleUnit*>::iterator ui_ = _save->getUnits()->begin(); ui_ != _save->getUnits()->end(); ++ui_)\n"
+        "\t\t{\n"
+        "\t\t\tBattleUnit *visibleUnit = *ui_;\n"
+        "\t\t\tif (visibleUnit == unit || visibleUnit->isOut()) continue;\n"
+        "\t\t\t{\n"
+        "\t\t\t\tconst Position d_ = visibleUnit->getPosition() - center;\n"
+        "\t\t\t\tconst int xi_ = swap ? signY[direction]*d_.y : signX[direction]*d_.x;\n"
+        "\t\t\t\tconst int yi_ = swap ? signX[direction]*d_.x : signY[direction]*d_.y;\n"
+        "\t\t\t\tif (xi_ < 0 || xi_ > MAX_VIEW_DISTANCE) continue;\n"
+        "\t\t\t\tif (direction%2) { if (yi_ < 0 || yi_ > MAX_VIEW_DISTANCE) continue; }\n"
+        "\t\t\t\telse             { if (yi_ < -xi_ || yi_ > xi_) continue; }\n"
+        "\t\t\t\tif (xi_*xi_ + yi_*yi_ > MAX_VIEW_DISTANCE_SQR) continue;\n"
+        "\t\t\t}\n"
+        "\t\t\tif (visible(unit, visibleUnit->getTile()))\n"
+        "\t\t\t{\n"
+        "\t\t\t\tif (unit->getFaction() == FACTION_PLAYER)\n"
+        "\t\t\t\t\tvisibleUnit->setVisible(true);\n"
+        "\t\t\t\tif ((visibleUnit->getFaction() == FACTION_HOSTILE && unit->getFaction() == FACTION_PLAYER)\n"
+        "\t\t\t\t\t|| (visibleUnit->getFaction() != FACTION_HOSTILE && unit->getFaction() == FACTION_HOSTILE))\n"
+        "\t\t\t\t{\n"
+        "\t\t\t\t\tunit->addToVisibleUnits(visibleUnit);\n"
+        "\t\t\t\t\tif (unit->getFaction() == FACTION_HOSTILE && visibleUnit->getFaction() != FACTION_HOSTILE)\n"
+        "\t\t\t\t\t{\n"
+        "\t\t\t\t\t\tvisibleUnit->setTurnsSinceSpotted(0);\n"
+        "\t\t\t\t\t}\n"
+        "\t\t\t\t}\n"
+        "\t\t\t}\n"
+        "\t\t}\n"
+        "\t\tif (unit->getUnitsSpottedThisTurn().size() > oldNumVisibleUnits && !unit->getVisibleUnits()->empty())\n"
+        "\t\t\treturn true;\n"
+        "\t\treturn false;\n"
+        "\t}\n"
+        "#endif\n"
+        "\tfor (int x = 0; x <= MAX_VIEW_DISTANCE; ++x)\n"
+        "\t{\n"
+        "\t\tif (direction%2)\n",
+        "spot-only unit walk")))
+
+    # 5w7. Incremental discovery (the original 1994 engine's trick): when the
+    #      unit moved one tile with the same facing, tiles that were already in
+    #      the previous cone AND are already discovered need no new ray. Blocked
+    #      pockets (corner peeking) stay undiscovered, so they still get rays.
+    results.append(("TileEngine.cpp (incr include)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        '#include "TileEngine.h"\n',
+        '#include "TileEngine.h"\n'
+        '#include <map>\n'
+        '#include <algorithm>\n',
+        "incr include")))
+    results.append(("TileEngine.cpp (incr bookkeeping)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        "#endif\n"
+        "\tfor (int x = 0; x <= MAX_VIEW_DISTANCE; ++x)\n"
+        "\t{\n"
+        "\t\tif (direction%2)\n",
+        "\t/* AMIGA-PORT: incremental discovery - remember where this unit last ran\n"
+        "\t * a full discovery. One step with unchanged facing -> most of the cone\n"
+        "\t * was already swept. Keyed by unit id; a stale entry after a new\n"
+        "\t * battle merely costs one extra full sweep. */\n"
+        "\tAmigaFovRays_ = AmigaFovSteps_ = AmigaFovCols_ = 0;\n"
+        "\tUint32 fovT0_ = SDL_GetTicks();\n"
+        "\tbool incr_ = false;\n"
+        "\tPosition oldC_ = center;\n"
+        "\t{\n"
+        "\t\tstatic std::map<int, std::pair<Position, int> > lastDisco_;\n"
+        "\t\tif (tiles && Options::amigaAccurateFov != 1)\n"
+        "\t\t{\n"
+        "\t\t\tstd::map<int, std::pair<Position, int> >::iterator li_ = lastDisco_.find(unit->getId());\n"
+        "\t\t\tif (li_ != lastDisco_.end() && li_->second.second == direction)\n"
+        "\t\t\t{\n"
+        "\t\t\t\tPosition dd_ = center - li_->second.first;\n"
+        "\t\t\t\t/* same position included: a repeat full FOV skips every ray */\n"
+        "\t\t\t\tif (dd_.z == 0 && dd_.x >= -1 && dd_.x <= 1 && dd_.y >= -1 && dd_.y <= 1)\n"
+        "\t\t\t\t{\n"
+        "\t\t\t\t\tincr_ = true;\n"
+        "\t\t\t\t\toldC_ = li_->second.first;\n"
+        "\t\t\t\t}\n"
+        "\t\t\t}\n"
+        "\t\t\tlastDisco_[unit->getId()] = std::make_pair(center, direction);\n"
+        "\t\t}\n"
+        "\t}\n"
+        "#endif\n"
+        "\tfor (int x = 0; x <= MAX_VIEW_DISTANCE; ++x)\n"
+        "\t{\n"
+        "\t\tif (direction%2)\n",
+        "incr bookkeeping")))
+    results.append(("TileEngine.cpp (incr skip)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        "\t\t\t\t\t\t/* AMIGA-PORT: discovery rays to the cone EDGE (plus the\n",
+        "\t\t\t\t\t\tbool needRay_ = true;\n"
+        "\t\t\t\t\t\tif (incr_)\n"
+        "\t\t\t\t\t\t{\n"
+        "\t\t\t\t\t\t\tconst int dxo_ = test.x - oldC_.x;\n"
+        "\t\t\t\t\t\t\tconst int dyo_ = test.y - oldC_.y;\n"
+        "\t\t\t\t\t\t\tconst int xio_ = swap ? signY[direction]*dyo_ : signX[direction]*dxo_;\n"
+        "\t\t\t\t\t\t\tconst int yio_ = swap ? signX[direction]*dxo_ : signY[direction]*dyo_;\n"
+        "\t\t\t\t\t\t\tif (xio_ >= 0 && xio_ <= MAX_VIEW_DISTANCE\n"
+        "\t\t\t\t\t\t\t\t&& (direction%2 ? (yio_ >= 0 && yio_ <= MAX_VIEW_DISTANCE) : (yio_ >= -xio_ && yio_ <= xio_))\n"
+        "\t\t\t\t\t\t\t\t&& xio_*xio_ + yio_*yio_ <= MAX_VIEW_DISTANCE_SQR\n"
+        "\t\t\t\t\t\t\t\t&& _save->getTile(test)->isDiscovered(2))\n"
+        "\t\t\t\t\t\t\t\tneedRay_ = false;\n"
+        "\t\t\t\t\t\t}\n"
+        "\t\t\t\t\t\t/* AMIGA-PORT: discovery rays to the cone EDGE (plus the\n",
+        "incr skip calc")))
+    # 5w8. TEMP ray counter: how many discovery rays / trajectory tiles one
+    #      full calculateFOV really costs. One log line per full run.
+    results.append(("TileEngine.cpp (ray counter decl)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        '#include <map>\n',
+        '#include <map>\n'
+        '#ifdef __AMIGA__\n'
+        'extern "C" void SDLmini_Log(const char *msg);\n'
+        'static unsigned long AmigaFovRays_, AmigaFovSteps_, AmigaFovCols_;\n'
+        '#endif\n',
+        "ray counter decl")))
+    results.append(("TileEngine.cpp (ray counter count)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        "\t\t\t\t\t\t\t\t\tint tst = calculateLine(poso, test, true, &_trajectory, unit, false);\n"
+        "\t\t\t\t\t\t\t\t\tsize_t tsize = _trajectory.size();\n",
+        "\t\t\t\t\t\t\t\t\tint tst = calculateLine(poso, test, true, &_trajectory, unit, false);\n"
+        "\t\t\t\t\t\t\t\t\tsize_t tsize = _trajectory.size();\n"
+        "\t\t\t\t\t\t\t\t\tAmigaFovRays_++; AmigaFovSteps_ += (unsigned long)tsize;\n",
+        "ray counter count")))
+    results.append(("TileEngine.cpp (ray counter report)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        "\t// we only react when there are at least the same amount of visible units as before AND the checksum is different\n",
+        "#ifdef __AMIGA__\n"
+        "\tif (tiles)\n"
+        "\t{\n"
+        "\t\tchar fb_[128];\n"
+        "\t\tsnprintf(fb_, sizeof fb_, \"fov: %lu ms, rays %lu, traj tiles %lu, incr %d\",\n"
+        "\t\t\t(unsigned long)(SDL_GetTicks() - fovT0_), AmigaFovRays_, AmigaFovSteps_, incr_ ? 1 : 0);\n"
+        "\t\tSDLmini_Log(fb_);\n"
+        "\t}\n"
+        "#endif\n"
+        "\t// we only react when there are at least the same amount of visible units as before AND the checksum is different\n",
+        "ray counter report")))
+
+    # 5w9. TEMP: how long ONE full battlescape map render takes and how often
+    #      it runs. The animation timer requests one every 100 ms even when
+    #      nothing moves - this shows what each one costs.
+    results.append(("Map.cpp (probe extern)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        '#include "Map.h"\n',
+        '#include "Map.h"\n'
+        '#ifdef __AMIGA__\n'
+        'extern "C" void SDLmini_Log(const char *msg);\n'
+        '#endif\n',
+        "map probe extern")))
+    results.append(("Map.cpp (render probe)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "\t{\n"
+        "\t\tdrawTerrain(this);\n"
+        "\t}\n"
+        "\telse\n"
+        "\t{\n"
+        "\t\t_message->blit(this);\n",
+        "\t{\n"
+        "#ifdef __AMIGA__\n"
+        "\t\tstatic Uint32 sum_ = 0; static int n_ = 0;\n"
+        "\t\tUint32 t0_ = SDL_GetTicks();\n"
+        "\t\tdrawTerrain(this);\n"
+        "\t\tsum_ += SDL_GetTicks() - t0_;\n"
+        "\t\tif (++n_ == 20)\n"
+        "\t\t{\n"
+        "\t\t\tchar b_[96];\n"
+        "\t\t\tsnprintf(b_, sizeof b_, \"map: 20 renders, %lu ms avg\", (unsigned long)(sum_ / 20));\n"
+        "\t\t\tSDLmini_Log(b_);\n"
+        "\t\t\tsum_ = 0; n_ = 0;\n"
+        "\t\t}\n"
+        "#else\n"
+        "\t\tdrawTerrain(this);\n"
+        "#endif\n"
+        "\t}\n"
+        "\telse\n"
+        "\t{\n"
+        "\t\t_message->blit(this);\n",
+        "map render probe")))
+
+    # 6a. blitNShade in plain C (LISTA-ROBOT pkt: bitwa). The ShaderDraw
+    #     template pipeline costs ~15-25 instructions per PIXEL at -O1 on this
+    #     gcc, and a battlescape render pushes ~250k pixels through it - ~100 ms
+    #     per render, requested every animation tick. Straight pointer loops
+    #     with a 4-pixel transparent skip and a shade==0 copy path. Semantics
+    #     identical to StandardShade / ColorReplace (low nibble + off,
+    #     saturate to 15, keep/replace the high nibble).
+    results.append(("Surface.cpp (blitNShade include)", edit(
+        os.path.join(src, "Engine", "Surface.cpp"),
+        '#include "Surface.h"\n',
+        '#include "Surface.h"\n'
+        '#include <cstring>\n',
+        "blitNShade include")))
+    results.append(("Surface.cpp (fast blitNShade)", edit(
+        os.path.join(src, "Engine", "Surface.cpp"),
+        "\tShaderMove<Uint8> src(this, x, y);\n"
+        "\tif (half)\n"
+        "\t{\n"
+        "\t\tGraphSubset g = src.getDomain();\n"
+        "\t\tg.beg_x = g.end_x/2;\n"
+        "\t\tsrc.setDomain(g);\n"
+        "\t}\n"
+        "\tif (newBaseColor)\n"
+        "\t{\n"
+        "\t\t--newBaseColor;\n"
+        "\t\tnewBaseColor <<= 4;\n"
+        "\t\tShaderDraw<ColorReplace>(ShaderSurface(surface), src, ShaderScalar(off), ShaderScalar(newBaseColor));\n"
+        "\t}\n"
+        "\telse\n"
+        "\t\tShaderDraw<StandardShade>(ShaderSurface(surface), src, ShaderScalar(off));\n"
+        "\n"
+        "}\n",
+        "\t/* AMIGA-PORT: plain C fast path - see the patch script for why. */\n"
+        "\tSDL_Surface *ss_ = _surface;\n"
+        "\tSDL_Surface *ds_ = surface->getSurface();\n"
+        "\tint sx0 = half ? ss_->w / 2 : 0, sy0 = 0;\n"
+        "\tint dx0 = x + sx0, dy0 = y;\n"
+        "\tint cw = ss_->w - sx0, ch = ss_->h;\n"
+        "\tint yy;\n"
+        "\tif (dx0 < 0) { sx0 -= dx0; cw += dx0; dx0 = 0; }\n"
+        "\tif (dy0 < 0) { sy0 -= dy0; ch += dy0; dy0 = 0; }\n"
+        "\tif (dx0 + cw > ds_->w) cw = ds_->w - dx0;\n"
+        "\tif (dy0 + ch > ds_->h) ch = ds_->h - dy0;\n"
+        "\tif (cw <= 0 || ch <= 0) return;\n"
+        "\t{\n"
+        "\tconst Uint8 *sp = (const Uint8 *)ss_->pixels + (size_t)sy0 * ss_->pitch + sx0;\n"
+        "\tUint8 *dp = (Uint8 *)ds_->pixels + (size_t)dy0 * ds_->pitch + dx0;\n"
+        "\tif (newBaseColor)\n"
+        "\t{\n"
+        "\t\tconst int base_ = (newBaseColor - 1) << 4;\n"
+        "\t\tfor (yy = 0; yy < ch; ++yy)\n"
+        "\t\t{\n"
+        "\t\t\tconst Uint8 *s2 = sp; Uint8 *d2 = dp; int n = cw;\n"
+        "\t\t\twhile (n-- > 0)\n"
+        "\t\t\t{\n"
+        "\t\t\t\tUint8 c = *s2++;\n"
+        "\t\t\t\tif (c) { int ns = (c & 15) + off; *d2 = (ns > 15) ? 15 : (Uint8)(base_ | ns); }\n"
+        "\t\t\t\t++d2;\n"
+        "\t\t\t}\n"
+        "\t\t\tsp += ss_->pitch; dp += ds_->pitch;\n"
+        "\t\t}\n"
+        "\t}\n"
+        "\telse if (off == 0)\n"
+        "\t{\n"
+        "\t\t/* shade 0: pure colorkey copy, 4 px at a time */\n"
+        "\t\tfor (yy = 0; yy < ch; ++yy)\n"
+        "\t\t{\n"
+        "\t\t\tconst Uint8 *s2 = sp; Uint8 *d2 = dp; int n = cw;\n"
+        "\t\t\twhile (n >= 4)\n"
+        "\t\t\t{\n"
+        "\t\t\t\tUint32 v;\n"
+        "\t\t\t\tmemcpy(&v, s2, 4);\n"
+        "\t\t\t\tif (v != 0)\n"
+        "\t\t\t\t{\n"
+        "\t\t\t\t\tif ((((v - 0x01010101UL) & ~v) & 0x80808080UL) == 0)\n"
+        "\t\t\t\t\t\tmemcpy(d2, &v, 4);\n"
+        "\t\t\t\t\telse\n"
+        "\t\t\t\t\t{\n"
+        "\t\t\t\t\t\tif (s2[0]) d2[0] = s2[0];\n"
+        "\t\t\t\t\t\tif (s2[1]) d2[1] = s2[1];\n"
+        "\t\t\t\t\t\tif (s2[2]) d2[2] = s2[2];\n"
+        "\t\t\t\t\t\tif (s2[3]) d2[3] = s2[3];\n"
+        "\t\t\t\t\t}\n"
+        "\t\t\t\t}\n"
+        "\t\t\t\ts2 += 4; d2 += 4; n -= 4;\n"
+        "\t\t\t}\n"
+        "\t\t\twhile (n-- > 0) { Uint8 c = *s2++; if (c) *d2 = c; ++d2; }\n"
+        "\t\t\tsp += ss_->pitch; dp += ds_->pitch;\n"
+        "\t\t}\n"
+        "\t}\n"
+        "\telse\n"
+        "\t{\n"
+        "\t\tfor (yy = 0; yy < ch; ++yy)\n"
+        "\t\t{\n"
+        "\t\t\tconst Uint8 *s2 = sp; Uint8 *d2 = dp; int n = cw;\n"
+        "\t\t\twhile (n-- > 0)\n"
+        "\t\t\t{\n"
+        "\t\t\t\tUint8 c = *s2++;\n"
+        "\t\t\t\tif (c) { int ns = (c & 15) + off; *d2 = (ns > 15) ? 15 : (Uint8)((c & 0xF0) | ns); }\n"
+        "\t\t\t\t++d2;\n"
+        "\t\t\t}\n"
+        "\t\t\tsp += ss_->pitch; dp += ds_->pitch;\n"
+        "\t\t}\n"
+        "\t}\n"
+        "\t}\n"
+        "}\n",
+        "fast blitNShade")))
+
+    # 6b. Battle animation tick from an option (default 200 ms on this port -
+    #     upstream's 100 ms demanded a full map render 10x per second).
+    results.append(("Options (amigaAnimMs)", edit(
+        os.path.join(src, "Engine", "Options.inc.h"),
+        "OPT int amigaAccurateFov; /* 0 fast, 1 accurate, 2 test */\n",
+        "OPT int amigaAccurateFov; /* 0 fast, 1 accurate, 2 test */\n"
+        "OPT int amigaAnimMs;     /* battle animation tick, ms */\n",
+        "amigaAnimMs var")))
+    results.append(("Options.cpp (amigaAnimMs)", edit(
+        os.path.join(src, "Engine", "Options.cpp"),
+        "\t_info.push_back(OptionInfo(\"amigaAccurateFov\", &amigaAccurateFov, 1)); /* default: Accurate - same speed since the pair-update */\n",
+        "\t_info.push_back(OptionInfo(\"amigaAccurateFov\", &amigaAccurateFov, 1)); /* default: Accurate - same speed since the pair-update */\n"
+        "\t_info.push_back(OptionInfo(\"amigaAnimMs\", &amigaAnimMs, 200));\n",
+        "amigaAnimMs info")))
+    results.append(("BattlescapeState.cpp (anim timer option)", edit(
+        os.path.join(src, "Battlescape", "BattlescapeState.cpp"),
+        "\t_animTimer = new Timer(DEFAULT_ANIM_SPEED, true);\n",
+        "\t_animTimer = new Timer(Options::amigaAnimMs > 0 ? Options::amigaAnimMs : DEFAULT_ANIM_SPEED, true); /* AMIGA-PORT */\n",
+        "anim timer option")))
+    results.append(("en-US.yml (anim strings)", edit(
+        os.path.join(src, "..", "bin", "common", "Language", "en-US.yml"),
+        "  STR_AMIGA_FOV_TEST: \"Test\"\n",
+        "  STR_AMIGA_FOV_TEST: \"Test\"\n"
+        "  STR_AMIGA_ANIM: \"Battle animation speed\"\n"
+        "  STR_AMIGA_ANIM_DESC: \"How often fire, water and the cursor animate in battle. Half rate frees a lot of CPU on real hardware.\"\n"
+        "  STR_AMIGA_ANIM_NORMAL: \"Normal\"\n"
+        "  STR_AMIGA_ANIM_HALF: \"Half (faster)\"\n",
+        "anim strings")))
 
     # 5x. Globe blit diagnostics (temporary): the globe draws (first
     #     filledCircle/texturedPolygon are logged by sdlmini) but the screen
