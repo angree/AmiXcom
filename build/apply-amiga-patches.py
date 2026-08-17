@@ -211,12 +211,12 @@ def main():
     results.append(("MainMenuState.cpp (AmiXcom title)", edit(
         os.path.join(src, "Menu", "MainMenuState.cpp"),
         '\ttitle << tr("STR_OPENXCOM") << L"\\x02";\n',
-        '\ttitle << L"AmiXcom" << L"\\x02";\n',
+        '\ttitle << L"AmiXcom 68K" << L"\\x02";\n',
         "port name in main menu")))
     results.append(("main.cpp (AmiXcom title)", edit(
         os.path.join(src, "main.cpp"),
         '\ttitle << "OpenXcom " << OPENXCOM_VERSION_SHORT << OPENXCOM_VERSION_GIT;\n',
-        '\ttitle << "AmiXcom " << OPENXCOM_VERSION_SHORT << OPENXCOM_VERSION_GIT;\n',
+        '\ttitle << "AmiXcom 68K " << OPENXCOM_VERSION_SHORT << OPENXCOM_VERSION_GIT;\n',
         "port name in window title")))
 
     # 3c. FPS counter on by default - the user wants it in the corner while the
