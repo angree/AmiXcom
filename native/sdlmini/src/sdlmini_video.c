@@ -193,8 +193,8 @@ SDL_Surface *SDL_ConvertSurface(SDL_Surface *src, SDL_PixelFormat *fmt, Uint32 f
  * until the port is reliable: one comparison per call. */
 #define SDLMINI_FIRST(tag) do { 	static int once_; 	if (!once_) { once_ = 1; SDLmini_Log("SDLmini: first " tag); } } while (0)
 
-int SDL_LockSurface(SDL_Surface *surface)    { (void)surface; return 0; }
-void SDL_UnlockSurface(SDL_Surface *surface) { (void)surface; }
+int SDL_LockSurface(SDL_Surface *surface)    { if (surface != NULL) surface->unused1 = 0; return 0; }
+void SDL_UnlockSurface(SDL_Surface *surface) { if (surface != NULL) surface->unused1 = 0; }
 
 int SDL_SetColorKey(SDL_Surface *surface, Uint32 flag, Uint32 key)
 {
@@ -208,6 +208,7 @@ int SDL_SetColorKey(SDL_Surface *surface, Uint32 flag, Uint32 key)
 			logged_++;
 		}
 	}
+	surface->unused1 = 0;   /* key changed: reclassify (wariant B) */
 	if (flag & SDL_SRCCOLORKEY) {
 		surface->flags |= SDL_SRCCOLORKEY;
 		surface->format->colorkey = key;
@@ -388,6 +389,7 @@ int SDL_FillRect(SDL_Surface *dst, SDL_Rect *dstrect, Uint32 color)
 	}
 	s_perf_fills++;
 	s_perf_fill_px += (unsigned long)w * h;
+	dst->unused1 = 0;   /* pixels change: reclassify (wariant B) */
 
 	{
 		/* TEMP diagnostic (see SDL_UpperBlit): large fills of the 320x200
@@ -428,7 +430,33 @@ int SDL_FillRect(SDL_Surface *dst, SDL_Rect *dstrect, Uint32 color)
  * colour key is set, in which case it is a per-pixel test - the same shape as
  * SDL blit_1 without the palette-mapping table, since every surface here
  * shares one 256-entry palette. */
-static void blit8(const SDL_Surface *src, const SDL_Rect *srcrect,
+/* LISTA-ROBOT pkt 2, wariant B: many surfaces are blitted with SDL_SRCCOLORKEY
+ * set but contain not a single key-coloured pixel (whole windows, backgrounds).
+ * surface->unused1 caches that: 0 unknown, 1 has key pixels, 2 fully opaque -
+ * opaque ones take the plain memcpy path. Invalidated (set to 0) wherever the
+ * pixels can change: FillRect, being a blit DESTINATION, Lock/Unlock,
+ * SetColorKey. A stale flag would only ever mis-draw, never crash. */
+static Uint32 surf_has_key(const SDL_Surface *s)
+{
+	Uint8  key  = (Uint8)(s->format->colorkey & 0xff);
+	Uint32 key4 = (Uint32)key * 0x01010101UL;
+	int y;
+	for (y = 0; y < s->h; y++) {
+		const Uint8 *p = (const Uint8 *)s->pixels + (size_t)y * s->pitch;
+		int n = s->w;
+		while (n >= 4) {
+			Uint32 v, xk;
+			memcpy(&v, p, 4);
+			xk = v ^ key4;
+			if (((xk - 0x01010101UL) & ~xk & 0x80808080UL) != 0) return 1;
+			p += 4; n -= 4;
+		}
+		while (n-- > 0) if (*p++ == key) return 1;
+	}
+	return 2;
+}
+
+static void blit8(SDL_Surface *src, const SDL_Rect *srcrect,
                   SDL_Surface *dst, const SDL_Rect *dstrect)
 {
 	int y;
@@ -436,7 +464,10 @@ static void blit8(const SDL_Surface *src, const SDL_Rect *srcrect,
 	Uint8       *dp = (Uint8 *)dst->pixels       + (size_t)dstrect->y * dst->pitch + dstrect->x;
 	int w = srcrect->w, h = srcrect->h;
 
-	if (src->flags & SDL_SRCCOLORKEY) {
+	dst->unused1 = 0;   /* destination pixels change: reclassify before reuse */
+	if ((src->flags & SDL_SRCCOLORKEY) && src->unused1 == 0)
+		src->unused1 = surf_has_key(src);
+	if ((src->flags & SDL_SRCCOLORKEY) && src->unused1 != 2) {
 		/* Colorkey blit, 4 pixels at a time (LISTA-ROBOT pkt 2, wariant A).
 		 * Measured before this change: ~330k colorkey pixels per geoscape
 		 * frame (the globe's radar/country/marker layers are ~95% transparent
