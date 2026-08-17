@@ -10,7 +10,7 @@ for **real classic hardware**: 68020+ without FPU, AGA chipset. Not PiStorm-, Va
 or Emu68-only. No SDL: the SDL 1.2 API the game expects is a small shim
 (`native/sdlmini/`) on top of a bare-metal Amiga graphics/audio layer.
 
-## Status: 0.2.0 — alpha
+## Status: 0.3.0 — alpha
 
 The whole game compiles and runs on the Amiga: main menu → new game → Geoscape → base
 → battle briefing → inventory → Battlescape. Both rulesets (UFO and TFTD) load.
@@ -18,14 +18,17 @@ The whole game compiles and runs on the Amiga: main menu → new game → Geosca
 hours in an emulator, not played to the end. Expect crashes, expect them to be reported
 in `oxc.log` (every Guru is caught and logged with its PC).
 
-New in 0.2.0 (details in the release notes):
+New in 0.3.0 (details in the release notes):
 
+- **The battlescape is playable**: a unit step cost ~6 s of recalculation, now ~0.3 s
+  (field-of-view recomputed only for the unit that moved, incremental fog reveal,
+  integer lighting); the map renderer went from ~100 ms to ~10-16 ms per frame
+  (sprite shading in plain C instead of a template pipeline).
 - Geoscape at **~40 fps** on an 040/40-class machine (was ~5): the globe repaints only
   when something changed, colorkey blits run through a per-surface span cache, and a
   forced 20 ms sleep per frame is gone.
-- New **"Amiga" options tab** (first tab): Amiga screen title bar on/off and mouse
-  pointer *original / Amiga-only* — both ON by default. With the bar the screen opens
-  taller, so the full 320×200 stays visible and the mouse maps 1:1.
+- **"Amiga" options tab** (first tab): screen title bar, mouse pointer, map reveal
+  mode (Fast/Accurate/Test) and battle animation speed.
 
 Known problems and gaps in this release, briefly:
 
