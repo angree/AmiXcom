@@ -42,6 +42,33 @@ only averaged numbers mean anything. NEVER leave a Work:autoinput.txt behind
 (the f12-in-file incident cost a night: game replays it on every boot and the
 in-game screenshot path (8->24bpp) halts the machine).
 
+## NEXT STEP AFTER COMPACTION: dirty rectangles (user-approved)
+
+Most of the plumbing already exists - this is a TRACKING task, not a c2p task:
+- `amigagfx_blit(x, y, w, h)` (amiga_gfx.c) already converts ONLY the given
+  rectangle via Kalms' `c2p_rect` (x and w snapped to the 32-pixel grid
+  internally; RTG path does per-row memcpy). Full-screen = 320x200 call.
+- sdlmini already routes `SDL_UpdateRect(s)` to it; the game however only ever
+  calls `SDL_Flip`, which converts the full screen every frame.
+
+Plan (one change per build, backup first, as always):
+1. In sdlmini_video.c track a dirty union (or a small list, 8-16 rects) of
+   everything written to the SCREEN surface (`s_screen`): blit8 dst==s_screen,
+   SDL_FillRect dst==s_screen, SDL_LockSurface(s_screen) -> whole screen dirty
+   (direct pixel writes - Surface::draw paths), SDL_SetColors -> whole screen.
+2. SDL_Flip: convert only the dirty rects (amigagfx_blit per rect), clear list.
+   Empty list -> skip the c2p entirely (but still count the frame).
+3. Watch out: the game "clears + redraws everything" per frame, so the naive
+   union is the whole screen again. The win comes from step 4:
+4. Teach Game::run (patch script) not to clear/re-blit states when NOTHING
+   invalidated since the last frame: upstream Surface::_redraw flags exist;
+   cheapest correct proxy measured today: on the geoscape only the FPS counter
+   and blink markers change between globe redraws; in menus nothing changes.
+   Alternative smaller first step: skip the FULL c2p when the frame's pixel
+   content is unchanged (compare a per-frame write counter in blit8/FillRect).
+Expected: menus/Bases at c2p-limited rates; geoscape beyond 40 fps; battle
+unchanged (Map has its own path).
+
 ## What was fixed, and how it was proven
 
 | symptom | cause | fix |
