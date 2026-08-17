@@ -12,11 +12,17 @@
 
 void SDLmini_Sleep(unsigned long ms)
 {
-	/* Delay() counts in ticks of 1/50 s. Anything under a tick would round
-	 * to zero and busy-wait the caller, so it becomes one tick: on a machine
-	 * this slow, giving the rest of the system a moment is never the wrong
-	 * answer. */
+	/* Delay() counts in ticks of 1/50 s. OpenXcom ends EVERY frame with
+	 * SDL_Delay(1) ("save CPU") - rounding that up to a tick put a forced
+	 * 20 ms nap into each frame, a third of the whole frame time on the
+	 * target machine (measured 2026-08-17: 60 ms frames, ~20 of them here).
+	 * Sub-tick delays are therefore a no-op: Exec is preemptive, so system
+	 * tasks run anyway, and the game loop's own FPS limiter still paces
+	 * rendering. Real waits (pause menus ask for 100 ms) keep sleeping. */
 	unsigned long ticks = ms / 20;
-	if (ticks == 0) ticks = 1;
+	if (ticks == 0) {
+		if (ms > 2) ticks = 1;      /* 3..19 ms: closest honest wait */
+		else return;                /* the per-frame "yield": free on Amiga */
+	}
 	Delay(ticks);
 }
