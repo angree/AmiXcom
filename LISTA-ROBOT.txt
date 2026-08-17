@@ -4,12 +4,12 @@ Claude testuje sam; pomiary czytane z oxc.log (sondy perf:/fov:/map:/step:).
 UWAGA POMIAROWA: uzytkownik przelacza JIT/throttle recznie w F12 - przy
 porownaniach patrzec na liczby wzgledne z tej samej sesji, nie miedzy sesjami.
 
-1. DIRTY RECTANGLES (najwiekszy pozostaly skok plynnosci)
-   Kazda klatka = pelne skladanie ekranu przez wszystkie elementy UI
-   + pelna konwersja c2p 320x200 (~7 ms) + blity/fills ~5 ekranow na klatke.
-   Dirty rects = przerysowywac/konwertowac tylko zmienione prostokaty.
-   c2p_rect.s (konwersja wycinka) lezy gotowy w native/ z portu OpenTTD.
-   Po tym menu/Bases/geoscape powinny chodzic jak OpenTTD.
+1. DIRTY RECTANGLES - ZROBIONE 17.08 wieczorem (0.3.6)
+   sdlmini: unia dirty + diff-blit pelnoekranowego blitu (32-bajtowe
+   komorki); Screen::clear nie zeruje juz fizycznego ekranu. Menu/bitwa
+   idle: 82-100/100 klatek zupelnie bez c2p. Widocznego skoku fps NIE
+   dalo (c2p w loresie ~7 ms; gra i tak skladala ekran) - ale przy
+   hires laced bedzie kluczowe.
 
 2. GLOBUS - dokonczenie listy
    a) span fills oceanu/ladu (kod z 16.08: gfx_body/gfx_tex/gfx_idx.txt
@@ -23,10 +23,30 @@ porownaniach patrzec na liczby wzgledne z tej samej sesji, nie miedzy sesjami.
       pokazac zrzut do akceptacji)
    e) gdy przerysowanie tanie: AMIGA_GLOBE_MIN_MS 1000 -> ~250
 
-3. SZYBKI ZAPIS GRY (~1 min -> cel: sekundy)
-   YAML tekstowy: tysiace double->tekst przez soft-float + emitter.
-   Fix: szybka konwersja liczb, mniejsza precyzja wspolrzednych,
-   bufor put w AmigaFileBuf (dzis strona zapisu bez bufora).
+3. SZYBKI ZAPIS/ODCZYT GRY - GLOWNIE ZROBIONE 17.08 wieczorem (0.3.6)
+   Zapis bitwy 45-60 s -> ~7.5 s; load ~90 s -> ~23 s (040/40 -70%).
+   Jak: konwersje skalarne bez stringstream (yaml convert.h), small-to-
+   large merge puli yaml, wlasny writer YAML (amiga_yamlout.h) zamiast
+   Emittera, bezposredni zapis battleGame (saveFastAmiga, bez drzewa
+   Node), gcc-ICE obejscie (-O1 -fno-inline zamiast -O0 na 14 plikach;
+   Mod.cpp MUSI zostac -O0 - miscompilacja = czarne palety), leniwy
+   glob (cachePolygons + _earthFix przy pierwszym uzyciu, nie w ctorze).
+   POZOSTALO w loadzie (23 s): parse yaml 11 s (pomysl: reczny parser
+   battleGame - format jest nasz), mapres 4.5 s, FOV/init ~3 s.
+   UWAGA FORMAT: pola tileIndexSize itd. = ZNAKI ("\x04") bo loader
+   czyta as<Uint8> (semantyka znaku!); binTiles w apostrofach (goly
+   95 KB plain scalar = kwadratowy skaner). rng 64-bit wymaga wlasnego
+   parsera (strtoul jest 32-bit).
+   TRYB AUTOTESTU: Copy Work:autotest.txt -> autoinput.txt w Work:run
+   (boot sam przechodzi menu->bitwa->autosave->F5->F9); powrot:
+   Copy Work:run.normal Work:run.
+
+3b. SCROLL-REUSE MAPY (warunkowe - dopiero przy hires laced)
+   Przy przesuwaniu mapy bitwy przesunac blitem to co juz narysowane
+   i dorysowac tylko pasek na krawedzi (poziom gry: Camera/Map).
+   W lores sie nie oplaca (render 10-16 ms, c2p ~7 ms); przy 640x400
+   koszt rosnie ~4x i wtedy oplaca sie na OBU poziomach - dirty rects
+   w sdlmini z automatu zamienia dorysowany pasek w maly prostokat c2p.
 
 4. BITWA - dalsze (jesli user zechce)
    - trawersa drawTerrain (petle kolumny x pietra z lancuchami getTile) -
@@ -63,3 +83,13 @@ ZROBIONE 17.08 (wydane jako 0.3.0):
   kursor amigowy (domyslny), map reveal, tempo animacji
 - wersja z jednego zrodla (version.h): 0.3.0; wydania 0.1.0/0.2.0/0.3.0
   na github.com/angree/AmiXcom (kod bez assetow, release bez danych gry)
+
+ZROBIONE 17/18.08 wieczor-noc (wydane jako 0.5.0):
+- zapis bitwy 45-60 s -> ~8 s (yaml convert bez stringstream, merge puli,
+  wlasny writer, saveFastAmiga bez drzewa Node, ICE-fallback -O1)
+- odczyt ~90 s -> ~20-25 s (leniwy glob w GeoscapeState, earthfix.dat)
+- glob 3D ~10x: geometria na intach Q14 + trig wierzcholkow raz,
+  earthfix.dat z builda, cien 2x2, kolka wektorowo, XuLine 16.16,
+  dogfight jednym skokiem, plaska woda cieniowana (amigaFlatGlobe)
+- boot przez Run <NIL: (CLI sie domyka, WB pokazuje RAM; ~50 MB potrzebne)
+- tryb autotestu: autotest.txt -> autoinput przy bootcie (run.normal = zwykly)

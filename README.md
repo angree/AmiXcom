@@ -10,7 +10,7 @@ for **real classic hardware**: 68020+ without FPU, AGA chipset. Not PiStorm-, Va
 or Emu68-only. No SDL: the SDL 1.2 API the game expects is a small shim
 (`native/sdlmini/`) on top of a bare-metal Amiga graphics/audio layer.
 
-## Status: 0.3.0 — alpha
+## Status: 0.5.0 — alpha
 
 The whole game compiles and runs on the Amiga: main menu → new game → Geoscape → base
 → battle briefing → inventory → Battlescape. Both rulesets (UFO and TFTD) load.
@@ -18,24 +18,32 @@ The whole game compiles and runs on the Amiga: main menu → new game → Geosca
 hours in an emulator, not played to the end. Expect crashes, expect them to be reported
 in `oxc.log` (every Guru is caught and logged with its PC).
 
-New in 0.3.0 (details in the release notes):
+New in 0.5.0 (details in the release notes):
 
-- **The battlescape is playable**: a unit step cost ~6 s of recalculation, now ~0.3 s
-  (field-of-view recomputed only for the unit that moved, incremental fog reveal,
-  integer lighting); the map renderer went from ~100 ms to ~10-16 ms per frame
-  (sprite shading in plain C instead of a template pipeline).
-- Geoscape at **~40 fps** on an 040/40-class machine (was ~5): the globe repaints only
-  when something changed, colorkey blits run through a per-surface span cache, and a
-  forced 20 ms sleep per frame is gone.
-- **"Amiga" options tab** (first tab): screen title bar, mouse pointer, map reveal
-  mode (Fast/Accurate/Test) and battle animation speed.
+- **Saving ~7x faster** (battle save 45-60 s → ~8 s) and **loading ~4x faster**
+  (~90 s → ~20-25 s) on an 040/40-class machine: yaml-cpp scalar conversion and
+  memory pooling fixed, a direct YAML writer replaces the emitter, the battle
+  state serializes without building a node tree, and a whole compiler-ICE
+  workaround put the save/load path back at -O1 after living at -O0.
+- **Globe 3D ~10x faster**: integer fixed-point geometry with precomputed vertex
+  trig, shadow tables precomputed at build time (`data/common/earthfix.dat` —
+  first zoom to any level used to stall ~5 s), half-resolution day/night shadow,
+  radar circles in pure vector math, fixed-point line drawing, dogfight zoom in
+  one jump (reaching a fight took 30-60 s), flat sun-shaded water polygons
+  (option `amigaFlatGlobe`, set 0 for the old textured look).
+- **Dirty rectangles** in the SDL shim: unchanged frames skip chunky-to-planar
+  entirely (groundwork for a future hi-res mode).
+- Boot detaches the game (`Run <NIL:`) so the CLI closes and Workbench stays
+  usable — the free-memory gauge shows the port needs ~50 MB right now.
+
+New in 0.3.0: playable battlescape (unit step ~6 s → ~0.3 s, map render
+~100 → ~10-16 ms), geoscape ~40 fps (was ~5), "Amiga" options tab.
 
 Known problems and gaps in this release, briefly:
 
-- **No dirty rectangles yet** — the whole screen is still redrawn and c2p-converted
-  every frame; that is the next big speedup.
-- **Saving is very slow** (~1 min for a full save): YAML text serialization through
-  soft-float number formatting. On the list.
+- **Load is still ~20 s** (yaml parse dominates) and the save-list dates show "????".
+- **~50 MB RAM required**; 32 MB machines will not load the game yet.
+- **No sound yet** (Paula/ADPCM layer from the OpenTTD port not wired in).
 - **AGA only, 320×200, 8-bit.** An RTG build (`openxcom-rtg`) is compiled but untested;
   the `-ask` build asks which one to use at start.
 - **No sound and no music yet** (built with `__NO_MUSIC`; the Paula/ADPCM path from the

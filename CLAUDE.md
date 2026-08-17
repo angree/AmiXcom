@@ -4,20 +4,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project state
 
-0.3.0 released (2026-08-17): **github.com/angree/AmiXcom** - code (no ROM/HDF/
+0.5.0 released (2026-08-18): **github.com/angree/AmiXcom** - code (no ROM/HDF/
 CGX headers/game data) + release zips (no X-COM data). The game calls itself
 AmiXcom; the ONE version source is the version.h patch in the patch script.
 Playable end to end with TFTD data (`data/UFO/` holds TFTD files, ruleset
-xcom2); geoscape ~40 fps, battlescape unit step ~0.3 s (was 6 s), map render
-10-16 ms - the day's optimizations, numbers and proofs are the top entry of
-`PROGRESS.md`. Remaining work, in the user's order: `LISTA-ROBOT.txt`
-(1. dirty rects, 2. globe leftovers incl. sun-shaded flat polygons, 3. fast
-saves, 4. remove TEMP probes, 5. keyboard/sound/RTG/RAM). Rules unchanged:
-**backup zip before every step (winuae/harness/backup.ps1), one change per
-build, test it yourself** (launch JIT config, the user flips to no-JIT -70%
-themselves via F12; read probes from oxc.log). Before each build restore
-heavily-patched files from the tarball (restore_file.sh) - overlapping patches
-stack duplicates on an already-patched tree; `build.sh clean` is always safe.
+xcom2). On the 040/40 reference machine (no JIT, -70%): battle save ~8 s (was
+45-60), battle load ~20-25 s (was ~90), globe 3D ~10x (integer geometry,
+`data/common/earthfix.dat` precomputed shadow tables - MUST ship in releases),
+geoscape idle 50 fps, battle step ~0.3 s. Numbers/proofs: top of `PROGRESS.md`.
+Remaining: `LISTA-ROBOT.txt` (load parse ~11 s, TEMP probe cleanup, sound,
+RTG, ~50 MB RAM floor). Rules unchanged: **backup zip before every step
+(winuae/harness/backup.ps1), one change per build, test it yourself** - when
+alone ALWAYS on `oxc-aga-nojit-040-40.uae` (JIT configs only when the user
+sits at the emulator). run-oxc.ps1 needs `-KeepRunning` or it kills the
+emulator after printing the log. Before each build restore heavily-patched
+files from the tarball (restore_file.sh) - overlapping patches stack
+duplicates on an already-patched tree; `build.sh clean` is always safe.
+Mod.cpp MUST stay -O0 (gcc miscompiles it at -O1: black palettes).
 Never leave `Work:autoinput.txt` behind (boot-replay incident, PROGRESS.md).
 **Read `LEFTOFF.md` first** - it is the hand-off.
 

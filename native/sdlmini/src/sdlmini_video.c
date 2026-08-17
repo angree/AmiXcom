@@ -279,8 +279,12 @@ SDL_Surface *SDL_ConvertSurface(SDL_Surface *src, SDL_PixelFormat *fmt, Uint32 f
  * until the port is reliable: one comparison per call. */
 #define SDLMINI_FIRST(tag) do { 	static int once_; 	if (!once_) { once_ = 1; SDLmini_Log("SDLmini: first " tag); } } while (0)
 
-int SDL_LockSurface(SDL_Surface *surface)    { if (surface != NULL) surf_touch(surface); return 0; }
-void SDL_UnlockSurface(SDL_Surface *surface) { if (surface != NULL) surf_touch(surface); }
+/* A lock means direct pixel writes we cannot see - whole screen dirty.
+ * (Definitions live in the dirty-rectangle block further down.) */
+static void dirty_add(int x, int y, int w, int h);
+static void dirty_add_lock(SDL_Surface *s);
+int SDL_LockSurface(SDL_Surface *surface)    { if (surface != NULL) { surf_touch(surface); dirty_add_lock(surface); } return 0; }
+void SDL_UnlockSurface(SDL_Surface *surface) { if (surface != NULL) { surf_touch(surface); dirty_add_lock(surface); } }
 
 int SDL_SetColorKey(SDL_Surface *surface, Uint32 flag, Uint32 key)
 {
@@ -391,7 +395,12 @@ int SDL_SetColors(SDL_Surface *surface, SDL_Color *colors, int firstcolor, int n
 	if (firstcolor < 0 || firstcolor + ncolors > pal->ncolors) return 0;
 
 	memcpy(&pal->colors[firstcolor], colors, (size_t)ncolors * sizeof(SDL_Color));
-	if (surface == s_screen) push_palette_to_screen(colors, firstcolor, ncolors);
+	if (surface == s_screen) {
+		push_palette_to_screen(colors, firstcolor, ncolors);
+		/* Truecolour RTG converts pixels through the palette at blit time,
+		 * so a palette change must reconvert everything on screen. */
+		dirty_add(0, 0, surface->w, surface->h);
+	}
 	return 1;
 }
 
@@ -451,6 +460,44 @@ static unsigned long s_perf_blits, s_perf_blits_ck;      /* calls */
 static unsigned long s_perf_px, s_perf_px_ck;            /* pixels copied */
 static unsigned long s_perf_fills, s_perf_fill_px;
 static unsigned long s_perf_c2p_ms, s_perf_last_ms;
+static unsigned long s_perf_c2p_px, s_perf_skips;        /* dirty-rect effect */
+
+/* -------------------------------------------------- dirty rectangles ------
+ * LISTA-ROBOT pkt 1. s_screen->pixels IS amiga_gfx's chunky buffer, so the
+ * planar bitplanes (AGA) / display bitmap (RTG) keep showing the OLD content
+ * of any region SDL_Flip does not convert - skipping c2p on unchanged pixels
+ * is therefore safe by construction.
+ *
+ * The game (Screen::flip) blits its whole 320x200 back buffer onto s_screen
+ * every frame, changed or not, so simply recording blit rectangles would mark
+ * the full screen every time. Instead the plain full blit onto s_screen runs
+ * as a DIFF-copy: compare in 32-byte cells (the c2p x grid), copy only cells
+ * that differ, and grow the dirty union only around them. A clean frame costs
+ * one read pass over both buffers and no copy, no c2p, no flip work at all.
+ * All other writes to s_screen (fills, colorkey blits, locks) dirty their
+ * rectangle the ordinary way. One union rectangle, not a list: the usual
+ * changes (FPS counter, blink markers) cluster, and c2p_rect snaps x to 32
+ * anyway. */
+static int s_dirty_x0, s_dirty_y0, s_dirty_x1, s_dirty_y1; /* x1/y1 exclusive; empty when x1<=x0 */
+
+static void dirty_add(int x, int y, int w, int h)
+{
+	if (w <= 0 || h <= 0) return;
+	if (s_dirty_x1 <= s_dirty_x0) {
+		s_dirty_x0 = x; s_dirty_y0 = y;
+		s_dirty_x1 = x + w; s_dirty_y1 = y + h;
+		return;
+	}
+	if (x < s_dirty_x0) s_dirty_x0 = x;
+	if (y < s_dirty_y0) s_dirty_y0 = y;
+	if (x + w > s_dirty_x1) s_dirty_x1 = x + w;
+	if (y + h > s_dirty_y1) s_dirty_y1 = y + h;
+}
+
+static void dirty_add_lock(SDL_Surface *s)
+{
+	if (s == s_screen) dirty_add(0, 0, s->w, s->h);
+}
 
 int SDL_FillRect(SDL_Surface *dst, SDL_Rect *dstrect, Uint32 color)
 {
@@ -476,6 +523,7 @@ int SDL_FillRect(SDL_Surface *dst, SDL_Rect *dstrect, Uint32 color)
 	s_perf_fills++;
 	s_perf_fill_px += (unsigned long)w * h;
 	surf_touch(dst);   /* pixels change: reclassify */
+	if (dst == s_screen) dirty_add(x, y, w, h);
 
 	{
 		/* TEMP diagnostic (see SDL_UpperBlit): large fills of the 320x200
@@ -527,6 +575,10 @@ static void blit8(SDL_Surface *src, const SDL_Rect *srcrect,
 	surf_touch(dst);    /* destination pixels change: reclassify before reuse */
 	if ((src->flags & SDL_SRCCOLORKEY) && src->unused1 == 0)
 		src->unused1 = surf_classify(src);
+	/* Colorkey blits onto the screen dirty their rectangle as-is; the plain
+	 * path below diff-copies instead and dirties only what really changed. */
+	if (dst == s_screen && (src->flags & SDL_SRCCOLORKEY) && src->unused1 != 2)
+		dirty_add(dstrect->x, dstrect->y, w, h);
 	if ((src->flags & SDL_SRCCOLORKEY) && src->unused1 == 3) {
 		/* wariant C: walk the cached runs - memcpy only, no compares */
 		struct private_hwdata *hd = src->hwdata;
@@ -587,6 +639,30 @@ static void blit8(SDL_Surface *src, const SDL_Rect *srcrect,
 			sp += src->pitch;
 			dp += dst->pitch;
 		}
+	} else if (dst == s_screen) {
+		/* Diff-copy (see the dirty-rectangle comment above): compare in
+		 * 32-byte cells, copy changed cells only, dirty the changed area. */
+		int dy0 = -1, dy1 = -1, dx0 = w, dx1 = 0;
+		s_perf_blits++;
+		for (y = 0; y < h; y++) {
+			int c;
+			for (c = 0; c < w; c += 32) {
+				int len = (w - c < 32) ? (w - c) : 32;
+				if (memcmp(sp + c, dp + c, (size_t)len) != 0) {
+					memcpy(dp + c, sp + c, (size_t)len);
+					s_perf_px += (unsigned long)len;
+					if (c < dx0) dx0 = c;
+					if (c + len > dx1) dx1 = c + len;
+					if (dy0 < 0) dy0 = y;
+					dy1 = y;
+				}
+			}
+			sp += src->pitch;
+			dp += dst->pitch;
+		}
+		if (dy0 >= 0)
+			dirty_add(dstrect->x + dx0, dstrect->y + dy0,
+			          dx1 - dx0, dy1 - dy0 + 1);
 	} else {
 		s_perf_blits++;
 		s_perf_px += (unsigned long)w * h;
@@ -717,6 +793,7 @@ SDL_Surface *SDL_SetVideoMode(int width, int height, int bpp, Uint32 flags)
 		return NULL;
 	}
 	s_screen->flags |= SDL_HWSURFACE | SDL_FULLSCREEN;
+	dirty_add(0, 0, s_screen->w, s_screen->h);   /* fresh screen: convert all */
 
 	snprintf(msg, sizeof(msg), "SDLmini: video %ldx%ld 8bpp, backend %ld, pitch %ld",
 	        (long)s_screen->w, (long)s_screen->h, (long)amigagfx_backend(), (long)s_screen->pitch);
@@ -753,22 +830,37 @@ int SDL_Flip(SDL_Surface *screen)
 		}
 	}
 	{
-		Uint32 t0_ = SDL_GetTicks();
-		amigagfx_blit(0, 0, screen->w, (s_req_h > 0 && s_req_h < screen->h) ? s_req_h : screen->h);
-		s_perf_c2p_ms += SDL_GetTicks() - t0_;
+		/* Convert only the dirty union; a clean frame skips c2p entirely. */
+		int maxh = (s_req_h > 0 && s_req_h < screen->h) ? s_req_h : screen->h;
+		int dx0 = s_dirty_x0, dy0 = s_dirty_y0, dx1 = s_dirty_x1, dy1 = s_dirty_y1;
+		s_dirty_x0 = s_dirty_y0 = s_dirty_x1 = s_dirty_y1 = 0;
+		if (dx0 < 0) dx0 = 0;
+		if (dy0 < 0) dy0 = 0;
+		if (dx1 > screen->w) dx1 = screen->w;
+		if (dy1 > maxh) dy1 = maxh;
+		if (dx1 > dx0 && dy1 > dy0) {
+			Uint32 t0_ = SDL_GetTicks();
+			amigagfx_blit(dx0, dy0, dx1 - dx0, dy1 - dy0);
+			s_perf_c2p_ms += SDL_GetTicks() - t0_;
+			s_perf_c2p_px += (unsigned long)(dx1 - dx0) * (dy1 - dy0);
+		} else {
+			s_perf_skips++;
+		}
 	}
 	/* TEMP perf report, one line per 100 frames (LISTA-ROBOT pkt 1). */
 	if ((SDLmini_flips % 100) == 0) {
-		char b_[192];
+		char b_[224];
 		Uint32 now_ = SDL_GetTicks();
 		snprintf(b_, sizeof b_,
-			"perf: 100 frames in %lu ms: c2p %lu ms, blits ck %lu (%lu px) plain %lu (%lu px), fills %lu (%lu px)",
+			"perf: 100 frames in %lu ms: c2p %lu ms (%lu px, %lu skipped), blits ck %lu (%lu px) plain %lu (%lu px diff), fills %lu (%lu px)",
 			(unsigned long)(now_ - s_perf_last_ms), s_perf_c2p_ms,
+			s_perf_c2p_px, s_perf_skips,
 			s_perf_blits_ck, s_perf_px_ck, s_perf_blits, s_perf_px,
 			s_perf_fills, s_perf_fill_px);
 		SDLmini_Log(b_);
 		s_perf_last_ms = now_;
 		s_perf_c2p_ms = 0;
+		s_perf_c2p_px = s_perf_skips = 0;
 		s_perf_blits = s_perf_blits_ck = s_perf_px = s_perf_px_ck = 0;
 		s_perf_fills = s_perf_fill_px = 0;
 	}

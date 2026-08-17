@@ -121,10 +121,29 @@ ulimit -s 65536 2>/dev/null || true
 
 compile_cxx() {
 	out="$OBJ/$(echo "$2" | tr / _).o"
+	# Mod.cpp MUST stay at -O0: gcc 6.5 miscompiles it at -O1 (even with
+	# -fno-inline) - black palettes everywhere past the main menu, proven
+	# by bisection 2026-08-17. Not a suspect: a conviction.
+	if [ "$2" = "Mod/Mod.cpp" ]; then
+		if needs_build "$1/$2" "$out"; then
+			if ! m68k-amigaos-g++ $(echo "$CXXFLAGS" | sed 's/-O1/-O0/') -MMD -MP -MF "$out.d" -c "$1/$2" -o "$out" 2>"$WORK/cc.err"; then
+				echo "FAILED: $1/$2" >&2; cat "$WORK/cc.err" >&2; exit 1
+			fi
+		fi
+		echo "$out"
+		return
+	fi
 	if needs_build "$1/$2" "$out"; then
 		if ! m68k-amigaos-g++ $CXXFLAGS -MMD -MP -MF "$out.d" -c "$1/$2" -o "$out" 2>"$WORK/cc.err"; then
 			if grep -q "internal compiler error" "$WORK/cc.err"; then
-				echo "$2" >> "$WORK/ice.list"
+				# gcc 6.5 ICEs on the inlined yaml-cpp set_data cluster at -O1;
+				# -fno-inline dodges it, far cheaper than the -O0 fallback below.
+				if m68k-amigaos-g++ $CXXFLAGS -fno-inline -MMD -MP -MF "$out.d" -c "$1/$2" -o "$out" 2>"$WORK/cc.err"; then
+					echo "$2 (-O1 -fno-inline)" >> "$WORK/ice.list"
+					echo "$out"
+					return
+				fi
+				echo "$2 (-O0)" >> "$WORK/ice.list"
 				if ! m68k-amigaos-g++ $(echo "$CXXFLAGS" | sed 's/-O1/-O0/') \
 				     -MMD -MP -MF "$out.d" -c "$1/$2" -o "$out" 2>"$WORK/cc.err"; then
 					echo "FAILED (even at -O0): $1/$2" >&2
@@ -248,6 +267,11 @@ mkdir -p "$DEPLOY/data"
 cp -rn "$SRC/bin/." "$DEPLOY/data/" 2>/dev/null || true
 # the port adds strings to the common language file - always refresh that one
 cp "$SRC/bin/common/Language/en-US.yml" "$DEPLOY/data/common/Language/en-US.yml"
+# precomputed globe shadow normals (see build/gen_earthfix.py) - regenerated
+# only when missing or the generator is newer
+if [ ! -f "$DEPLOY/data/common/earthfix.dat" ] || [ "$REPO/build/gen_earthfix.py" -nt "$DEPLOY/data/common/earthfix.dat" ]; then
+	python3 "$REPO/build/gen_earthfix.py" "$DEPLOY/data/common/earthfix.dat"
+fi
 
 log "deployed to $DEPLOY"
 log "done"

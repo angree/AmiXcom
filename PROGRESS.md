@@ -2,6 +2,81 @@
 
 Newest first. Facts and measurements only; plans live in `PORT_RESEARCH.md`.
 
+## 2026-08-17/18 (wieczor+noc): 0.5.0 - zapis 8 s, odczyt ~20 s, glob 3D ~10x
+
+Pomiary na maszynie referencyjnej (68020, JIT OFF, cpu_throttle -70%,
+`oxc-aga-nojit-040-40.uae`), sondy w oxc.log. Wydane jako v0.5.0
+(github.com/angree/AmiXcom); po drodze wewnetrzne 0.3.5/0.3.6/0.3.7.
+
+**Zapis bitwy 45-60 s -> ~8 s** (sonda `save: build/emit/write`):
+- yaml-cpp convert.h: konwersje skalarne bez std::stringstream (kazda
+  konstrukcja strumienia = koszt ms na 020); recznie 64-bit parse dla
+  long long (strtoul jest 32-bit - rng seed wywalal load "bad conversion").
+- yaml-cpp memory.cpp: small-to-large merge puli wezlow (budowa drzewa
+  bottom-up byla kwadratowa; 17 KB save = 16.9 s buildu NA JIT).
+- Wlasny writer YAML (native/amiga_yamlout.h) zamiast YAML::Emitter
+  (emit 23-25 s -> 3 s); plik pozostaje zwyklym YAML-em.
+- Zapis battleGame bez drzewa Node: saveFastAmiga() w BattleUnit/
+  BattleItem/Node/AIModule/BattleUnitStatistics/SavedBattleGame pisza
+  "klucz: wartosc" wprost do stringa (build 15 s -> 2-4 s). UWAGA FORMAT:
+  pola tileIndexSize itd. MUSZA byc znakami ("\x04") bo loader czyta
+  as<Uint8> (semantyka ZNAKU); binTiles w apostrofach (goly 95 KB plain
+  scalar = kwadratowy skaner yaml-cpp - load "wisi").
+- gcc 6.5 ICE: Node::AssignData/set_data wywalaly kompilator przy -O1 w
+  KAZDYM pliku z yaml.h - 22 pliki (cala sciezka save/load, Mod.cpp) byly
+  na -O0 od poczatku portu. Fallback build.sh: -O1 -fno-inline (attrybuty
+  optimize(0) na 2 funkcjach); Mod.cpp MUSI zostac -O0 (miscompilacja na
+  -O1 = czarne palety za menu - udowodnione bisekcja).
+
+**Odczyt zapisu bitwy ~90 s -> ~20-25 s** (sondy `load:`):
+parse yaml 31->11-13 s, geoscape 1.3 s, bitwa 3-4 s, mapres (MCD) 4.5 s,
+FOV ~3 s. Najwiekszy fix: GeoscapeState budowany pod bitwa liczyl w
+konstruktorze CALY glob - 36.8 s: cachePolygons (teraz leniwe, pierwsze
+draw()) + _earthFix (tabele cienia; patrz nizej). Zostalo: parse 11 s
+(pomysl: reczny parser battleGame - format jest nasz wlasny).
+
+**Glob 3D ~10x** (uzytkownik: obrot 1.5 s, "zoom in 5-7 s masakra"):
+- earthfix.dat: tabele normalnych cienia (6 zoomow x 256x200 Q1.14)
+  liczone na PC przy buildzie (build/gen_earthfix.py, 1.8 MB, walidacja
+  naglowka+promienia, fallback na liczenie). Bylo: 307k soft-double sqrt
+  = ~5 s przy KAZDYM pierwszym wejsciu na dany poziom zoomu.
+- cachePolygons: sin/cos wierzcholkow policzone RAZ (tablica Sint16 Q14);
+  przeliczenie = 4 trig (srodek) + mnozenia 32-bit - cala geometria na
+  intach Q1.14, promien Q4 (1/16 px). Bylo 650-1010 ms na obrot/zoom.
+- Cien 2x2: iloczyn skalarny raz na blok, paleta per piksel (brzegi
+  dokladne). Bylo ~110 ms na przerysowanie.
+- Kolka radarow: czysta algebra wektorowa P=C cosr+(N1 cost+N2 sint)sinr
+  rotowana tozsamosciami do view-space - 12 trig na okrag zamiast ~250
+  (asin/atan2/polarToCart per segment). Do tego dedup promieni przy
+  hoverze (bylo ~15 identycznych okregow = 700 ms na przerysowanie).
+- XuLine (granice, kolka): krok 16.16 fixed-point zamiast double+castow.
+- Dogfight: zoom jednym skokiem zamiast ~10 krokow animacji (kazdy krok
+  = pelne przeliczenie; dojscie do walki bylo 30-60 s).
+- Plaskie poligony cieniowane wg slonca zamiast tekstur (opcja
+  amigaFlatGlobe, domyslnie ON; 0 w options.cfg = stare tekstury).
+  W TFTD poligony globu to WODA - teksture traci woda, lad byl plaski.
+
+**Dirty rectangles w sdlmini** (bez widocznego skoku fps w lores - c2p
+to bylo tylko ~7 ms - ale 82-100/100 klatek idzie zupelnie bez c2p;
+kluczowe pod przyszly hires laced): unia dirty + diff-blit 32-bajtowymi
+komorkami pelnoekranowego blitu Screen::flip; Screen::clear nie zeruje
+juz fizycznego ekranu (zerowanie wymuszalo pelny c2p co klatke).
+
+**Start**: Work:run odpala gre przez `Run <NIL: >NIL:` - CLI sie domyka,
+LoadWB z konca startup-sequence pokazuje Workbench z licznikiem RAM.
+Zmierzone przez uzytkownika: 48+2 MB dziala, mniej nie.
+
+**Tryb autotestu**: `Copy Work:autotest.txt Work:autoinput.txt` w Work:run
+- boot sam przechodzi menu->New Battle->briefing->ekwipunek->bitwa->
+autosave->F5->F9 (test save+load bez czlowieka). Powrot: run.normal.
+
+**Lekcje**: TaskStop nie zabija dziecka skryptu-drivera (osierocony bash
+wciskal F5/F9 w sesji uzytkownika); run-oxc.ps1 bez -KeepRunning ZABIJA
+emulator po wypisaniu loga (6x "czemu sie zamknelo"); heredoc przez
+git-bash podwaja backslashe przed cudzyslowem (patch-pythony pisac
+Write-toolem); nasz WinUAE to teraz winuae-oxc.exe (kill po nazwie
+winuae z innych sesji nas nie trafia).
+
 ## 2026-08-17: 0.1.0-0.3.0 wydane; geoscape 5->40 fps; bitwa grywalna (krok 6 s -> 0.3 s)
 
 **Wydania**: github.com/angree/AmiXcom - kod (bez ROM/HDF/CGX/danych gry, .gitignore

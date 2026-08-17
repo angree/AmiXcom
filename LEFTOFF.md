@@ -1,31 +1,35 @@
-# LEFTOFF — hand-off for the next session (written 2026-08-16 ~20:30)
+# LEFTOFF — hand-off for the next session (written 2026-08-18, after v0.5.0)
 
 Read this, then `CLAUDE.md` (rules), then the top entry of `PROGRESS.md` (proofs).
 
-## Where the port stands (2026-08-17, after 0.3.0)
+## Where the port stands (2026-08-18, after 0.5.0)
 
-**Released**: github.com/angree/AmiXcom - v0.1.0/0.2.0/0.3.0 (code without
-ROM/HDF/CGX-headers/game data; releases without X-COM data; mkicon.py icons
-carry the 1 MB stack). Game shows "AmiXcom 0.3.0 alpha" (version.h is the one
-source). Main branch = everything; step1-amiga-wip branch merged and obsolete.
+**Released**: github.com/angree/AmiXcom - v0.1.0/0.2.0/0.3.0/0.5.0 (code without
+ROM/HDF/CGX-headers/game data; releases without X-COM data). Bar shows
+"AmiXcom 68K 0.5.0" (version.h patch in apply-amiga-patches.py is the ONE source).
 
-**Performance today** (numbers in PROGRESS.md top entry):
-- Geoscape ~40 fps (was 5): draw-only-on-change globe + colorkey blit A/B/C
-  in sdlmini + the 20 ms SDL_Delay(1) nap removed.
-- Battlescape playable: unit step ~0.3 s (was ~6 s): mover-only FOV, pair
-  spotting, incremental discovery (Amiga tab: Fast/Accurate[default]/Test),
-  integer addLight; map render 10-16 ms (was 100): blitNShade in plain C;
-  battle anim tick 200 ms by default (option).
-- Amiga options tab: screen bar (screen opens TALLER, game keeps 320x200,
-  mouse 1:1), Amiga pointer (default), map reveal, anim speed.
+**Performance today** (040/40-class = 68020, no JIT, -70% throttle; proofs in
+PROGRESS.md top entry):
+- Battle save 45-60 s -> ~8 s; battle load ~90 s -> ~20-25 s (probes
+  `save:`/`load:` in oxc.log show the phase split; parse ~11 s dominates load).
+- Globe 3D ~10x: integer Q1.14 geometry + precomputed vertex trig, shadow
+  tables from `data/common/earthfix.dat` (gen at build: build/gen_earthfix.py -
+  MUST ship in releases), 2x2 shadow, vector radar circles, 16.16 XuLine,
+  one-jump dogfight zoom, flat sun-shaded WATER polygons (in TFTD the globe
+  polygons are the ocean; option amigaFlatGlobe, 0 = old textured).
+- Geoscape idle 50 fps; battle as at 0.3.0 (step ~0.3 s, render 10-16 ms).
+- RAM: 48+2 MB works, less does not (user-measured on Workbench gauge).
+- Boot: Work:run detaches via `Run <NIL: >NIL:` -> CLI closes, WB visible.
+  run.normal = plain boot; autotest mode: `Copy Work:autotest.txt
+  Work:autoinput.txt` in run (boot drives menu->battle->autosave->F5->F9).
 
-**THE PLAN** - remaining, in the user's priority (details LISTA-ROBOT.txt):
-1. Dirty rectangles (c2p_rect.s ready in native/) - menu/Bases/geoscape.
-2. Globe leftovers: span fills, radar-circle cache, sin/cos LUTs, flat
-   sun-shaded land polygons (user demands DIFFERENT shades per sun angle).
-3. Fast game save (~1 min now: yaml double->text on soft-float).
-4. Cleanup TEMP probes (perf:/slow frame/step:/fov:/map:/globe:) before 0.4.0.
-5. Keyboard "6", sound (Paula/ADPCM), RTG test, 32 MB RAM reduction.
+**THE PLAN** - remaining (details LISTA-ROBOT.txt):
+1. Load parse ~11 s: hand parser for the battleGame section (our own writer
+   emits it, format is regular; keep yaml for geoscape + foreign saves).
+2. Cleanup TEMP probes (perf:/slow frame/step:/fov:/map:/globe:/load:/save:).
+3. Save-list dates show "????" (cosmetic); keyboard "6"; guard in-game F12.
+4. Sound (Paula/ADPCM), RTG test, 32 MB RAM reduction (now needs ~50 MB).
+5. Maybe: geoscape span fills, AMIGA_GLOBE_MIN_MS 1000->250, markers trig-out.
 
 **Rules** (user, unchanged): backup zip before each step (harness/backup.ps1
 -Label X -Note Y), one change per build, self-test via autoinput+log, revert

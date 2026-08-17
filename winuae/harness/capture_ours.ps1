@@ -12,7 +12,7 @@ param(
 
 $pattern = if ($Config -ne "") { [regex]::Escape($Config) } else { "oxc-[a-z0-9-]*\.uae" }
 
-$proc = Get-CimInstance Win32_Process -Filter "Name = 'winuae.exe'" |
+$proc = Get-CimInstance Win32_Process -Filter "Name LIKE 'winuae%.exe'" |
         Where-Object { $_.CommandLine -match $pattern } |
         Select-Object -First 1
 

@@ -15,13 +15,13 @@ param(
 
 $pattern = if ($Config -ne "") { [regex]::Escape($Config) } else { "oxc-[a-z0-9-]*\.uae" }
 
-$procs = Get-CimInstance Win32_Process -Filter "Name = 'winuae.exe'" |
+$procs = Get-CimInstance Win32_Process -Filter "Name LIKE 'winuae%.exe'" |
          Where-Object { $_.CommandLine -match $pattern }
 
 if (-not $procs) {
     Write-Output "no WinUAE of ours running (pattern: $pattern)"
     # Say what IS running, so it is obvious we left someone else's alone.
-    Get-CimInstance Win32_Process -Filter "Name = 'winuae.exe'" |
+    Get-CimInstance Win32_Process -Filter "Name LIKE 'winuae%.exe'" |
         ForEach-Object { Write-Output ("  left alone: pid {0}  {1}" -f $_.ProcessId, $_.CommandLine) }
     exit 0
 }
@@ -33,9 +33,9 @@ foreach ($p in $procs) {
 
 Start-Sleep -Seconds 3
 
-$left = Get-CimInstance Win32_Process -Filter "Name = 'winuae.exe'" |
+$left = Get-CimInstance Win32_Process -Filter "Name LIKE 'winuae%.exe'" |
         Where-Object { $_.CommandLine -match $pattern }
 Write-Output ("ours still running: {0}" -f @($left).Count)
-Get-CimInstance Win32_Process -Filter "Name = 'winuae.exe'" |
+Get-CimInstance Win32_Process -Filter "Name LIKE 'winuae%.exe'" |
     Where-Object { $_.CommandLine -notmatch $pattern } |
     ForEach-Object { Write-Output ("  untouched: pid {0}" -f $_.ProcessId) }

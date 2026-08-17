@@ -101,12 +101,995 @@ static bool amiga_slurp(const std::string& filename, std::string& out) {
     return "applied"
 
 
+def patch_yamlcpp_convert(yamldir):
+    """Every scalar encode/decode in yaml-cpp 0.6.3 constructs a
+    std::stringstream (locale machinery, soft-float num_put) - measured as the
+    dominant cost of Options::save/SavedGame::save on the 68020. Replaced with
+    manual integer conversion, snprintf for float/double and strtol/strtod for
+    parsing. char keeps its original single-CHARACTER semantics."""
+    path = os.path.join(yamldir, "include", "yaml-cpp", "node", "convert.h")
+    if not os.path.isfile(path):
+        return "skipped (no yaml-cpp at %s)" % yamldir
+    with open(path, "r", encoding="utf-8", errors="surrogateescape") as f:
+        text = f.read()
+    if "amiga_to_string" in text:
+        return "already"
+
+    new_block = r"""// AMIGA-PORT: fast scalar conversion. The original macro constructed a
+// std::stringstream per scalar (encode AND decode) - locale machinery plus
+// soft-float num_put on a 68020 made saves take a minute. Manual conversion,
+// same semantics (base prefixes on parse, .inf/.nan words, char = one
+// CHARACTER not a number).
+#include <cstdio>
+#include <cstdlib>
+#include <cerrno>
+namespace conversion {
+inline std::string amiga_to_string(long long v) {
+  char b[24]; char* p = b + sizeof(b);
+  unsigned long long u = (v < 0) ? 0ULL - (unsigned long long)v : (unsigned long long)v;
+  do { *--p = (char)('0' + (int)(u % 10)); u /= 10; } while (u);
+  if (v < 0) *--p = '-';
+  return std::string(p, (std::size_t)(b + sizeof(b) - p));
+}
+inline std::string amiga_to_string(unsigned long long v) {
+  char b[24]; char* p = b + sizeof(b);
+  do { *--p = (char)('0' + (int)(v % 10)); v /= 10; } while (v);
+  return std::string(p, (std::size_t)(b + sizeof(b) - p));
+}
+inline std::string amiga_to_string(int v)            { return amiga_to_string((long long)v); }
+inline std::string amiga_to_string(short v)          { return amiga_to_string((long long)v); }
+inline std::string amiga_to_string(long v)           { return amiga_to_string((long long)v); }
+inline std::string amiga_to_string(unsigned v)       { return amiga_to_string((unsigned long long)v); }
+inline std::string amiga_to_string(unsigned short v) { return amiga_to_string((unsigned long long)v); }
+inline std::string amiga_to_string(unsigned long v)  { return amiga_to_string((unsigned long long)v); }
+inline std::string amiga_to_string(float v)  { char b[48]; std::snprintf(b, sizeof(b), "%.9g", (double)v); return std::string(b); }
+inline std::string amiga_to_string(double v) { char b[48]; std::snprintf(b, sizeof(b), "%.17g", v); return std::string(b); }
+inline std::string amiga_to_string(char v)          { return std::string(1, v); }
+inline std::string amiga_to_string(signed char v)   { return std::string(1, (char)v); }
+inline std::string amiga_to_string(unsigned char v) { return std::string(1, (char)v); }
+
+inline bool amiga_parse_l(const std::string& in, long& out) {
+  if (in.empty()) return false;
+  errno = 0; char* e = 0;
+  long v = std::strtol(in.c_str(), &e, 0);
+  if (e != in.c_str() + in.size() || errno == ERANGE) return false;
+  out = v; return true;
+}
+inline bool amiga_parse_ul(const std::string& in, unsigned long& out) {
+  if (in.empty() || in[0] == '-') return false;
+  errno = 0; char* e = 0;
+  unsigned long v = std::strtoul(in.c_str(), &e, 0);
+  if (e != in.c_str() + in.size() || errno == ERANGE) return false;
+  out = v; return true;
+}
+inline bool amiga_from_string(const std::string& in, int& r)   { long v; if (!amiga_parse_l(in, v) || v < (long)std::numeric_limits<int>::min() || v > (long)std::numeric_limits<int>::max()) return false; r = (int)v; return true; }
+inline bool amiga_from_string(const std::string& in, short& r) { long v; if (!amiga_parse_l(in, v) || v < (long)std::numeric_limits<short>::min() || v > (long)std::numeric_limits<short>::max()) return false; r = (short)v; return true; }
+inline bool amiga_from_string(const std::string& in, long& r)  { return amiga_parse_l(in, r); }
+inline bool amiga_parse_ull10(const std::string& in, std::string::size_type i, unsigned long long& out) {
+  /* 64-bit decimal parse - strtoul is only 32 bits on m68k, which made the
+   * 64-bit rng seed in every save fail to load ("bad conversion"). */
+  if (i >= in.size()) return false;
+  unsigned long long v = 0;
+  for (; i < in.size(); ++i) {
+    char c = in[i];
+    if (c < '0' || c > '9') return false;
+    unsigned long long nv = v * 10ULL + (unsigned long long)(c - '0');
+    if (nv / 10ULL != v) return false;  /* overflow */
+    v = nv;
+  }
+  out = v; return true;
+}
+inline bool amiga_from_string(const std::string& in, long long& r) {
+  if (in.empty()) return false;
+  bool neg = (in[0] == '-');
+  unsigned long long u;
+  if (amiga_parse_ull10(in, (in[0] == '-' || in[0] == '+') ? 1 : 0, u)) {
+    if (neg) { if (u > 9223372036854775808ULL) return false; r = -(long long)u; }
+    else     { if (u > 9223372036854775807ULL) return false; r = (long long)u; }
+    return true;
+  }
+  long v; if (!amiga_parse_l(in, v)) return false; r = v; return true;  /* hex/octal */
+}
+inline bool amiga_from_string(const std::string& in, unsigned& r)       { unsigned long v; if (!amiga_parse_ul(in, v) || v > (unsigned long)std::numeric_limits<unsigned>::max()) return false; r = (unsigned)v; return true; }
+inline bool amiga_from_string(const std::string& in, unsigned short& r) { unsigned long v; if (!amiga_parse_ul(in, v) || v > (unsigned long)std::numeric_limits<unsigned short>::max()) return false; r = (unsigned short)v; return true; }
+inline bool amiga_from_string(const std::string& in, unsigned long& r)  { return amiga_parse_ul(in, r); }
+inline bool amiga_from_string(const std::string& in, unsigned long long& r) {
+  if (in.empty() || in[0] == '-') return false;
+  unsigned long long u;
+  if (amiga_parse_ull10(in, (in[0] == '+') ? 1 : 0, u)) { r = u; return true; }
+  unsigned long v; if (!amiga_parse_ul(in, v)) return false; r = v; return true;  /* hex/octal */
+}
+inline bool amiga_from_string(const std::string& in, double& r) {
+  if (!in.empty()) {
+    errno = 0; char* e = 0;
+    double v = std::strtod(in.c_str(), &e);
+    if (e == in.c_str() + in.size() && errno != ERANGE) { r = v; return true; }
+  }
+  if (IsInfinity(in))         { r = std::numeric_limits<double>::infinity();  return true; }
+  if (IsNegativeInfinity(in)) { r = -std::numeric_limits<double>::infinity(); return true; }
+  if (IsNaN(in))              { r = std::numeric_limits<double>::quiet_NaN(); return true; }
+  return false;
+}
+inline bool amiga_from_string(const std::string& in, float& r) {
+  double v; if (!amiga_from_string(in, v)) return false; r = (float)v; return true;
+}
+inline bool amiga_from_string(const std::string& in, char& r)          { if (in.size() != 1) return false; r = in[0]; return true; }
+inline bool amiga_from_string(const std::string& in, signed char& r)   { if (in.size() != 1) return false; r = (signed char)in[0]; return true; }
+inline bool amiga_from_string(const std::string& in, unsigned char& r) { if (in.size() != 1) return false; r = (unsigned char)in[0]; return true; }
+inline std::string amiga_to_string(long double v) { return amiga_to_string((double)v); }
+inline bool amiga_from_string(const std::string& in, long double& r) { double v; if (!amiga_from_string(in, v)) return false; r = v; return true; }
+}  // namespace conversion
+
+#define YAML_DEFINE_CONVERT_STREAMABLE(type, negative_op)                \
+  template <>                                                            \
+  struct convert<type> {                                                 \
+    static Node encode(const type& rhs) {                                \
+      return Node(conversion::amiga_to_string(rhs));                     \
+    }                                                                    \
+                                                                         \
+    static bool decode(const Node& node, type& rhs) {                    \
+      if (node.Type() != NodeType::Scalar)                               \
+        return false;                                                    \
+      return conversion::amiga_from_string(node.Scalar(), rhs);          \
+    }                                                                    \
+  }
+"""
+
+    # slice out the whole original macro by its start and end markers -
+    # exact-text matching on 37 backslash-padded lines is too fragile
+    m0 = text.index("#define YAML_DEFINE_CONVERT_STREAMABLE(type, negative_op)")
+    m1 = text.index("#define YAML_DEFINE_CONVERT_STREAMABLE_SIGNED(type)")
+    text = text[:m0] + new_block + "\n" + text[m1:]
+    with open(path, "w", encoding="utf-8", errors="surrogateescape") as f:
+        f.write(text)
+    return "applied"
+
+
+def patch_yamlcpp_memory(yamldir):
+    """yaml-cpp 0.6.3 memory pools: assigning a subtree into a parent inserts
+    the child pool's ENTIRE node set into the parent's std::set - bottom-up
+    tree building (every save()/load() in the game) is quadratic. Measured:
+    building the 17 KB new-game save took 16.9 s at full JIT speed. Upstream
+    fixed it later with small-to-large merging; this ports that fix."""
+    path = os.path.join(yamldir, "src", "memory.cpp")
+    hpath = os.path.join(yamldir, "include", "yaml-cpp", "node", "detail", "memory.h")
+    if not (os.path.isfile(path) and os.path.isfile(hpath)):
+        return "skipped (no yaml-cpp at %s)" % yamldir
+    with open(path, "r", encoding="utf-8", errors="surrogateescape") as f:
+        text = f.read()
+    if "small-to-large" in text:
+        return "already"
+    old = (
+"void memory_holder::merge(memory_holder& rhs) {\n"
+"  if (m_pMemory == rhs.m_pMemory)\n"
+"    return;\n"
+"\n"
+"  m_pMemory->merge(*rhs.m_pMemory);\n"
+"  rhs.m_pMemory = m_pMemory;\n"
+"}\n")
+    new = (
+"void memory_holder::merge(memory_holder& rhs) {\n"
+"  if (m_pMemory == rhs.m_pMemory)\n"
+"    return;\n"
+"\n"
+"  /* AMIGA-PORT: small-to-large (later upstream fix). Always insert the\n"
+"   * smaller pool into the larger one, then share the larger. Without this\n"
+"   * bottom-up node-tree building is quadratic in total nodes. */\n"
+"  if (m_pMemory->size() < rhs.m_pMemory->size())\n"
+"    m_pMemory.swap(rhs.m_pMemory);\n"
+"  m_pMemory->merge(*rhs.m_pMemory);\n"
+"  rhs.m_pMemory = m_pMemory;\n"
+"}\n")
+    if old not in text:
+        raise SystemExit("PATCH FAILED: memory_holder::merge not found in %s" % path)
+    text = text.replace(old, new, 1)
+    with open(path, "w", encoding="utf-8", errors="surrogateescape") as f:
+        f.write(text)
+
+    with open(hpath, "r", encoding="utf-8", errors="surrogateescape") as f:
+        h = f.read()
+    if "std::size_t size() const" not in h:
+        oldh = "  node& create_node();\n  void merge(const memory& rhs);\n"
+        newh = ("  node& create_node();\n  void merge(const memory& rhs);\n"
+                "  std::size_t size() const { return m_nodes.size(); } /* AMIGA-PORT */\n")
+        if oldh not in h:
+            raise SystemExit("PATCH FAILED: memory class body not found in %s" % hpath)
+        h = h.replace(oldh, newh, 1)
+        with open(hpath, "w", encoding="utf-8", errors="surrogateescape") as f:
+            f.write(h)
+    return "applied"
+
+
+def patch_yamlcpp_ice(yamldir):
+    """gcc 6.5.0b segfaults (ICE) compiling Node::AssignData at -O1 in EVERY
+    file that includes yaml.h - build.sh then silently retried those 22 files
+    at -O0, which put the whole save/load path (SavedGame, BattleUnit, Tile,
+    Mod.cpp ruleset parsing...) at -O0 since the beginning of the port.
+    Compiling just this one function at -O0 dodges the ICE; everything else
+    in those files returns to -O1."""
+    path = os.path.join(yamldir, "include", "yaml-cpp", "node", "impl.h")
+    if not os.path.isfile(path):
+        return "skipped (no yaml-cpp at %s)" % yamldir
+    with open(path, "r", encoding="utf-8", errors="surrogateescape") as f:
+        text = f.read()
+    if "AMIGA-PORT: gcc 6.5 ICE" in text:
+        return "already"
+    old = "inline void Node::AssignData(const Node& rhs) {\n"
+    new = ("__attribute__((optimize(0))) /* AMIGA-PORT: gcc 6.5 ICE at -O1 */\n"
+           "inline void Node::AssignData(const Node& rhs) {\n")
+    if old not in text:
+        raise SystemExit("PATCH FAILED: Node::AssignData not found in %s" % path)
+    text = text.replace(old, new, 1)
+    with open(path, "w", encoding="utf-8", errors="surrogateescape") as f:
+        f.write(text)
+
+    # second ICE site: detail::node::set_data (node.h)
+    npath = os.path.join(yamldir, "include", "yaml-cpp", "node", "detail", "node.h")
+    with open(npath, "r", encoding="utf-8", errors="surrogateescape") as f:
+        ntext = f.read()
+    if "AMIGA-PORT: gcc 6.5 ICE" not in ntext:
+        nold = "  void set_data(const node& rhs) {\n"
+        nnew = ("  __attribute__((optimize(0))) /* AMIGA-PORT: gcc 6.5 ICE at -O1 */\n"
+                "  void set_data(const node& rhs) {\n")
+        if nold not in ntext:
+            raise SystemExit("PATCH FAILED: node::set_data not found in %s" % npath)
+        ntext = ntext.replace(nold, nnew, 1)
+        with open(npath, "w", encoding="utf-8", errors="surrogateescape") as f:
+            f.write(ntext)
+    return "applied"
+
+
+
+# ---- 6f fast battlescape save: C++ bodies (kept verbatim, appended by edits) --
+KILLS_FAST = r"""
+	/* AMIGA-PORT: sequence-entry writer, mirrors save() above. */
+	void saveFastAmiga(std::string &o, int ind) const
+	{
+		const int i2 = ind + 2;
+		o.append((std::string::size_type)ind, ' '); o += "-\n";
+		if (!name.empty()) ay_s(o, i2, "name", Language::wstrToUtf8(name));
+		if (!type.empty()) ay_s(o, i2, "type", type);
+		ay_s(o, i2, "rank", rank);
+		ay_s(o, i2, "race", race);
+		ay_s(o, i2, "weapon", weapon);
+		ay_s(o, i2, "weaponAmmo", weaponAmmo);
+		ay_i(o, i2, "status", (int)status);
+		ay_i(o, i2, "faction", (int)faction);
+		ay_i(o, i2, "mission", mission);
+		ay_i(o, i2, "turn", turn);
+		ay_i(o, i2, "side", (int)side);
+		ay_i(o, i2, "bodypart", (int)bodypart);
+		ay_i(o, i2, "id", id);
+	}
+"""
+
+STATS_FAST = r"""
+	/* AMIGA-PORT: map-body writer at indent ind, mirrors save() above. */
+	void saveFastAmiga(std::string &o, int ind) const
+	{
+		ay_b(o, ind, "wasUnconcious", wasUnconcious);
+		if (!kills.empty())
+		{
+			ay_key(o, ind, "kills"); o += '\n';
+			for (std::vector<BattleUnitKills*>::const_iterator i = kills.begin(); i != kills.end(); ++i)
+				(*i)->saveFastAmiga(o, ind + 2);
+		}
+		if (shotAtCounter) ay_i(o, ind, "shotAtCounter", shotAtCounter);
+		if (hitCounter) ay_i(o, ind, "hitCounter", hitCounter);
+		if (shotByFriendlyCounter) ay_i(o, ind, "shotByFriendlyCounter", shotByFriendlyCounter);
+		if (shotFriendlyCounter) ay_i(o, ind, "shotFriendlyCounter", shotFriendlyCounter);
+		if (loneSurvivor) ay_b(o, ind, "loneSurvivor", loneSurvivor);
+		if (ironMan) ay_b(o, ind, "ironMan", ironMan);
+		if (longDistanceHitCounter) ay_i(o, ind, "longDistanceHitCounter", longDistanceHitCounter);
+		if (lowAccuracyHitCounter) ay_i(o, ind, "lowAccuracyHitCounter", lowAccuracyHitCounter);
+		if (shotsFiredCounter) ay_i(o, ind, "shotsFiredCounter", shotsFiredCounter);
+		if (shotsLandedCounter) ay_i(o, ind, "shotsLandedCounter", shotsLandedCounter);
+		if (nikeCross) ay_b(o, ind, "nikeCross", nikeCross);
+		if (mercyCross) ay_b(o, ind, "mercyCross", mercyCross);
+		if (woundsHealed) ay_i(o, ind, "woundsHealed", woundsHealed);
+		if (appliedStimulant) ay_i(o, ind, "appliedStimulant", appliedStimulant);
+		if (appliedPainKill) ay_i(o, ind, "appliedPainKill", appliedPainKill);
+		if (revivedSoldier) ay_i(o, ind, "revivedSoldier", revivedSoldier);
+		if (martyr) ay_i(o, ind, "martyr", martyr);
+		if (slaveKills) ay_i(o, ind, "slaveKills", slaveKills);
+	}
+"""
+
+AI_FAST = r"""
+/* AMIGA-PORT: map-body writer at indent ind, mirrors save() above. */
+void AIModule::saveFastAmiga(std::string &o, int ind) const
+{
+	int fromNodeID = -1, toNodeID = -1;
+	if (_fromNode)
+		fromNodeID = _fromNode->getID();
+	if (_toNode)
+		toNodeID = _toNode->getID();
+	ay_i(o, ind, "fromNode", fromNodeID);
+	ay_i(o, ind, "toNode", toNodeID);
+	ay_i(o, ind, "AIMode", _AIMode);
+	ay_iv(o, ind, "wasHitBy", _wasHitBy.empty() ? 0 : &_wasHitBy[0], _wasHitBy.size());
+}
+"""
+
+NODE_FAST = r"""
+/* AMIGA-PORT: sequence-entry writer, mirrors save() above. */
+void Node::saveFastAmiga(std::string &o, int ind) const
+{
+	const int i2 = ind + 2;
+	ay_entry_i(o, ind, "id", _id);
+	ay_xyz(o, i2, "position", _pos.x, _pos.y, _pos.z);
+	ay_i(o, i2, "type", _type);
+	ay_i(o, i2, "rank", _rank);
+	ay_i(o, i2, "flags", _flags);
+	ay_i(o, i2, "reserved", _reserved);
+	ay_i(o, i2, "priority", _priority);
+	ay_b(o, i2, "allocated", _allocated);
+	ay_iv(o, i2, "links", _nodeLinks.empty() ? 0 : &_nodeLinks[0], _nodeLinks.size());
+	ay_b(o, i2, "dummy", _dummy);
+}
+"""
+
+ITEM_FAST = r"""
+/* AMIGA-PORT: sequence-entry writer, mirrors save() above. */
+void BattleItem::saveFastAmiga(std::string &o, int ind) const
+{
+	const int i2 = ind + 2;
+	ay_entry_i(o, ind, "id", _id);
+	ay_s(o, i2, "type", _rules->getType());
+	ay_i(o, i2, "owner", _owner ? _owner->getId() : -1);
+	if (_previousOwner)
+		ay_i(o, i2, "previousOwner", _previousOwner->getId());
+	ay_i(o, i2, "unit", _unit ? _unit->getId() : -1);
+	if (_inventorySlot)
+		ay_s(o, i2, "inventoryslot", _inventorySlot->getId());
+	else
+		ay_s(o, i2, "inventoryslot", std::string("NULL"));
+	ay_i(o, i2, "inventoryX", _inventoryX);
+	ay_i(o, i2, "inventoryY", _inventoryY);
+	if (_tile)
+		ay_xyz(o, i2, "position", _tile->getPosition().x, _tile->getPosition().y, _tile->getPosition().z);
+	else
+		ay_xyz(o, i2, "position", -1, -1, -1);
+	ay_i(o, i2, "ammoqty", _ammoQuantity);
+	ay_i(o, i2, "ammoItem", _ammoItem ? _ammoItem->getId() : -1);
+	ay_i(o, i2, "painKiller", _painKiller);
+	ay_i(o, i2, "heal", _heal);
+	ay_i(o, i2, "stimulant", _stimulant);
+	ay_i(o, i2, "fuseTimer", _fuseTimer);
+	if (_droppedOnAlienTurn)
+		ay_b(o, i2, "droppedOnAlienTurn", _droppedOnAlienTurn);
+}
+"""
+
+UNIT_FAST = r"""
+/* AMIGA-PORT: sequence-entry writer, mirrors save() above. */
+void BattleUnit::saveFastAmiga(std::string &o, int ind) const
+{
+	const int i2 = ind + 2;
+	ay_entry_i(o, ind, "id", _id);
+	ay_s(o, i2, "genUnitType", _type);
+	ay_s(o, i2, "genUnitArmor", _armor->getType());
+	ay_i(o, i2, "faction", (int)_faction);
+	ay_i(o, i2, "status", (int)_status);
+	ay_xyz(o, i2, "position", _pos.x, _pos.y, _pos.z);
+	ay_i(o, i2, "direction", _direction);
+	ay_i(o, i2, "directionTurret", _directionTurret);
+	ay_i(o, i2, "tu", _tu);
+	ay_i(o, i2, "health", _health);
+	ay_i(o, i2, "stunlevel", _stunlevel);
+	ay_i(o, i2, "energy", _energy);
+	ay_i(o, i2, "morale", _morale);
+	ay_b(o, i2, "kneeled", _kneeled);
+	ay_b(o, i2, "floating", _floating);
+	ay_iv(o, i2, "armor", _currentArmor, 5);
+	ay_iv(o, i2, "fatalWounds", _fatalWounds, 6);
+	ay_i(o, i2, "fire", _fire);
+	ay_i(o, i2, "expBravery", _expBravery);
+	ay_i(o, i2, "expReactions", _expReactions);
+	ay_i(o, i2, "expFiring", _expFiring);
+	ay_i(o, i2, "expThrowing", _expThrowing);
+	ay_i(o, i2, "expPsiSkill", _expPsiSkill);
+	ay_i(o, i2, "expPsiStrength", _expPsiStrength);
+	ay_i(o, i2, "expMelee", _expMelee);
+	ay_i(o, i2, "turretType", _turretType);
+	ay_b(o, i2, "visible", _visible);
+	ay_i(o, i2, "turnsSinceSpotted", _turnsSinceSpotted);
+	ay_i(o, i2, "rankInt", _rankInt);
+	ay_i(o, i2, "moraleRestored", _moraleRestored);
+	if (getAIModule())
+	{
+		ay_key(o, i2, "AI"); o += '\n';
+		getAIModule()->saveFastAmiga(o, i2 + 2);
+	}
+	ay_i(o, i2, "killedBy", (int)_killedBy);
+	if (_originalFaction != _faction)
+		ay_i(o, i2, "originalFaction", (int)_originalFaction);
+	if (_kills)
+		ay_i(o, i2, "kills", _kills);
+	if (_faction == FACTION_PLAYER && _dontReselect)
+		ay_b(o, i2, "dontReselect", _dontReselect);
+	if (!_spawnUnit.empty())
+		ay_s(o, i2, "spawnUnit", _spawnUnit);
+	ay_i(o, i2, "motionPoints", _motionPoints);
+	ay_b(o, i2, "respawn", _respawn);
+	ay_s(o, i2, "activeHand", _activeHand);
+	ay_key(o, i2, "tempUnitStatistics"); o += '\n';
+	_statistics->saveFastAmiga(o, i2 + 2);
+	ay_i(o, i2, "murdererId", _murdererId);
+	ay_i(o, i2, "fatalShotSide", (int)_fatalShotSide);
+	ay_i(o, i2, "fatalShotBodyPart", (int)_fatalShotBodyPart);
+	ay_s(o, i2, "murdererWeapon", _murdererWeapon);
+	ay_s(o, i2, "murdererWeaponAmmo", _murdererWeaponAmmo);
+	if (!_recolor.empty())
+	{
+		ay_key(o, i2, "recolor"); o += '\n';
+		for (std::string::size_type ri = 0; ri < _recolor.size(); ++ri)
+		{
+			o.append((std::string::size_type)(i2 + 2), ' ');
+			o += "- [";
+			o += YAML::conversion::amiga_to_string((long long)(int)_recolor[ri].first);
+			o += ", ";
+			o += YAML::conversion::amiga_to_string((long long)(int)_recolor[ri].second);
+			o += "]\n";
+		}
+	}
+	ay_i(o, i2, "mindControllerID", _mindControllerID);
+}
+"""
+
+SBG_FAST = r"""
+/* AMIGA-PORT: writes the battleGame map body at indent 2, mirroring save()
+ * field by field - no YAML::Node tree, straight text (see amiga_yamlout.h). */
+void SavedBattleGame::saveFastAmiga(std::string &o) const
+{
+	const int ind = 2;
+	if (_objectivesNeeded)
+	{
+		ay_i(o, ind, "objectivesDestroyed", _objectivesDestroyed);
+		ay_i(o, ind, "objectivesNeeded", _objectivesNeeded);
+		ay_i(o, ind, "objectiveType", _objectiveType);
+	}
+	ay_i(o, ind, "width", _mapsize_x);
+	ay_i(o, ind, "length", _mapsize_y);
+	ay_i(o, ind, "height", _mapsize_z);
+	ay_s(o, ind, "missionType", _missionType);
+	ay_i(o, ind, "globalshade", _globalShade);
+	ay_i(o, ind, "turn", _turn);
+	ay_i(o, ind, "selectedUnit", (_selectedUnit ? _selectedUnit->getId() : -1));
+	if (!_mapDataSets.empty())
+	{
+		ay_key(o, ind, "mapdatasets"); o += '\n';
+		for (std::vector<MapDataSet*>::const_iterator i = _mapDataSets.begin(); i != _mapDataSets.end(); ++i)
+		{
+			o.append((std::string::size_type)(ind + 2), ' ');
+			o += "- ";
+			AmigaYamlScalar(o, (*i)->getName());
+			o += '\n';
+		}
+	}
+	/* The loader reads these six with as<Uint8>, which has CHARACTER
+	 * semantics (that is how upstream round-tripped them: "\x04"). Writing
+	 * them as numbers made as<Uint8>("4") return 52 -> unserializeInt
+	 * assert -> returncode 127 on every load. tileTotalBytesPer is read
+	 * as<Uint32> and stays numeric. */
+	ay_s(o, ind, "tileIndexSize", std::string(1, (char)Tile::serializationKey.index));
+	ay_i(o, ind, "tileTotalBytesPer", (int)Tile::serializationKey.totalBytes);
+	ay_s(o, ind, "tileFireSize", std::string(1, (char)Tile::serializationKey._fire));
+	ay_s(o, ind, "tileSmokeSize", std::string(1, (char)Tile::serializationKey._smoke));
+	ay_s(o, ind, "tileIDSize", std::string(1, (char)Tile::serializationKey._mapDataID));
+	ay_s(o, ind, "tileSetIDSize", std::string(1, (char)Tile::serializationKey._mapDataSetID));
+	ay_s(o, ind, "tileBoolFieldsSize", std::string(1, (char)Tile::serializationKey.boolFields));
+	{
+		size_t tileDataSize = Tile::serializationKey.totalBytes * _mapsize_z * _mapsize_y * _mapsize_x;
+		Uint8* tileData = (Uint8*) calloc(tileDataSize, 1);
+		Uint8* w = tileData;
+		for (int i = 0; i < _mapsize_z * _mapsize_y * _mapsize_x; ++i)
+		{
+			if (!_tiles[i]->isVoid())
+			{
+				serializeInt(&w, Tile::serializationKey.index, i);
+				_tiles[i]->saveBinary(&w);
+			}
+			else
+			{
+				tileDataSize -= Tile::serializationKey.totalBytes;
+			}
+		}
+		ay_u(o, ind, "totalTiles", tileDataSize / Tile::serializationKey.totalBytes);
+		/* single-quoted: yaml-cpp's PLAIN-scalar scanner hangs (quadratic) on a
+		 * 95 KB unquoted token; the quoted scanner is linear. Base64 contains
+		 * no quotes, so no escaping needed. */
+		ay_key(o, ind, "binTiles");
+		o += " '";
+		o += YAML::EncodeBase64(tileData, tileDataSize);
+		o += "'\n";
+		free(tileData);
+	}
+	if (!_nodes.empty())
+	{
+		ay_key(o, ind, "nodes"); o += '\n';
+		for (std::vector<Node*>::const_iterator i = _nodes.begin(); i != _nodes.end(); ++i)
+			(*i)->saveFastAmiga(o, ind + 2);
+	}
+	if (_missionType == "STR_BASE_DEFENSE")
+	{
+		ay_key(o, ind, "moduleMap"); o += '\n';
+		for (std::vector< std::vector<std::pair<int, int> > >::const_iterator r = _baseModules.begin(); r != _baseModules.end(); ++r)
+		{
+			o.append((std::string::size_type)(ind + 2), ' ');
+			o += "-\n";
+			for (std::vector<std::pair<int, int> >::const_iterator c = r->begin(); c != r->end(); ++c)
+			{
+				o.append((std::string::size_type)(ind + 4), ' ');
+				o += "- [";
+				o += YAML::conversion::amiga_to_string((long long)c->first);
+				o += ", ";
+				o += YAML::conversion::amiga_to_string((long long)c->second);
+				o += "]\n";
+			}
+		}
+	}
+	if (!_units.empty())
+	{
+		ay_key(o, ind, "units"); o += '\n';
+		for (std::vector<BattleUnit*>::const_iterator i = _units.begin(); i != _units.end(); ++i)
+			(*i)->saveFastAmiga(o, ind + 2);
+	}
+	if (!_items.empty())
+	{
+		ay_key(o, ind, "items"); o += '\n';
+		for (std::vector<BattleItem*>::const_iterator i = _items.begin(); i != _items.end(); ++i)
+			(*i)->saveFastAmiga(o, ind + 2);
+	}
+	ay_i(o, ind, "tuReserved", (int)_tuReserved);
+	ay_b(o, ind, "kneelReserved", _kneelReserved);
+	ay_i(o, ind, "depth", _depth);
+	ay_i(o, ind, "ambience", _ambience);
+	ay_d(o, ind, "ambientVolume", _ambientVolume);
+	if (!_recoverGuaranteed.empty())
+	{
+		ay_key(o, ind, "recoverGuaranteed"); o += '\n';
+		for (std::vector<BattleItem*>::const_iterator i = _recoverGuaranteed.begin(); i != _recoverGuaranteed.end(); ++i)
+			(*i)->saveFastAmiga(o, ind + 2);
+	}
+	if (!_recoverConditional.empty())
+	{
+		ay_key(o, ind, "recoverConditional"); o += '\n';
+		for (std::vector<BattleItem*>::const_iterator i = _recoverConditional.begin(); i != _recoverConditional.end(); ++i)
+			(*i)->saveFastAmiga(o, ind + 2);
+	}
+	ay_s(o, ind, "music", _music);
+	ay_i(o, ind, "turnLimit", _turnLimit);
+	ay_i(o, ind, "chronoTrigger", (int)_chronoTrigger);
+	ay_i(o, ind, "cheatTurn", _cheatTurn);
+}
+"""
+
+
+GLOBE_CACHE_OLD = r'''void Globe::cache(std::list<Polygon*> *polygons, std::list<Polygon*> *cache)
+{
+	// Clear existing cache
+	for (std::list<Polygon*>::iterator i = cache->begin(); i != cache->end(); ++i)
+	{
+		delete *i;
+	}
+	cache->clear();
+
+	// Pre-calculate values to cache
+	for (std::list<Polygon*>::iterator i = polygons->begin(); i != polygons->end(); ++i)
+	{
+		// Is quad on the back face?
+		double closest = 0.0;
+		double z;
+		double furthest = 0.0;
+		for (int j = 0; j < (*i)->getPoints(); ++j)
+		{
+			z = cos(_cenLat) * cos((*i)->getLatitude(j)) * cos((*i)->getLongitude(j) - _cenLon) + sin(_cenLat) * sin((*i)->getLatitude(j));
+			if (z > closest)
+				closest = z;
+			else if (z < furthest)
+				furthest = z;
+		}
+		if (-furthest > closest)
+			continue;
+
+		Polygon* p = new Polygon(**i);
+
+		// Convert coordinates
+		for (int j = 0; j < p->getPoints(); ++j)
+		{
+			Sint16 x, y;
+			polarToCart(p->getLongitude(j), p->getLatitude(j), &x, &y);
+			p->setX(j, x);
+			p->setY(j, y);
+		}
+
+		cache->push_back(p);
+	}
+}
+'''
+
+GLOBE_CACHE_NEW = r'''/* AMIGA-PORT: per-cached-polygon view-space normals (Q1.14), parallel to
+ * _cacheLand order; consumed by the flat-shaded drawLand (amigaFlatGlobe). */
+static std::vector<CordFix> s_polyNorm_;
+
+void Globe::cache(std::list<Polygon*> *polygons, std::list<Polygon*> *cache)
+{
+	// Clear existing cache
+	for (std::list<Polygon*>::iterator i = cache->begin(); i != cache->end(); ++i)
+	{
+		delete *i;
+	}
+	cache->clear();
+	s_polyNorm_.clear();
+
+	/* AMIGA-PORT pkt 4: the whole recache is integer Q1.14. Vertex sin/cos
+	 * are precomputed ONCE as Sint16; a recache does 4 trig calls for the
+	 * screen centre and then only 32-bit multiplies. Shared vertices compute
+	 * identically, so adjacent polygons cannot crack. Radius is Q4 (1/16 px
+	 * quantisation - invisible at 320x200). */
+	static std::vector<Sint16> vt_;
+	static const void *vtSrc_ = 0;
+	if (vtSrc_ != (const void *)polygons)
+	{
+		vt_.clear();
+		for (std::list<Polygon*>::iterator i = polygons->begin(); i != polygons->end(); ++i)
+			for (int j = 0; j < (*i)->getPoints(); ++j)
+			{
+				vt_.push_back((Sint16)floor(sin((*i)->getLatitude(j)) * 16384.0 + 0.5));
+				vt_.push_back((Sint16)floor(cos((*i)->getLatitude(j)) * 16384.0 + 0.5));
+				vt_.push_back((Sint16)floor(sin((*i)->getLongitude(j)) * 16384.0 + 0.5));
+				vt_.push_back((Sint16)floor(cos((*i)->getLongitude(j)) * 16384.0 + 0.5));
+			}
+		vtSrc_ = (const void *)polygons;
+	}
+	const Sint32 sCLat = (Sint32)floor(sin(_cenLat) * 16384.0 + 0.5);
+	const Sint32 cCLat = (Sint32)floor(cos(_cenLat) * 16384.0 + 0.5);
+	const Sint32 sCLon = (Sint32)floor(sin(_cenLon) * 16384.0 + 0.5);
+	const Sint32 cCLon = (Sint32)floor(cos(_cenLon) * 16384.0 + 0.5);
+	const Sint32 radQ = (Sint32)(_radius * 16.0 + 0.5);
+
+	size_t vi = 0;
+	for (std::list<Polygon*>::iterator i = polygons->begin(); i != polygons->end(); ++i)
+	{
+		// Is quad on the back face?
+		Sint32 closest = 0;
+		Sint32 furthest = 0;
+		const size_t vbase = vi;
+		for (int j = 0; j < (*i)->getPoints(); ++j, vi += 4)
+		{
+			const Sint32 sLat = vt_[vi], cLat = vt_[vi + 1];
+			const Sint32 sLon = vt_[vi + 2], cLon = vt_[vi + 3];
+			const Sint32 cosDiff = (cLon * cCLon + sLon * sCLon) >> 14;
+			const Sint32 z = ((((cCLat * cLat) >> 14) * cosDiff) >> 14) + ((sCLat * sLat) >> 14);
+			if (z > closest)
+				closest = z;
+			else if (z < furthest)
+				furthest = z;
+		}
+		if (-furthest > closest)
+			continue;
+
+		Polygon* p = new Polygon(**i);
+
+		// Convert coordinates - same projection as polarToCart, in Q1.14
+		size_t vj = vbase;
+		Sint32 nX = 0, nY = 0, nZ = 0;
+		for (int j = 0; j < p->getPoints(); ++j, vj += 4)
+		{
+			const Sint32 sLat = vt_[vj], cLat = vt_[vj + 1];
+			const Sint32 sLon = vt_[vj + 2], cLon = vt_[vj + 3];
+			const Sint32 cosDiff = (cLon * cCLon + sLon * sCLon) >> 14;
+			const Sint32 sinDiff = (sLon * cCLon - cLon * sCLon) >> 14;
+			const Sint32 vx = (cLat * sinDiff) >> 14;
+			const Sint32 vy = ((cCLat * sLat) >> 14) - ((((sCLat * cLat) >> 14) * cosDiff) >> 14);
+			const Sint32 vz = ((((cCLat * cLat) >> 14) * cosDiff) >> 14) + ((sCLat * sLat) >> 14);
+			p->setX(j, (Sint16)(_cenX + ((radQ * vx) >> 18)));
+			p->setY(j, (Sint16)(_cenY + ((radQ * vy) >> 18)));
+			nX += vx; nY += vy; nZ += vz;
+		}
+		{
+			const int np_ = p->getPoints();
+			CordFix nf_;
+			nf_.x = (Sint16)(nX / np_);
+			nf_.y = (Sint16)(nY / np_);
+			nf_.z = (Sint16)(nZ / np_);
+			s_polyNorm_.push_back(nf_);
+		}
+
+		cache->push_back(p);
+	}
+}
+'''
+
+
+GLOBE_LAND_OLD = r'''void Globe::drawLand()
+{
+	Sint16 x[4], y[4];
+
+	for (std::list<Polygon*>::iterator i = _cacheLand.begin(); i != _cacheLand.end(); ++i)
+	{
+		// Convert coordinates
+		for (int j = 0; j < (*i)->getPoints(); ++j)
+		{
+			x[j] = (*i)->getX(j);
+			y[j] = (*i)->getY(j);
+		}
+
+		// Apply textures according to zoom and shade
+		drawTexturedPolygon(x, y, (*i)->getPoints(), _texture->getFrame((*i)->getTexture() + _zoomTexture), 0, 0);
+	}
+}
+'''
+
+GLOBE_LAND_NEW = r'''void Globe::drawLand()
+{
+	Sint16 x[4], y[4];
+
+#ifdef __AMIGA__
+	if (Options::amigaFlatGlobe)
+	{
+		/* AMIGA-PORT: flat sun-shaded polygons - see the patch script. */
+		static Uint8 texBase_[128];
+		static bool texInit_ = false;
+		if (!texInit_)
+		{
+			memset(texBase_, 0xFF, sizeof(texBase_));
+			texInit_ = true;
+		}
+		const CordFix sunF_ = cordToFix(getSunDirection(_cenLon, _cenLat));
+		size_t k_ = 0;
+		for (std::list<Polygon*>::iterator i = _cacheLand.begin(); i != _cacheLand.end(); ++i, ++k_)
+		{
+			for (int j = 0; j < (*i)->getPoints(); ++j)
+			{
+				x[j] = (*i)->getX(j);
+				y[j] = (*i)->getY(j);
+			}
+			const int ti_ = (*i)->getTexture() + _zoomTexture;
+			Uint8 base_ = 16;
+			if (ti_ >= 0 && ti_ < 128)
+			{
+				if (texBase_[ti_] == 0xFF)
+				{
+					/* dominant colour of this texture tile, found once */
+					Surface *fr_ = _texture->getFrame(ti_);
+					static int cnt_[256];
+					memset(cnt_, 0, sizeof(cnt_));
+					if (fr_)
+					{
+						SDL_Surface *fs_ = fr_->getSurface();
+						for (int yy_ = 0; yy_ < fs_->h; ++yy_)
+						{
+							const Uint8 *row_ = (const Uint8 *)fs_->pixels + (size_t)yy_ * fs_->pitch;
+							for (int xx_ = 0; xx_ < fs_->w; ++xx_)
+								++cnt_[row_[xx_]];
+						}
+					}
+					int best_ = 1;
+					for (int c_ = 2; c_ < 256; ++c_)
+						if (cnt_[c_] > cnt_[best_]) best_ = c_;
+					texBase_[ti_] = (Uint8)best_;
+				}
+				base_ = texBase_[ti_];
+			}
+			int off_ = 0;
+			if (k_ < s_polyNorm_.size())
+			{
+				const CordFix &n_ = s_polyNorm_[k_];
+				const Sint32 dot_ = ((Sint32)n_.x * sunF_.x + (Sint32)n_.y * sunF_.y + (Sint32)n_.z * sunF_.z) >> 14;
+				off_ = (int)(((16384L - (long)dot_) * 5L) >> 15);
+			}
+			const int g_ = base_ & 0xF0;
+			int s_ = (base_ & 15) + off_ - 1;
+			if (s_ < 0) s_ = 0;
+			if (s_ > 15) s_ = 15;
+			drawPolygon(x, y, (*i)->getPoints(), (Uint8)(g_ + s_));
+		}
+		return;
+	}
+#endif
+	for (std::list<Polygon*>::iterator i = _cacheLand.begin(); i != _cacheLand.end(); ++i)
+	{
+		// Convert coordinates
+		for (int j = 0; j < (*i)->getPoints(); ++j)
+		{
+			x[j] = (*i)->getX(j);
+			y[j] = (*i)->getY(j);
+		}
+
+		// Apply textures according to zoom and shade
+		drawTexturedPolygon(x, y, (*i)->getPoints(), _texture->getFrame((*i)->getTexture() + _zoomTexture), 0, 0);
+	}
+}
+'''
+
+
+GLOBE_CIRCLE_OLD = r'''void Globe::drawGlobeCircle(double lat, double lon, double radius, int segments)
+{
+	double x, y, x2 = 0, y2 = 0;
+	double lat1, lon1;
+	double seg = M_PI / (static_cast<double>(segments) / 2);
+	for (double az = 0; az <= M_PI*2+0.01; az+=seg) //48 circle segments
+	{
+		//calculating sphere-projected circle
+		lat1 = asin(sin(lat) * cos(radius) + cos(lat) * sin(radius) * cos(az));
+		lon1 = lon + atan2(sin(az) * sin(radius) * cos(lat), cos(radius) - sin(lat) * sin(lat1));
+		polarToCart(lon1, lat1, &x, &y);
+		if ( AreSame(az, 0.0) ) //first vertex is for initialization only
+		{
+			x2=x;
+			y2=y;
+			continue;
+		}
+		if (!pointBack(lon1,lat1))
+			XuLine(_radars, this, x, y, x2, y2, 4);
+		x2=x; y2=y;
+	}
+}
+'''
+
+GLOBE_CIRCLE_NEW = r'''void Globe::drawGlobeCircle(double lat, double lon, double radius, int segments)
+{
+	/* AMIGA-PORT: pure vector form. A circle of angular radius r around the
+	 * unit vector C is P(t) = C*cos r + (N1*cos t + N2*sin t)*sin r with
+	 * N1/N2 an orthonormal basis at C; P rotates into view space with the
+	 * same identities the polygon cache uses. No asin/atan2 per segment. */
+	static double lutC[64], lutS[64];
+	static int lutN = 0;
+	if (segments < 3 || segments > 64) segments = 48;
+	if (lutN != segments)
+	{
+		for (int k = 0; k < segments; ++k)
+		{
+			lutC[k] = cos(2.0 * M_PI * (double)k / (double)segments);
+			lutS[k] = sin(2.0 * M_PI * (double)k / (double)segments);
+		}
+		lutN = segments;
+	}
+	const double sLat = sin(lat), cLat = cos(lat);
+	const double sLon = sin(lon), cLon = cos(lon);
+	const double cR = cos(radius), sR = sin(radius);
+	const double Cx = cLat * cLon, Cy = cLat * sLon, Cz = sLat;
+	const double N1x = -sLat * cLon, N1y = -sLat * sLon, N1z = cLat;
+	const double N2x = -sLon, N2y = cLon, N2z = 0.0;
+	const double sCLat = sin(_cenLat), cCLat = cos(_cenLat);
+	const double sCLon = sin(_cenLon), cCLon = cos(_cenLon);
+	double px = 0.0, py = 0.0;
+	int have = 0, backPrev = 1;
+	for (int k = 0; k <= lutN; ++k)
+	{
+		const int ki = (k == lutN) ? 0 : k;
+		const double Px = Cx * cR + (N1x * lutC[ki] + N2x * lutS[ki]) * sR;
+		const double Py = Cy * cR + (N1y * lutC[ki] + N2y * lutS[ki]) * sR;
+		const double Pz = Cz * cR + (N1z * lutC[ki] + N2z * lutS[ki]) * sR;
+		/* world (Px,Py,Pz) -> view: cosLat*cos(dLon) etc. fall out directly */
+		const double cd = Px * cCLon + Py * sCLon;
+		const double sd = Py * cCLon - Px * sCLon;
+		const double vy = cCLat * Pz - sCLat * cd;
+		const double vz = cCLat * cd + sCLat * Pz;
+		const double sx = _cenX + _radius * sd;
+		const double sy = _cenY + _radius * vy;
+		const int back = (vz < 0.0);
+		if (have && !back && !backPrev)
+			XuLine(_radars, this, sx, sy, px, py, 4);
+		px = sx; py = sy; have = 1; backPrev = back;
+	}
+}
+'''
+
+GLOBE_XULINE_OLD = r'''	double deltax = x2-x1, deltay = y2-y1;
+	bool inv;
+	Sint16 tcol;
+	double len,x0,y0,SX,SY;
+	if (abs((int)y2-(int)y1) > abs((int)x2-(int)x1))
+	{
+		len=abs((int)y2-(int)y1);
+		inv=false;
+	}
+	else
+	{
+		len=abs((int)x2-(int)x1);
+		inv=true;
+	}
+
+	if (y2<y1) {
+	SY=-1;
+  } else if ( AreSame(deltay, 0.0) ) {
+	SY=0;
+  } else {
+	SY=1;
+  }
+
+	if (x2<x1) {
+	SX=-1;
+  } else if ( AreSame(deltax, 0.0) ) {
+	SX=0;
+  } else {
+	SX=1;
+  }
+
+	x0=x1;  y0=y1;
+	if (inv)
+		SY=(deltay/len);
+	else
+		SX=(deltax/len);
+
+	while (len>0)
+	{
+		tcol=src->getPixel((int)x0,(int)y0);
+		if (tcol)
+		{
+			const int d = tcol & helper::ColorGroup;
+			if (d ==  OCEAN_COLOR || d ==  OCEAN_COLOR + 16)
+			{
+				//this pixel is ocean
+				tcol = OCEAN_COLOR + shade + 8;
+			}
+			else
+			{
+				const int e = tcol + shade;
+				if (e > d + helper::ColorShade)
+					tcol = d + helper::ColorShade;
+				else tcol = e;
+			}
+			surface->setPixel((int)x0,(int)y0,tcol);
+		}
+		x0+=SX;
+		y0+=SY;
+		len-=1.0;
+	}
+}
+'''
+
+GLOBE_XULINE_NEW = r'''	/* AMIGA-PORT: 16.16 fixed-point walk - the original stepped x0/y0 as
+	 * doubles with a double->int cast per pixel (soft-float on this CPU). */
+	Sint16 tcol;
+	Sint32 fx1 = (Sint32)(x1 * 65536.0), fy1 = (Sint32)(y1 * 65536.0);
+	Sint32 fx2 = (Sint32)(x2 * 65536.0), fy2 = (Sint32)(y2 * 65536.0);
+	Sint32 adx = (fx2 > fx1) ? fx2 - fx1 : fx1 - fx2;
+	Sint32 ady = (fy2 > fy1) ? fy2 - fy1 : fy1 - fy2;
+	int ilen = (int)(((adx > ady) ? adx : ady) >> 16);
+	if (ilen < 1) ilen = 1;
+	const Sint32 stx = (fx2 - fx1) / ilen;
+	const Sint32 sty = (fy2 - fy1) / ilen;
+	Sint32 x0 = fx1, y0 = fy1;
+	for (int i_ = 0; i_ < ilen; ++i_)
+	{
+		tcol = src->getPixel((int)(x0 >> 16), (int)(y0 >> 16));
+		if (tcol)
+		{
+			const int d = tcol & helper::ColorGroup;
+			if (d ==  OCEAN_COLOR || d ==  OCEAN_COLOR + 16)
+			{
+				//this pixel is ocean
+				tcol = OCEAN_COLOR + shade + 8;
+			}
+			else
+			{
+				const int e = tcol + shade;
+				if (e > d + helper::ColorShade)
+					tcol = d + helper::ColorShade;
+				else tcol = e;
+			}
+			surface->setPixel((int)(x0 >> 16), (int)(y0 >> 16), tcol);
+		}
+		x0 += stx;
+		y0 += sty;
+	}
+}
+'''
+
+
 def main():
     if len(sys.argv) not in (2, 3):
         raise SystemExit(__doc__)
     src = sys.argv[1]
     if len(sys.argv) == 3:
         print("  %-24s %s" % ("yaml-cpp LoadFile", patch_yamlcpp(sys.argv[2])))
+        print("  %-24s %s" % ("yaml-cpp fast convert", patch_yamlcpp_convert(sys.argv[2])))
+        print("  %-24s %s" % ("yaml-cpp pool merge", patch_yamlcpp_memory(sys.argv[2])))
+        print("  %-24s %s" % ("yaml-cpp ICE dodge", patch_yamlcpp_ice(sys.argv[2])))
     if not os.path.isdir(os.path.join(src, "Engine")):
         raise SystemExit("not an OpenXcom src directory: %s" % src)
 
@@ -197,16 +1180,16 @@ def main():
         "display backend selection include")))
 
     # 3b. Name and version of the port. The main menu and the window title
-    #     say "AmiXcom 0.3.0 alpha" instead of "OpenXcom 1.0 Dev".
+    #     say "AmiXcom 0.3.5 alpha" instead of "OpenXcom 1.0 Dev".
     results.append(("version.h (AmiXcom)", edit(
         os.path.join(src, "version.h"),
         '#define OPENXCOM_VERSION_SHORT "1.0"\n'
         '#define OPENXCOM_VERSION_LONG "1.0.0.0"\n'
         '#define OPENXCOM_VERSION_NUMBER 1,0,0,0\n',
-        '#define OPENXCOM_VERSION_SHORT "0.3.0"\n'
-        '#define OPENXCOM_VERSION_LONG "0.3.0.0"\n'
-        '#define OPENXCOM_VERSION_NUMBER 0,3,0,0\n'
-        '#define OPENXCOM_VERSION_GIT " alpha"\n',
+        '#define OPENXCOM_VERSION_SHORT "0.5.0"\n'
+        '#define OPENXCOM_VERSION_LONG "0.5.0.0"\n'
+        '#define OPENXCOM_VERSION_NUMBER 0,5,0,0\n'
+        '#define OPENXCOM_VERSION_GIT ""\n',
         "port version")))
     results.append(("MainMenuState.cpp (AmiXcom title)", edit(
         os.path.join(src, "Menu", "MainMenuState.cpp"),
@@ -1788,13 +2771,15 @@ def main():
         os.path.join(src, "Engine", "Options.inc.h"),
         "OPT int amigaAccurateFov; /* 0 fast, 1 accurate, 2 test */\n",
         "OPT int amigaAccurateFov; /* 0 fast, 1 accurate, 2 test */\n"
-        "OPT int amigaAnimMs;     /* battle animation tick, ms */\n",
+        "OPT int amigaAnimMs;     /* battle animation tick, ms */\n"
+        "OPT int amigaFlatGlobe;  /* 1 = flat sun-shaded land polygons */\n",
         "amigaAnimMs var")))
     results.append(("Options.cpp (amigaAnimMs)", edit(
         os.path.join(src, "Engine", "Options.cpp"),
         "\t_info.push_back(OptionInfo(\"amigaAccurateFov\", &amigaAccurateFov, 1)); /* default: Accurate - same speed since the pair-update */\n",
         "\t_info.push_back(OptionInfo(\"amigaAccurateFov\", &amigaAccurateFov, 1)); /* default: Accurate - same speed since the pair-update */\n"
-        "\t_info.push_back(OptionInfo(\"amigaAnimMs\", &amigaAnimMs, 200));\n",
+        "\t_info.push_back(OptionInfo(\"amigaAnimMs\", &amigaAnimMs, 200));\n"
+        "\t_info.push_back(OptionInfo(\"amigaFlatGlobe\", &amigaFlatGlobe, 1)); /* test: default on; 0 = textured land */\n",
         "amigaAnimMs info")))
     results.append(("BattlescapeState.cpp (anim timer option)", edit(
         os.path.join(src, "Battlescape", "BattlescapeState.cpp"),
@@ -1810,6 +2795,403 @@ def main():
         "  STR_AMIGA_ANIM_NORMAL: \"Normal\"\n"
         "  STR_AMIGA_ANIM_HALF: \"Half (faster)\"\n",
         "anim strings")))
+
+    # 6d. Screen::clear must not wipe the PHYSICAL screen (dirty rects).
+    #     Upstream zeroes _screen every frame "for the black bands"; this port
+    #     has no bands (_screen and _surface are both exactly the game area)
+    #     and the full back-buffer blit in Screen::flip covers every pixel
+    #     anyway. The zero-fill marked the whole screen dirty every frame and
+    #     made the diff-blit re-copy everything - it defeated dirty rectangles
+    #     entirely (0 skipped, full 320x200 c2p per frame, measured 2026-08-17).
+    results.append(("Screen.cpp (no screen wipe per frame)", edit(
+        os.path.join(src, "Engine", "Screen.cpp"),
+        "\t_surface->clear();\n"
+        "\tif (_screen->flags & SDL_SWSURFACE) memset(_screen->pixels, 0, _screen->h*_screen->pitch);\n"
+        "\telse SDL_FillRect(_screen, &_clear, 0);\n",
+        "\t_surface->clear();\n"
+        "\t/* AMIGA-PORT: no wipe of the real screen - flip() blits the full\n"
+        "\t * back buffer over it, and the wipe forced a full c2p per frame. */\n",
+        "screen clear wipe")))
+
+    # 6e. TEMP probes: where does a save spend its minute (build the node
+    #     tree / emit / write). Logged once per save as "save:" / "optsave:".
+    results.append(("SavedGame.cpp (save probe extern)", edit(
+        os.path.join(src, "Savegame", "SavedGame.cpp"),
+        '#include "SavedGame.h"\n',
+        '#include "SavedGame.h"\n'
+        '#ifdef __AMIGA__\n'
+        '#include <cstdio>\n'
+        '#include "amiga_yamlout.h"\n'
+        'extern "C" void SDLmini_Log(const char *msg);\n'
+        'extern "C" unsigned int SDL_GetTicks(void);\n'
+        '#endif\n',
+        "save probe extern")))
+    results.append(("SavedGame.cpp (save probe t0)", edit(
+        os.path.join(src, "Savegame", "SavedGame.cpp"),
+        "\tstd::string s = Options::getMasterUserFolder() + filename;\n"
+        "\tstd::ofstream sav(s.c_str());\n",
+        "\tstd::string s = Options::getMasterUserFolder() + filename;\n"
+        "\tunsigned int svT0_ = SDL_GetTicks(); /* TEMP save probe */\n"
+        "\tstd::ofstream sav(s.c_str());\n",
+        "save probe t0")))
+    results.append(("SavedGame.cpp (fast writer brief)", edit(
+        os.path.join(src, "Savegame", "SavedGame.cpp"),
+        "\tout << brief;\n",
+        "\tstd::string ydump_; ydump_.reserve(300 * 1024); /* AMIGA-PORT fast yaml writer */\n"
+        "\tAmigaYamlWrite(ydump_, brief);\n",
+        "fast writer brief")))
+    results.append(("SavedGame.cpp (fast writer begindoc)", edit(
+        os.path.join(src, "Savegame", "SavedGame.cpp"),
+        "\tout << YAML::BeginDoc;\n",
+        "\tydump_ += \"---\\n\"; /* AMIGA-PORT */\n",
+        "fast writer begindoc")))
+    results.append(("SavedGame.cpp (save probe log)", edit(
+        os.path.join(src, "Savegame", "SavedGame.cpp"),
+        "\tout << node;\n"
+        "\tsav << out.c_str();\n"
+        "\tsav.close();\n"
+        "}\n",
+        "\tunsigned int svT1_ = SDL_GetTicks();\n"
+        "\tAmigaYamlWrite(ydump_, node); /* AMIGA-PORT: no YAML::Emitter */\n"
+        "\tif (_battleGame != 0) { ydump_ += \"battleGame:\\n\"; _battleGame->saveFastAmiga(ydump_); }\n"
+        "\tunsigned int svT2_ = SDL_GetTicks();\n"
+        "\tsav << ydump_;\n"
+        "\tsav.close();\n"
+        "\t{\n"
+        "\t\tchar sb_[128];\n"
+        "\t\tunsigned int svT3_ = SDL_GetTicks();\n"
+        "\t\tsnprintf(sb_, sizeof sb_, \"save: build %u ms, emit %u ms, write %u ms, %lu bytes\",\n"
+        "\t\t\tsvT1_ - svT0_, svT2_ - svT1_, svT3_ - svT2_, (unsigned long)ydump_.size());\n"
+        "\t\tSDLmini_Log(sb_);\n"
+        "\t}\n"
+        "}\n",
+        "save probe log")))
+    results.append(("Options.cpp (optsave probe extern)", edit(
+        os.path.join(src, "Engine", "Options.cpp"),
+        '#include "Options.h"\n',
+        '#include "Options.h"\n'
+        '#ifdef __AMIGA__\n'
+        '#include <cstdio>\n'
+        '#include "amiga_yamlout.h"\n'
+        'extern "C" void SDLmini_Log(const char *msg);\n'
+        'extern "C" unsigned int SDL_GetTicks(void);\n'
+        '#endif\n',
+        "optsave probe extern")))
+    results.append(("Options.cpp (optsave probe)", edit(
+        os.path.join(src, "Engine", "Options.cpp"),
+        "\t\tout << doc;\n"
+        "\n"
+        "\t\tsav << out.c_str();\n",
+        "\t\tunsigned int ovT1_ = SDL_GetTicks(); /* TEMP optsave probe */\n"
+        "\t\tstd::string ydump_; ydump_.reserve(32 * 1024);\n"
+        "\t\tAmigaYamlWrite(ydump_, doc); /* AMIGA-PORT: no YAML::Emitter */\n"
+        "\t\tunsigned int ovT2_ = SDL_GetTicks();\n"
+        "\t\tsav << ydump_;\n"
+        "\t\t{\n"
+        "\t\t\tchar ob_[128];\n"
+        "\t\t\tsnprintf(ob_, sizeof ob_, \"optsave: emit %u ms, write %u ms, %lu bytes\",\n"
+        "\t\t\t\tovT2_ - ovT1_, SDL_GetTicks() - ovT2_, (unsigned long)ydump_.size());\n"
+        "\t\t\tSDLmini_Log(ob_);\n"
+        "\t\t}\n",
+        "optsave probe")))
+
+    # 6f. Direct battlescape save (LISTA pkt 3). Building the YAML::Node tree
+    #     for battleGame was 85% of the 15 s save: every scalar costs several
+    #     node allocations, pool merges and set inserts. These hand-written
+    #     saveFastAmiga() methods append "key: value" text straight to the
+    #     output string via amiga_yamlout.h - same YAML, same loader, no tree.
+    #     Each mirrors its class's save() field by field.
+    for hdr, why in (("Savegame/BattleUnit.h", "bu decl"), ("Savegame/BattleItem.h", "bi decl"),
+                     ("Savegame/Node.h", "nd decl"), ("Savegame/SavedBattleGame.h", "sbg decl"),
+                     ("Battlescape/AIModule.h", "ai decl")):
+        extra = "\tvoid saveFastAmiga(std::string &out) const; /* AMIGA-PORT */\n" if "SavedBattleGame" in hdr else "\tvoid saveFastAmiga(std::string &out, int ind) const; /* AMIGA-PORT */\n"
+        results.append((hdr + " (saveFastAmiga decl)", edit(
+            os.path.join(src, *hdr.split("/")),
+            "\tYAML::Node save() const;\n",
+            "\tYAML::Node save() const;\n" + extra,
+            why)))
+    for cpp, hdrname in (("Savegame/BattleUnit.cpp", "BattleUnit.h"),
+                         ("Savegame/BattleItem.cpp", "BattleItem.h"),
+                         ("Savegame/Node.cpp", "Node.h"),
+                         ("Savegame/SavedBattleGame.cpp", "SavedBattleGame.h"),
+                         ("Battlescape/AIModule.cpp", "AIModule.h")):
+        results.append((cpp + " (yamlout include)", edit(
+            os.path.join(src, *cpp.split("/")),
+            '#include "%s"\n' % hdrname,
+            '#include "%s"\n#include "amiga_yamlout.h"\n' % hdrname,
+            "yamlout include")))
+    results.append(("BattleUnitStatistics.h (yamlout include)", edit(
+        os.path.join(src, "Savegame", "BattleUnitStatistics.h"),
+        '#include "../Engine/Language.h"\n',
+        '#include "../Engine/Language.h"\n#include "amiga_yamlout.h"\n',
+        "stats include")))
+
+    results.append(("BattleUnitStatistics.h (kills saveFast)", edit(
+        os.path.join(src, "Savegame", "BattleUnitStatistics.h"),
+        '\t\tnode["id"] = id;\n\t\treturn node;\n\t}\n',
+        '\t\tnode["id"] = id;\n\t\treturn node;\n\t}\n' + KILLS_FAST,
+        "kills saveFast")))
+    results.append(("BattleUnitStatistics.h (stats saveFast)", edit(
+        os.path.join(src, "Savegame", "BattleUnitStatistics.h"),
+        '\t\tif (slaveKills) node["slaveKills"] = slaveKills;\n\t\treturn node;\n\t}\n',
+        '\t\tif (slaveKills) node["slaveKills"] = slaveKills;\n\t\treturn node;\n\t}\n' + STATS_FAST,
+        "stats saveFast")))
+    results.append(("AIModule.cpp (saveFast)", edit(
+        os.path.join(src, "Battlescape", "AIModule.cpp"),
+        '\tnode["wasHitBy"] = _wasHitBy;\n\treturn node;\n}\n',
+        '\tnode["wasHitBy"] = _wasHitBy;\n\treturn node;\n}\n' + AI_FAST,
+        "ai saveFast")))
+    results.append(("Node.cpp (saveFast)", edit(
+        os.path.join(src, "Savegame", "Node.cpp"),
+        '\tnode["dummy"] = _dummy;\n\treturn node;\n}\n',
+        '\tnode["dummy"] = _dummy;\n\treturn node;\n}\n' + NODE_FAST,
+        "node saveFast")))
+    results.append(("BattleItem.cpp (saveFast)", edit(
+        os.path.join(src, "Savegame", "BattleItem.cpp"),
+        '\t\tnode["droppedOnAlienTurn"] = _droppedOnAlienTurn;\n\n\treturn node;\n}\n',
+        '\t\tnode["droppedOnAlienTurn"] = _droppedOnAlienTurn;\n\n\treturn node;\n}\n' + ITEM_FAST,
+        "item saveFast")))
+    results.append(("BattleUnit.cpp (saveFast)", edit(
+        os.path.join(src, "Savegame", "BattleUnit.cpp"),
+        '\tnode["mindControllerID"] = _mindControllerID;\n\n\treturn node;\n}\n',
+        '\tnode["mindControllerID"] = _mindControllerID;\n\n\treturn node;\n}\n' + UNIT_FAST,
+        "unit saveFast")))
+    results.append(("SavedBattleGame.cpp (saveFast)", edit(
+        os.path.join(src, "Savegame", "SavedBattleGame.cpp"),
+        '\tnode["cheatTurn"] = _cheatTurn;\n\n\treturn node;\n}\n',
+        '\tnode["cheatTurn"] = _cheatTurn;\n\n\treturn node;\n}\n' + SBG_FAST,
+        "sbg saveFast")))
+    results.append(("SavedGame.cpp (battleGame out of node)", edit(
+        os.path.join(src, "Savegame", "SavedGame.cpp"),
+        '\tif (_battleGame != 0)\n\t{\n\t\tnode["battleGame"] = _battleGame->save();\n\t}\n',
+        '\t/* AMIGA-PORT: battleGame is appended after the node dump (saveFastAmiga) */\n',
+        "battleGame out of node")))
+
+    # 6g. TEMP load probes: where does loading a save hang/spend time.
+    results.append(("SavedGame.cpp (load probe parse)", edit(
+        os.path.join(src, "Savegame", "SavedGame.cpp"),
+        "\tstd::vector<YAML::Node> file = YAML::LoadAllFromFile(s);\n",
+        "\tunsigned int ldT0_ = SDL_GetTicks();\n"
+        "\tstd::vector<YAML::Node> file = YAML::LoadAllFromFile(s);\n"
+        "\t{ char lb_[96]; snprintf(lb_, sizeof lb_, \"load: parse %u ms\", SDL_GetTicks() - ldT0_); SDLmini_Log(lb_); }\n",
+        "load probe parse")))
+    results.append(("SavedBattleGame.cpp (load probes)", edit(
+        os.path.join(src, "Savegame", "SavedBattleGame.cpp"),
+        '#include "SavedBattleGame.h"\n#include "amiga_yamlout.h"\n',
+        '#include "SavedBattleGame.h"\n#include "amiga_yamlout.h"\n'
+        '#ifdef __AMIGA__\n'
+        '#include <cstdio>\n'
+        'extern "C" void SDLmini_Log(const char *msg);\n'
+        'extern "C" unsigned int SDL_GetTicks(void);\n'
+        '#define AMIGA_LP(tag) do { char lp_[64]; snprintf(lp_, sizeof lp_, "load: %s at %u ms", tag, SDL_GetTicks()); SDLmini_Log(lp_); } while (0)\n'
+        '#else\n'
+        '#define AMIGA_LP(tag)\n'
+        '#endif\n',
+        "sbg load probe macro")))
+    results.append(("SavedBattleGame.cpp (probe battle start)", edit(
+        os.path.join(src, "Savegame", "SavedBattleGame.cpp"),
+        "\tint selectedUnit = node[\"selectedUnit\"].as<int>();\n",
+        "\tAMIGA_LP(\"battle begin\");\n"
+        "\tint selectedUnit = node[\"selectedUnit\"].as<int>();\n",
+        "probe battle start")))
+    results.append(("SavedBattleGame.cpp (probe tiles)", edit(
+        os.path.join(src, "Savegame", "SavedBattleGame.cpp"),
+        "\t\tYAML::Binary binTiles = node[\"binTiles\"].as<YAML::Binary>();\n",
+        "\t\tAMIGA_LP(\"binTiles decode\");\n"
+        "\t\tYAML::Binary binTiles = node[\"binTiles\"].as<YAML::Binary>();\n"
+        "\t\tAMIGA_LP(\"binTiles decoded\");\n",
+        "probe tiles")))
+    results.append(("SavedBattleGame.cpp (probe nodes)", edit(
+        os.path.join(src, "Savegame", "SavedBattleGame.cpp"),
+        "\tfor (YAML::const_iterator i = node[\"nodes\"].begin(); i != node[\"nodes\"].end(); ++i)\n",
+        "\tAMIGA_LP(\"nodes\");\n"
+        "\tfor (YAML::const_iterator i = node[\"nodes\"].begin(); i != node[\"nodes\"].end(); ++i)\n",
+        "probe nodes")))
+    results.append(("SavedBattleGame.cpp (probe units)", edit(
+        os.path.join(src, "Savegame", "SavedBattleGame.cpp"),
+        "\tfor (YAML::const_iterator i = node[\"units\"].begin(); i != node[\"units\"].end(); ++i)\n",
+        "\tAMIGA_LP(\"units\");\n"
+        "\tfor (YAML::const_iterator i = node[\"units\"].begin(); i != node[\"units\"].end(); ++i)\n",
+        "probe units")))
+    results.append(("SavedBattleGame.cpp (probe items)", edit(
+        os.path.join(src, "Savegame", "SavedBattleGame.cpp"),
+        "\tstd::string fromContainer[3] = { \"items\", \"recoverConditional\", \"recoverGuaranteed\" };\n",
+        "\tAMIGA_LP(\"items\");\n"
+        "\tstd::string fromContainer[3] = { \"items\", \"recoverConditional\", \"recoverGuaranteed\" };\n",
+        "probe items")))
+    results.append(("SavedBattleGame.cpp (probe ammo)", edit(
+        os.path.join(src, "Savegame", "SavedBattleGame.cpp"),
+        "\tstd::vector<BattleItem*>::iterator weaponi = _items.begin();\n",
+        "\tAMIGA_LP(\"ammo tie\");\n"
+        "\tstd::vector<BattleItem*>::iterator weaponi = _items.begin();\n",
+        "probe ammo")))
+
+    # 6h. TEMP probes: the 44 s tail after battle load (loadMapResources etc).
+    results.append(("SavedBattleGame.cpp (probe mapres)", edit(
+        os.path.join(src, "Savegame", "SavedBattleGame.cpp"),
+        "void SavedBattleGame::loadMapResources(Mod *mod)\n{\n",
+        "void SavedBattleGame::loadMapResources(Mod *mod)\n{\n"
+        "\tAMIGA_LP(\"mapres begin\");\n",
+        "probe mapres")))
+    results.append(("SavedBattleGame.cpp (probe mapres mid)", edit(
+        os.path.join(src, "Savegame", "SavedBattleGame.cpp"),
+        "\tint mdsID, mdID;\n",
+        "\tAMIGA_LP(\"mapres mcd loaded\");\n"
+        "\tint mdsID, mdID;\n",
+        "probe mapres mid")))
+    results.append(("LoadGameState.cpp (probe around mapres)", edit(
+        os.path.join(src, "Menu", "LoadGameState.cpp"),
+        "\t\t\t\t\t_game->getSavedGame()->getSavedBattle()->loadMapResources(_game->getMod());\n",
+        "\t\t\t\t\t_game->getSavedGame()->getSavedBattle()->loadMapResources(_game->getMod());\n"
+        "#ifdef __AMIGA__\n"
+        "\t\t\t\t\t{ char pb_[64]; snprintf(pb_, sizeof pb_, \"load: mapres done at %u ms\", SDL_GetTicks()); SDLmini_Log(pb_); }\n"
+        "#endif\n",
+        "probe load mapres done")))
+    results.append(("LoadGameState.cpp (probe extern)", edit(
+        os.path.join(src, "Menu", "LoadGameState.cpp"),
+        '#include "LoadGameState.h"\n',
+        '#include "LoadGameState.h"\n'
+        '#ifdef __AMIGA__\n'
+        '#include <cstdio>\n'
+        'extern "C" void SDLmini_Log(const char *msg);\n'
+        'extern "C" unsigned int SDL_GetTicks(void);\n'
+        '#endif\n',
+        "probe lgs extern")))
+
+    # 6i. TEMP probes: what inside "new GeoscapeState" costs 33 s on 040/40.
+    results.append(("GeoscapeState.cpp (probe extern)", edit(
+        os.path.join(src, "Geoscape", "GeoscapeState.cpp"),
+        '#include "GeoscapeState.h"\n',
+        '#include "GeoscapeState.h"\n'
+        '#ifdef __AMIGA__\n'
+        '#include <cstdio>\n'
+        'extern "C" void SDLmini_Log(const char *msg);\n'
+        'extern "C" unsigned int SDL_GetTicks(void);\n'
+        '#define AMIGA_GP(tag) do { char gp_[64]; snprintf(gp_, sizeof gp_, "geo: %s at %u ms", tag, SDL_GetTicks()); SDLmini_Log(gp_); } while (0)\n'
+        '#endif\n',
+        "geo probe extern")))
+    results.append(("GeoscapeState.cpp (ctor probes)", edit(
+        os.path.join(src, "Geoscape", "GeoscapeState.cpp"),
+        "\tint screenWidth = Options::baseXGeoscape;\n",
+        "\tAMIGA_GP(\"ctor begin\");\n"
+        "\tint screenWidth = Options::baseXGeoscape;\n",
+        "geo ctor probe")))
+    results.append(("GeoscapeState.cpp (globe made probe)", edit(
+        os.path.join(src, "Geoscape", "GeoscapeState.cpp"),
+        "\t_globe = new Globe(_game, (screenWidth-64)/2, screenHeight/2, screenWidth-64, screenHeight, 0, 0);\n",
+        "\tAMIGA_GP(\"globe ctor begin\");\n"
+        "\t_globe = new Globe(_game, (screenWidth-64)/2, screenHeight/2, screenWidth-64, screenHeight, 0, 0);\n"
+        "\tAMIGA_GP(\"globe ctor end\");\n",
+        "globe ctor probe")))
+    results.append(("GeoscapeState.cpp (ctor end probe)", edit(
+        os.path.join(src, "Geoscape", "GeoscapeState.cpp"),
+        "\ttimeDisplay();\n}\n",
+        "\ttimeDisplay();\n"
+        "\tAMIGA_GP(\"ctor end\");\n"
+        "}\n",
+        "geo ctor end probe")))
+
+    # 6j. Dogfight zoom in ONE step (user: reaching a fight took 30-60 s).
+    #     The smooth effect changes the radius ~10 times and every change
+    #     recomputes the whole globe geometry (cachePolygons, ~3 s on the
+    #     -70% 040/40). One jump = one recompute.
+    results.append(("Globe.cpp (dogfight zoom in jump)", edit(
+        os.path.join(src, "Geoscape", "Globe.cpp"),
+        "bool Globe::zoomDogfightIn()\n{\n",
+        "bool Globe::zoomDogfightIn()\n{\n"
+        "#ifdef __AMIGA__\n"
+        "\t/* AMIGA-PORT: jump straight to dogfight zoom - see patch script. */\n"
+        "\tif (_zoom < DOGFIGHT_ZOOM) setZoom(DOGFIGHT_ZOOM);\n"
+        "\treturn true;\n"
+        "#endif\n",
+        "dogfight zoom jump")))
+    results.append(("Globe.cpp (dogfight zoom out jump)", edit(
+        os.path.join(src, "Geoscape", "Globe.cpp"),
+        "bool Globe::zoomDogfightOut()\n{\n",
+        "bool Globe::zoomDogfightOut()\n{\n"
+        "#ifdef __AMIGA__\n"
+        "\t/* AMIGA-PORT: jump straight back - see zoomDogfightIn. */\n"
+        "\tif (_zoom > _zoomOld) setZoom(_zoomOld);\n"
+        "\treturn true;\n"
+        "#endif\n",
+        "dogfight zoom out jump")))
+
+    # 6k. cachePolygons without per-vertex trig (user: rotation/zoom ~3 s,
+    #     dogfight approach 30-60 s). Vertex sin/cos precomputed once; each
+    #     recache does 4 trig calls total plus multiplies. See body comment.
+    results.append(("Globe.cpp (vertex trig table)", edit(
+        os.path.join(src, "Geoscape", "Globe.cpp"),
+        GLOBE_CACHE_OLD,
+        GLOBE_CACHE_NEW,
+        "vertex trig table")))
+
+    # 6l. Hover radar circles: one circle per DISTINCT range, not one per
+    #     facility TYPE (~15 identical circles of 48 trig-heavy segments each
+    #     made base placement cost ~700 ms per globe redraw).
+    results.append(("Globe.cpp (hover ranges dedup)", edit(
+        os.path.join(src, "Geoscape", "Globe.cpp"),
+        "\t\tconst std::vector<std::string> &facilities = _game->getMod()->getBaseFacilitiesList();\n"
+        "\t\tfor (std::vector<std::string>::const_iterator i = facilities.begin(); i != facilities.end(); ++i)\n"
+        "\t\t{\n"
+        "\t\t\trange=_game->getMod()->getBaseFacility(*i)->getRadarRange();\n"
+        "\t\t\trange = range * (1 / 60.0) * (M_PI / 180);\n"
+        "\t\t\tdrawGlobeCircle(_hoverLat,_hoverLon,range,48);\n"
+        "\t\t\tif (Options::globeAllRadarsOnBaseBuild) ranges.push_back(range);\n"
+        "\t\t}\n",
+        "\t\t/* AMIGA-PORT: draw each DISTINCT radar range once - facility types\n"
+        "\t\t * share ranges, and every circle is 48 trig-heavy segments. */\n"
+        "\t\tconst std::vector<std::string> &facilities = _game->getMod()->getBaseFacilitiesList();\n"
+        "\t\tstd::vector<double> seen_;\n"
+        "\t\tfor (std::vector<std::string>::const_iterator i = facilities.begin(); i != facilities.end(); ++i)\n"
+        "\t\t{\n"
+        "\t\t\trange=_game->getMod()->getBaseFacility(*i)->getRadarRange();\n"
+        "\t\t\trange = range * (1 / 60.0) * (M_PI / 180);\n"
+        "\t\t\tbool dup_ = false;\n"
+        "\t\t\tfor (size_t k_ = 0; k_ < seen_.size(); ++k_) if (seen_[k_] == range) { dup_ = true; break; }\n"
+        "\t\t\tif (dup_) continue;\n"
+        "\t\t\tseen_.push_back(range);\n"
+        "\t\t\tdrawGlobeCircle(_hoverLat,_hoverLon,range,48);\n"
+        "\t\t\tif (Options::globeAllRadarsOnBaseBuild) ranges.push_back(range);\n"
+        "\t\t}\n",
+        "hover ranges dedup")))
+
+    results.append(("Globe.cpp (cstdio include)", edit(
+        os.path.join(src, "Geoscape", "Globe.cpp"),
+        '#include "Globe.h"\n',
+        '#include "Globe.h"\n#include <cstdio>\n',
+        "globe cstdio")))
+
+    # 6m. Flat sun-shaded land polygons (LISTA 2d; option amigaFlatGlobe,
+    #     default ON for evaluation - set 0 in options.cfg to get the old
+    #     textured land back, no rebuild needed). Colour = dominant colour of
+    #     the polygon's texture tile; shade = polygon normal (dot) sun in
+    #     Q1.14, so facing-the-sun land is lighter and grazing land darker;
+    #     the per-pixel night terminator still comes from drawShadow.
+    results.append(("Globe.cpp (cstring include)", edit(
+        os.path.join(src, "Geoscape", "Globe.cpp"),
+        '#include "Globe.h"\n#include <cstdio>\n',
+        '#include "Globe.h"\n#include <cstdio>\n#include <cstring>\n',
+        "globe cstring")))
+    results.append(("Globe.cpp (flat land)", edit(
+        os.path.join(src, "Geoscape", "Globe.cpp"),
+        GLOBE_LAND_OLD,
+        GLOBE_LAND_NEW,
+        "flat land")))
+
+    # 6n. Radar circles and country lines without per-step doubles (pkt 3).
+    #     drawGlobeCircle ran asin/atan2/sin/cos per SEGMENT (~250 trig per
+    #     circle); the vector form needs 12 per circle. XuLine stepped in
+    #     doubles; it walks in 16.16 fixed point now.
+    results.append(("Globe.cpp (vector circles)", edit(
+        os.path.join(src, "Geoscape", "Globe.cpp"),
+        GLOBE_CIRCLE_OLD,
+        GLOBE_CIRCLE_NEW,
+        "vector circles")))
+    results.append(("Globe.cpp (fixed-point XuLine)", edit(
+        os.path.join(src, "Geoscape", "Globe.cpp"),
+        GLOBE_XULINE_OLD,
+        GLOBE_XULINE_NEW,
+        "fixed-point XuLine")))
 
     # 5x. Globe blit diagnostics (temporary): the globe draws (first
     #     filledCircle/texturedPolygon are logged by sdlmini) but the screen
@@ -1898,14 +3280,16 @@ def main():
         "}\n",
         "\t\t_randomNoiseData[i] = rand()%4;\n"
         "\n"
-        "\tcachePolygons();\n"
         "#ifdef __AMIGA__\n"
-        "\t_cacheLon = _cenLon;\n"
-        "\t_cacheLat = _cenLat;\n"
-        "\t_cacheRadius = _radius;\n"
-        "\t_cacheValid = true;\n"
+        "\t/* AMIGA-PORT: LAZY globe cache. cachePolygons() took 36 s of every\n"
+        "\t * load-into-battle on an 040/40 (GeoscapeState is constructed under\n"
+        "\t * the battlescape so there is something to return to). draw() runs\n"
+        "\t * it on first use via the !_cacheValid branch instead. */\n"
+        "\t_cacheValid = false;\n"
         "\t_baseValid = false;\n"
         "\t_sunKey = _radarKey = -1;\n"
+        "#else\n"
+        "\tcachePolygons();\n"
         "#endif\n"
         "}\n",
         "Globe cache key init")))
@@ -1951,6 +3335,7 @@ def main():
         "\t * Nothing else is touched, so a quiet globe costs the markers only. */\n"
         "\tstatic unsigned long calls_ = 0, lastFlips_ = 0, baseDraws_ = 0, radarDraws_ = 0;\n"
         "\tstatic Uint32 lastTicks_ = 0, lastBase_ = 0, sBase = 0, sCache = 0, sRadar = 0, sMark = 0, sDetail = 0;\n"
+        "\tstatic Uint32 sOcean = 0, sLand = 0, sShadow = 0; /* TEMP globe3d split */\n"
         "\t++calls_;\n"
         "\t_redraw = false;\n"
         "\n"
@@ -1993,9 +3378,11 @@ def main():
         "\t\tUint32 t1 = SDL_GetTicks();\n"
         "\t\tSurface::draw();\n"
         "\t\tdrawOcean();\n"
+        "\t\tUint32 t1a = SDL_GetTicks(); sOcean += t1a - t1;\n"
         "\t\tdrawLand();\n"
+        "\t\tUint32 t1b = SDL_GetTicks(); sLand += t1b - t1a;\n"
         "\t\tdrawShadow();\n"
-        "\t\tUint32 t2 = SDL_GetTicks();\n"
+        "\t\tUint32 t2 = SDL_GetTicks(); sShadow += t2 - t1b;\n"
         "\t\tdrawDetail();\n"
         "\t\tsCache += t1 - t0; sBase += t2 - t1; sDetail += SDL_GetTicks() - t2;\n"
         "\t\t++baseDraws_;\n"
@@ -2017,16 +3404,17 @@ def main():
         "\t\tdrawMarkers();\n"
         "\t\tsMark += SDL_GetTicks() - t0;\n"
         "\t}\n"
-        "\tif ((calls_ % 50) == 0)\n"
+        "\tif ((calls_ % 10) == 0)\n"
         "\t{\n"
         "\t\tchar b[200];\n"
-        "\t\tsnprintf(b, sizeof b, \"globe: 50 calls in %lu ms over %lu frames: base %lu (cache %lu + draw %lu + detail %lu ms each), radar %lu (%lu ms each), markers %lu ms total\",\n"
+        "\t\tsnprintf(b, sizeof b, \"globe: 10 calls in %lu ms over %lu frames: base %lu (cache %lu + ocean %lu + land %lu + shadow %lu + detail %lu ms each), radar %lu (%lu ms each), markers %lu ms total\",\n"
         "\t\t\t(unsigned long)(now - lastTicks_), SDLmini_flips - lastFlips_,\n"
-        "\t\t\tbaseDraws_, baseDraws_ ? (unsigned long)sCache / baseDraws_ : 0UL, baseDraws_ ? (unsigned long)sBase / baseDraws_ : 0UL, baseDraws_ ? (unsigned long)sDetail / baseDraws_ : 0UL,\n"
+        "\t\t\tbaseDraws_, baseDraws_ ? (unsigned long)sCache / baseDraws_ : 0UL, baseDraws_ ? (unsigned long)sOcean / baseDraws_ : 0UL, baseDraws_ ? (unsigned long)sLand / baseDraws_ : 0UL, baseDraws_ ? (unsigned long)sShadow / baseDraws_ : 0UL, baseDraws_ ? (unsigned long)sDetail / baseDraws_ : 0UL,\n"
         "\t\t\tradarDraws_, radarDraws_ ? (unsigned long)sRadar / radarDraws_ : 0UL, (unsigned long)sMark);\n"
         "\t\tSDLmini_Log(b);\n"
         "\t\tlastTicks_ = now; lastFlips_ = SDLmini_flips;\n"
         "\t\tbaseDraws_ = radarDraws_ = 0; sBase = sCache = sRadar = sMark = sDetail = 0;\n"
+        "\t\tsOcean = sLand = sShadow = 0;\n"
         "\t}\n"
         "#else\n"
         "\tif (_redraw)\n"
@@ -2170,6 +3558,80 @@ def main():
         "\t}\n"
         "};\n"
         "\n"
+        "/* AMIGA-PORT: shadow at HALF resolution. The Q1.14 dot product runs\n"
+        " * once per 2x2 block - the terminator is a soft noise-dithered\n"
+        " * gradient, so sharing it is invisible - while the palette logic\n"
+        " * still runs per pixel, keeping land/ocean boundaries and the disc\n"
+        " * rim exact. Rim pixels whose block anchor lies outside the disc\n"
+        " * compute their own dot product. Was ~110 ms per redraw, per-pixel. */\n"
+        "static inline int shadowDotV(const CordFix &e, const CordFix &sun)\n"
+        "{\n"
+        "\tconst Sint32 dx = (Sint32)e.x - sun.x;\n"
+        "\tconst Sint32 dy = (Sint32)e.y - sun.y;\n"
+        "\tconst Sint32 dz = (Sint32)e.z - sun.z;\n"
+        "\tconst Sint32 n = ((dx * dx) >> 4) + ((dy * dy) >> 4) + ((dz * dz) >> 4);\n"
+        "\tconst Sint32 x = ((n - (2L << 24)) >> 8) * 125;\n"
+        "\tif (x < -(110L << 16)) return -31;\n"
+        "\tif (x > (120L << 16)) return 50;\n"
+        "\treturn static_data.shade_gradient[(int)(x / 65536) + 120];\n"
+        "}\n"
+        "\n"
+        "static inline Uint8 shadowApply(Uint8 dest, int v)\n"
+        "{\n"
+        "\tif (v > 0)\n"
+        "\t{\n"
+        "\t\tconst int val = (v > 31) ? 31 : v;\n"
+        "\t\tconst int d = dest & helper::ColorGroup;\n"
+        "\t\tif (d == Globe::OCEAN_COLOR || d == Globe::OCEAN_COLOR + 16)\n"
+        "\t\t\treturn (Uint8)(Globe::OCEAN_COLOR + val);\n"
+        "\t\tconst int s = val / 3;\n"
+        "\t\tconst int e = dest + s;\n"
+        "\t\tif (e > d + helper::ColorShade)\n"
+        "\t\t\treturn (Uint8)(d + helper::ColorShade);\n"
+        "\t\treturn (Uint8)e;\n"
+        "\t}\n"
+        "\tconst int d = dest & helper::ColorGroup;\n"
+        "\tif (d == Globe::OCEAN_COLOR || d == Globe::OCEAN_COLOR + 16)\n"
+        "\t\treturn (Uint8)Globe::OCEAN_COLOR;\n"
+        "\treturn dest;\n"
+        "}\n"
+        "\n"
+        "static void drawShadowHalfFix(SDL_Surface *ss, const CordFix *ef, int w2, int h2, const CordFix &sun, const Sint16 *noise, int nsz)\n"
+        "{\n"
+        "\tUint8 *px = (Uint8 *)ss->pixels;\n"
+        "\tconst int pitch = ss->pitch;\n"
+        "\tfor (int j = 0; j < h2; j += 2)\n"
+        "\t{\n"
+        "\t\tconst int rows = (j + 1 < h2) ? 2 : 1;\n"
+        "\t\tconst Sint16 *nrow0 = noise + (j % nsz) * nsz;\n"
+        "\t\tconst Sint16 *nrow1 = noise + ((j + 1) % nsz) * nsz;\n"
+        "\t\tint n0 = 0;\n"
+        "\t\tfor (int i = 0; i < w2; i += 2)\n"
+        "\t\t{\n"
+        "\t\t\tconst int cols = (i + 1 < w2) ? 2 : 1;\n"
+        "\t\t\tint n1 = n0 + 1; if (n1 >= nsz) n1 = 0;\n"
+        "\t\t\tconst CordFix *e0 = &ef[(size_t)j * w2 + i];\n"
+        "\t\t\tconst int vb = (e0->z != 0) ? shadowDotV(*e0, sun) : 0x7FFF;\n"
+        "\t\t\tfor (int bj = 0; bj < rows; ++bj)\n"
+        "\t\t\t{\n"
+        "\t\t\t\tUint8 *dp = px + (size_t)(j + bj) * pitch + i;\n"
+        "\t\t\t\tconst CordFix *eb = &ef[(size_t)(j + bj) * w2 + i];\n"
+        "\t\t\t\tconst Sint16 *nr = bj ? nrow1 : nrow0;\n"
+        "\t\t\t\tconst int ni[2] = { n0, n1 };\n"
+        "\t\t\t\tfor (int bi = 0; bi < cols; ++bi)\n"
+        "\t\t\t\t{\n"
+        "\t\t\t\t\tconst Uint8 dest = dp[bi];\n"
+        "\t\t\t\t\tif (!dest || eb[bi].z == 0) { dp[bi] = 0; continue; }\n"
+        "\t\t\t\t\tint v = (vb != 0x7FFF) ? vb : shadowDotV(eb[bi], sun);\n"
+        "\t\t\t\t\tv -= nr[ni[bi]];\n"
+        "\t\t\t\t\tdp[bi] = shadowApply(dest, v);\n"
+        "\t\t\t\t}\n"
+        "\t\t\t}\n"
+        "\t\t\tn0 += 2; if (n0 >= nsz) n0 -= nsz;\n"
+        "\t\t}\n"
+        "\t}\n"
+        "}\n"
+        "\n"
         "/* double unit vector -> Q1.14, rounded */\n"
         "static inline CordFix cordToFix(const Cord &c)\n"
         "{\n"
@@ -2196,19 +3658,11 @@ def main():
         "\t/* AMIGA-PORT: the normals go straight into Q1.14; the double table is\n"
         "\t * never allocated (it would be 7.4 MB). Inside the disc z is kept >= 1\n"
         "\t * so the shader's inside test never loses a rim pixel to rounding. */\n"
+        "\t/* LAZY: filling all 6 zoom levels eagerly (307k soft-float sqrt) took\n"
+        "\t * 30 s on an 040/40 in the Globe constructor - and loading straight\n"
+        "\t * into a battle never shows the globe at all. drawShadow() fills the\n"
+        "\t * level it actually uses on first touch. */\n"
         "\t_earthFix.resize(_zoomRadius.size());\n"
-        "\tfor (size_t r = 0; r<_zoomRadius.size(); ++r)\n"
-        "\t{\n"
-        "\t\t_earthFix[r].resize(width * height);\n"
-        "\t\tfor (int j=0; j<height; ++j)\n"
-        "\t\t\tfor (int i=0; i<width; ++i)\n"
-        "\t\t\t{\n"
-        "\t\t\t\tCord c = static_data.circle_norm(width/2, height/2, _zoomRadius[r], i+.5, j+.5);\n"
-        "\t\t\t\tCordFix f = cordToFix(c);\n"
-        "\t\t\t\tif (c.z != 0. && f.z == 0) f.z = 1;\n"
-        "\t\t\t\t_earthFix[r][width*j + i] = f;\n"
-        "\t\t\t}\n"
-        "\t}\n"
         "#else\n"
         "\tfor (size_t r = 0; r<_zoomRadius.size(); ++r)\n"
         "\t{\n"
@@ -2237,6 +3691,51 @@ def main():
         "{\n"
         "#ifdef __AMIGA__\n"
         "\t/* AMIGA-PORT: fixed-point shader; see CreateShadowFix. */\n"
+        "\tif (_earthFix[_zoom].empty())\n"
+        "\t{\n"
+        "\t\t/* lazy fill; first try data/common/earthfix.dat, precomputed at\n"
+        "\t\t * build time (gen_earthfix.py) - computing this table live was\n"
+        "\t\t * 307k soft-double sqrts = ~5 s per zoom level on an 040/40. */\n"
+        "\t\tconst int w_ = getWidth(), h_ = getHeight();\n"
+        "\t\t_earthFix[_zoom].resize(w_ * h_);\n"
+        "\t\tbool got_ = false;\n"
+        "\t\tif (sizeof(CordFix) == 6)\n"
+        "\t\t{\n"
+        "\t\t\tFILE *ef_ = fopen(\"PROGDIR:data/common/earthfix.dat\", \"rb\");\n"
+        "\t\t\tif (ef_)\n"
+        "\t\t\t{\n"
+        "\t\t\t\tunsigned char hd_[10];\n"
+        "\t\t\t\tif (fread(hd_, 1, 10, ef_) == 10 && hd_[0]==69 && hd_[1]==70 && hd_[2]==88 && hd_[3]==49)\n"
+        "\t\t\t\t{\n"
+        "\t\t\t\t\tconst int fw_ = (hd_[4]<<8)|hd_[5], fh_ = (hd_[6]<<8)|hd_[7], fl_ = (hd_[8]<<8)|hd_[9];\n"
+        "\t\t\t\t\tif (fw_ == w_ && fh_ == h_ && (int)_zoom < fl_)\n"
+        "\t\t\t\t\t{\n"
+        "\t\t\t\t\t\tunsigned char rr_[4];\n"
+        "\t\t\t\t\t\tfseek(ef_, 10 + 4 * (long)_zoom, SEEK_SET);\n"
+        "\t\t\t\t\t\tif (fread(rr_, 1, 4, ef_) == 4)\n"
+        "\t\t\t\t\t\t{\n"
+        "\t\t\t\t\t\t\tconst unsigned long fr_ = ((unsigned long)rr_[0]<<24)|((unsigned long)rr_[1]<<16)|((unsigned long)rr_[2]<<8)|rr_[3];\n"
+        "\t\t\t\t\t\t\tif (fr_ == (unsigned long)(_zoomRadius[_zoom] * 256.0 + 0.5))\n"
+        "\t\t\t\t\t\t\t{\n"
+        "\t\t\t\t\t\t\t\tfseek(ef_, 10 + 4L * fl_ + 6L * w_ * h_ * (long)_zoom, SEEK_SET);\n"
+        "\t\t\t\t\t\t\t\tgot_ = fread(&_earthFix[_zoom][0], 6, (size_t)(w_ * h_), ef_) == (size_t)(w_ * h_);\n"
+        "\t\t\t\t\t\t\t}\n"
+        "\t\t\t\t\t\t}\n"
+        "\t\t\t\t\t}\n"
+        "\t\t\t\t}\n"
+        "\t\t\t\tfclose(ef_);\n"
+        "\t\t\t}\n"
+        "\t\t}\n"
+        "\t\tif (!got_)\n"
+        "\t\tfor (int j=0; j<h_; ++j)\n"
+        "\t\t\tfor (int i=0; i<w_; ++i)\n"
+        "\t\t\t{\n"
+        "\t\t\t\tCord c = static_data.circle_norm(w_/2, h_/2, _zoomRadius[_zoom], i+.5, j+.5);\n"
+        "\t\t\t\tCordFix f = cordToFix(c);\n"
+        "\t\t\t\tif (c.z != 0. && f.z == 0) f.z = 1;\n"
+        "\t\t\t\t_earthFix[_zoom][w_*j + i] = f;\n"
+        "\t\t\t}\n"
+        "\t}\n"
         "\tShaderMove<CordFix> earth = ShaderMove<CordFix>(_earthFix[_zoom], getWidth(), getHeight());\n"
         "\tShaderRepeat<Sint16> noise = ShaderRepeat<Sint16>(_randomNoiseData, static_data.random_surf_size, static_data.random_surf_size);\n"
         "\n"
@@ -2244,7 +3743,10 @@ def main():
         "\n"
         "\tCordFix sun = cordToFix(getSunDirection(_cenLon, _cenLat));\n"
         "\tlock();\n"
-        "\tShaderDraw<CreateShadowFix>(ShaderSurface(this), earth, ShaderScalar(sun), noise);\n"
+        "\tif (_cenX == getWidth() / 2 && _cenY == getHeight() / 2)\n"
+        "\t\tdrawShadowHalfFix(getSurface(), &_earthFix[_zoom][0], getWidth(), getHeight(), sun, &_randomNoiseData[0], static_data.random_surf_size);\n"
+        "\telse\n"
+        "\t\tShaderDraw<CreateShadowFix>(ShaderSurface(this), earth, ShaderScalar(sun), noise);\n"
         "\tunlock();\n"
         "#else\n"
         "\tShaderMove<Cord> earth = ShaderMove<Cord>(_earthData[_zoom], getWidth(), getHeight());\n"

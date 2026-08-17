@@ -14,7 +14,7 @@ param(
   [switch]$KeepRunning
 )
 
-$exe = "I:\GITHUB\Amiga_OpenTTD\tools\winuae281\winuae.exe"
+$exe = "I:\GITHUB\Amiga_OpenTTD\tools\winuae281\winuae-oxc.exe"
 $wd  = "I:\GITHUB\Amiga_OpenTTD\tools\winuae281"
 # The runtime (Work:, the hardfile, the Kickstart) lives on the SSD, not in the
 # repository on the network drive - see the note in oxc-aga.uae.
