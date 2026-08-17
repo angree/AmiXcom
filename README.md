@@ -43,7 +43,7 @@ Known problems and gaps in this release, briefly:
 
 - **Load is still ~20 s** (yaml parse dominates) and the save-list dates show "????".
 - **~50 MB RAM required**; 32 MB machines will not load the game yet.
-- **No sound yet** (Paula/ADPCM layer from the OpenTTD port not wired in).
+- **No music yet** (basic sound effects work; music streaming not wired in).
 - **AGA only, 320×200, 8-bit.** An RTG build (`openxcom-rtg`) is compiled but untested;
   the `-ask` build asks which one to use at start.
 - **No sound and no music yet** (built with `__NO_MUSIC`; the Paula/ADPCM path from the

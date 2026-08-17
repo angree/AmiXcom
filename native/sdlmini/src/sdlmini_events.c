@@ -116,13 +116,28 @@ static void queue_push(const SDL_Event *ev)
 	s_tail = next;
 }
 
+/* AMIGA-PORT keyboard fix (0.5.5): the plain compare loop here was
+ * miscompiled by gcc 6.5 at -O1 - the log showed `key raw 0x25 idx 36
+ * entry.raw 0x13`: a search for 'h' RETURNED the 'r' entry, which is why
+ * typing produced only 'r' (and '6') no matter the key. Same compiler bug
+ * family as Mod.cpp (see build.sh). Rebuilt as a direct 128-entry map,
+ * initialised once with volatile loads, and pinned to -O0. */
+__attribute__((optimize(0)))
 static const AmigaKey *lookup(int raw)
 {
-	unsigned i;
-	for (i = 0; i < sizeof(s_keys) / sizeof(s_keys[0]); i++) {
-		if (s_keys[i].raw == raw) return &s_keys[i];
+	static const AmigaKey *map[128];
+	static int init = 0;
+	if (!init) {
+		volatile unsigned i;
+		for (i = 0; i < sizeof(s_keys) / sizeof(s_keys[0]); i++) {
+			const AmigaKey *e = &s_keys[i];
+			volatile int r = e->raw;
+			if (r >= 0 && r < 128) map[r] = e;
+		}
+		init = 1;
 	}
-	return NULL;
+	if (raw < 0 || raw >= 128) return NULL;
+	return map[raw];
 }
 
 static void update_mods(int sym, int down)

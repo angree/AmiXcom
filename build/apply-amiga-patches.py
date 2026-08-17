@@ -1186,9 +1186,9 @@ def main():
         '#define OPENXCOM_VERSION_SHORT "1.0"\n'
         '#define OPENXCOM_VERSION_LONG "1.0.0.0"\n'
         '#define OPENXCOM_VERSION_NUMBER 1,0,0,0\n',
-        '#define OPENXCOM_VERSION_SHORT "0.5.0"\n'
-        '#define OPENXCOM_VERSION_LONG "0.5.0.0"\n'
-        '#define OPENXCOM_VERSION_NUMBER 0,5,0,0\n'
+        '#define OPENXCOM_VERSION_SHORT "0.5.5"\n'
+        '#define OPENXCOM_VERSION_LONG "0.5.5.0"\n'
+        '#define OPENXCOM_VERSION_NUMBER 0,5,5,0\n'
         '#define OPENXCOM_VERSION_GIT ""\n',
         "port version")))
     results.append(("MainMenuState.cpp (AmiXcom title)", edit(
@@ -3192,6 +3192,19 @@ def main():
         GLOBE_XULINE_OLD,
         GLOBE_XULINE_NEW,
         "fixed-point XuLine")))
+
+    # 6o. Port credit, small font, bottom-left of the title screen.
+    results.append(("MainMenuState.cpp (port credit)", edit(
+        os.path.join(src, "Menu", "MainMenuState.cpp"),
+        "\tadd(_txtTitle, \"text\", \"mainMenu\");\n",
+        "\tadd(_txtTitle, \"text\", \"mainMenu\");\n"
+        "\t{\n"
+        "\t\tText *txtPort_ = new Text(200, 9, 2, 191); /* AMIGA-PORT credit */\n"
+        "\t\tadd(txtPort_, \"text\", \"mainMenu\");\n"
+        "\t\ttxtPort_->setSmall();\n"
+        "\t\ttxtPort_->setText(Language::utf8ToWstr(\"PORT MADE BY GRZEGORZ KORYCKI\"));\n"
+        "\t}\n",
+        "port credit")))
 
     # 5x. Globe blit diagnostics (temporary): the globe draws (first
     #     filledCircle/texturedPolygon are logged by sdlmini) but the screen
