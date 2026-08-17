@@ -1,0 +1,86 @@
+AMIXCOM - LISTA POZOSTALYCH ROBOT (2026-08-17)
+Zasady: przed kazdym punktem pelny backup zip, jedna zmiana na build,
+Claude testuje sam (config -70% = oxc-aga-nojit-040-40.uae). Kolejnosc ponizej.
+
+1. POMIAR BLITOW (w toku)
+   Licznik w sdlmini: ile milisekund na klatke schodzi na kopiowanie
+   powierzchni (blity), ile na c2p, ile na reszte. Bez tego nie wiadomo,
+   ktora optymalizacja sie oplaca. Jedna linijka w logu co 100 klatek.
+
+2. SZYBSZE BLITY - wariant A (potem ew. B, C - OSOBNO, po jednym)
+   Blit = kopiowanie obrazka na ekran z pominieciem "przezroczystego"
+   koloru (colorkey); dzis gra porownuje kazdy piksel osobno.
+   A: porownywac po 4 piksele naraz (dluzsze slowa procesora); obszary
+      calkiem puste/calkiem pelne ida wtedy 4x szybciej.
+   B: zapamietac raz, ze dany obrazek w ogole nie ma przezroczystych
+      pikseli -> kopiowac go wtedy wprost, bez zadnych porownan.
+   C: dla obrazkow, ktore sie nigdy nie zmieniaja (sprite'y, czcionki),
+      policzyc raz liste "pomin N, skopiuj M" na kazdy wiersz; potem blit
+      to same szybkie kopie, zero porownan. Najwiekszy zysk, najwiecej pracy.
+
+3. SPAN FILLS (wypelnienia globusa)
+   Ocean i lad globusa rysowane sa dzis piksel po pikselu. Zamiast tego
+   wypelniac cale poziome odcinki naraz (memset/kopiowanie wierszami).
+   Kod juz napisany i zmierzony wczesniej - do wlaczenia i przetestowania.
+   Oczekiwane: rysowanie ladu z ~15 ms do ~1 ms.
+
+4. CACHE KOLEK RADAROW
+   Kolka zasiegu radarow przerysowuja sie za kazdym rysowaniem globusa
+   (~20 ms na baze), chociaz zmieniaja sie tylko przy obrocie/zoomie albo
+   nowej bazie. Trzymac je narysowane obok i tylko kopiowac.
+   UWAGA: przy stawianiu bazy kolko pod myszka odswieza sie co klatke -
+   to tez tu naprawic (klucz odswiezania ma nie zalezec od samej myszki).
+
+5. SIN/COS Z TABLIC (LUT)
+   Obrot i zoom globusa przelicza wspolrzedne wszystkich poligonow swiata
+   przez wolne funkcje sin/cos z ROM-u (~400 ms na jeden obrot).
+   Zamiast tego gotowa tablica ~4096 wartosci - odczyt zamiast liczenia.
+   Do tego samo rysowanie linii wybrzeza (XuLine) przejsc na liczby
+   calkowite (algorytm Bresenhama).
+
+6. PLASKIE POLIGONY LADU CIENIOWANE WG SLONCA
+   Zamiast tekstur ladu: kazdy poligon w JEDNYM kolorze, ale odcien
+   zalezny od kata do slonca (jasniej w dzien, ciemniej przy terminatorze).
+   WYMAGANIE UZYTKOWNIKA: rozne odcienie, NIE jeden plaski kolor.
+   Kod przygotowany (shadepoly2.py), wymaga wypelniania poligonow z pkt 3.
+   Na koncu pokazac zrzut ekranu do akceptacji.
+
+7. DIRTY RECTANGLES (najwiekszy zysk plynnosci)
+   Dzis KAZDA klatka = przerysowanie calego ekranu przez wszystkie
+   elementy UI + pelna konwersja c2p 320x200 (~35-40 ms) - nawet gdy nic
+   sie nie zmienilo. Dirty rects = zapamietywac, ktore prostokaty ekranu
+   sie zmienily, i tylko je przerysowac/skonwertowac. Plik c2p_rect.s
+   (konwersja wycinka) juz jest w native/ - zostal z portu OpenTTD.
+   Po tym ekrany typu Bases powinny chodzic jak w OpenTTD.
+
+8. SZYBKI ZAPIS GRY
+   Zapis stanu gry trwa ~minute, bo silnik zapisuje YAML tekstowo:
+   tysiace liczb zmiennoprzecinkowych zamienianych na tekst przez wolna
+   emulacje FPU. Naprawa: wlasna szybka konwersja liczb + mniejsza
+   precyzja wspolrzednych + bufor zapisu. Cel: kilka sekund.
+
+9. KLAWIATURA ("6" przy kazdym klawiszu)
+   Prawdziwe klawisze daja zly znak (tablica w binarce jest dobra, blad
+   gdzies w odczycie). Potrzebny czlowiek przy klawiaturze do testu -
+   autoinput wstrzykuje klawisze z pominieciem tej sciezki.
+   UWAGA: F12 wcisniete W GRZE (nie w oknie WinUAE) = funkcja screenshot
+   gry, ktora wywala port (konwersja 8->24bpp) - do zabezpieczenia.
+
+10. DZWIEK (Paula/ADPCM z portu OpenTTD) - jeszcze nie ruszony.
+
+11. DROBIAZGI
+    - licznik FPS raz zniknal po OK w opcjach (nie umiemy powtorzyc)
+    - 40 s po OK w opcjach na -70% - wstawic pomiar czasu wokol zapisu
+      opcji, zeby ustalic co je zjada
+    - RTG build nietestowany; maszyna 32 MB nadal nie wczytuje gry
+    - usunac tymczasowa diagnostyke z sdlmini/Globe przed wydaniem 0.2.0
+    - wydac 0.2.0 na GitHub (kod + release) po zamknieciu punktow 2-7
+
+ZROBIONE (dla porzadku):
+- glob: rysuje sie tylko gdy cos sie zmienilo (obrot/zoom/slonce/radar),
+  limit 1 przerysowanie/sekunde; bez ruchu = 0 rysowania
+- zakladka "Amiga" w opcjach (przed Video): pasek ekranu Amigi + wybor
+  kursora; oba domyslnie wlaczone; pasek NIE zabiera juz gry (ekran
+  otwiera sie wyzszy o pasek, mysz pasuje 1:1)
+- tytul paska = nazwa gry z jednego zrodla wersji (version.h): 0.2.0
+- wyjasnione nocne zwiechy: zostawiony plik autoinput.txt z klawiszem F12

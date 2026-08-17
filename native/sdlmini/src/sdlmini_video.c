@@ -548,18 +548,14 @@ SDL_Surface *SDL_SetVideoMode(int width, int height, int bpp, Uint32 flags)
 	s_req_w = width;
 	s_req_h = height;
 
-	{
-		/* The "Amiga screen title bar" option (SDLmini_show_bar, set by the
-		 * game from Options::amigaAppBar): keep Intuition's bar with the depth
-		 * gadget. The bar eats lines, so the screen is opened 256 lines tall
-		 * (PAL) and the game keeps drawing its 320x200 at the top; SDL_Flip
-		 * converts only those rows. Meaningless for the WB window backend. */
-		int h = height;
-		if (SDLmini_show_bar && h < 256) h = 256;
-		if (amigagfx_open(width, h, SDLmini_show_bar, s_backend) != 0) {
-			SDL_SetError("SDLmini: amigagfx_open(%d, %d, backend %d) failed", width, h, s_backend);
-			return NULL;
-		}
+	/* The "Amiga screen title bar" option (SDLmini_show_bar, set by the game
+	 * from Options::amigaAppBar): keep Intuition's bar with the depth gadget.
+	 * amigagfx opens the screen bar-many lines TALLER in that case, so the
+	 * game area below the bar is still exactly width x height and mouse
+	 * coordinates stay 1:1. Meaningless for the WB window backend. */
+	if (amigagfx_open(width, height, SDLmini_show_bar, s_backend) != 0) {
+		SDL_SetError("SDLmini: amigagfx_open(%d, %d, backend %d) failed", width, height, s_backend);
+		return NULL;
 	}
 
 	s_screen = new_surface(amigagfx_game_width(), amigagfx_game_height(), 8,

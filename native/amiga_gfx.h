@@ -159,6 +159,10 @@ void amigagfx_close(void);
  * before the window exists; it is re-applied when one opens. */
 void amigagfx_set_hide_system_pointer(int on);
 
+/* Set the text shown in the screen title bar (the wb_bar option). Safe before
+ * the screen exists (stored, used at open) and live afterwards. */
+void amigagfx_set_screen_title(const char *title);
+
 /* The chunky 8bpp framebuffer, in Fast RAM. This becomes _screen.dst_ptr, so
  * OpenTTD's blitter draws straight into it with no conversion. */
 unsigned char *amigagfx_chunky(void);

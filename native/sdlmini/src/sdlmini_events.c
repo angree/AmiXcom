@@ -464,6 +464,10 @@ void SDL_WM_SetCaption(const char *title, const char *icon)
 	if (title != NULL) {
 		strncpy(s_caption, title, sizeof(s_caption) - 1);
 		s_caption[sizeof(s_caption) - 1] = '\0';
+		/* The screen title bar (wb_bar option) shows the game's own name -
+		 * OpenXcom calls this before the display opens, so the title is
+		 * already right when the bar first appears. */
+		amigagfx_set_screen_title(s_caption);
 	}
 }
 

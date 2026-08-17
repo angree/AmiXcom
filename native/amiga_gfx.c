@@ -390,7 +390,24 @@ static UBYTE *g_wb_scratch;          /* remap band, pen path only */
 static struct RastPort g_temprp;     /* WritePixelArray8 scratch, no-CGX only */
 static struct BitMap  *g_tempbm;
 
-static UBYTE g_screen_title[] = "OpenTTD 68K";
+/* Shown in the screen title bar (the wb_bar option). Writable: the game sets
+ * it through amigagfx_set_screen_title() - sdlmini routes SDL_WM_SetCaption
+ * here - so the bar always shows the game's own name and version and this
+ * file never hard-codes either. The default only ever shows if the screen
+ * opens before the game names itself. */
+static UBYTE g_screen_title[80] = "AmiXcom";
+
+void amigagfx_set_screen_title(const char *t)
+{
+	if (t != NULL && *t != '\0') {
+		strncpy((char *)g_screen_title, t, sizeof(g_screen_title) - 1);
+		g_screen_title[sizeof(g_screen_title) - 1] = '\0';
+	}
+	/* Applied live when a window exists: the screen bar shows the ACTIVE
+	 * window's screen title, and our backdrop window is always active. */
+	if (g_window != NULL)
+		SetWindowTitles(g_window, (STRPTR)~0UL, (STRPTR)g_screen_title);
+}
 
 /* Intuition's default screen pens (DetailPen 0, BlockPen 1) index whatever
  * palette the GAME loads - and in the TTD *Windows* palette (OpenGFX's
@@ -1349,16 +1366,49 @@ int amigagfx_open(int w, int h, int show_bar, int backend)
 
 	/* The bar height is whatever Intuition says it is for the mode and font it
 	 * actually opened with - it is NEVER hard-coded. The bar itself occupies
-	 * BarHeight+1 lines (BarHeight excludes the separator line), so the game
-	 * area starts right below that and everything downstream (chunky buffer,
-	 * dirty rects, blit, mouse warp) works in the reduced height. */
+	 * BarHeight+1 lines (BarHeight excludes the separator line).
+	 *
+	 * OpenXcom difference from the OpenTTD original: the game's UI is a FIXED
+	 * 320x200 and cannot reflow, so the game area must not shrink under the
+	 * bar (that mismatched the SDL surface against the mouse scale and cut the
+	 * bottom of the screen). Instead the screen is closed and reopened
+	 * bar-many lines TALLER, so the full requested h sits below the bar. Costs
+	 * one extra open/close at startup; if the taller screen is refused, the
+	 * old reduce-the-area behaviour is the fallback. */
 	if (show_bar) {
 		int bar = (int)g_screen->BarHeight + 1;
 		if (bar > 0 && bar < h / 2) {
-			g_yoff   = bar;
-			g_height = h - bar;
-			fprintf(stdout, "amiga: wb bar visible, BarHeight %d -> game area %dx%d at y=%d\n",
-			        (int)g_screen->BarHeight, g_width, g_height, g_yoff);
+			int prev = g_backend;
+			/* close only what open_screen_* allocated */
+			if (g_screen != NULL) { CloseScreen(g_screen); g_screen = NULL; }
+			if (g_chip != NULL)   { FreeMem(g_chip, g_planesize * g_depth); g_chip = NULL; }
+			if (g_ehb_scratch != NULL) { FreeVec(g_ehb_scratch); g_ehb_scratch = NULL; }
+			g_ehb_scratch_rows = 0;
+			if (prev == AMIGAGFX_BACKEND_RTG)
+				err = open_screen_rtg(w, h + bar, quiet, title);
+			else
+				err = open_screen_aga(w, h + bar, quiet, title,
+				                      prev == AMIGAGFX_BACKEND_EHB ? DEPTH_EHB : DEPTH_AGA);
+			if (err == 0) {
+				bar = (int)g_screen->BarHeight + 1;   /* same mode, same font */
+				g_yoff   = bar;
+				g_height = h;
+				fprintf(stdout, "amiga: wb bar: screen %dx%d, full game area %dx%d at y=%d\n",
+				        w, h + bar, g_width, g_height, g_yoff);
+			} else {
+				/* taller refused - reopen at the original height and reduce */
+				if (prev == AMIGAGFX_BACKEND_RTG)
+					err = open_screen_rtg(w, h, quiet, title);
+				else
+					err = open_screen_aga(w, h, quiet, title,
+					                      prev == AMIGAGFX_BACKEND_EHB ? DEPTH_EHB : DEPTH_AGA);
+				if (err != 0) { amigagfx_close(); return err; }
+				bar = (int)g_screen->BarHeight + 1;
+				g_yoff   = bar;
+				g_height = h - bar;
+				fprintf(stdout, "amiga: wb bar: taller screen refused, reduced game area %dx%d at y=%d\n",
+				        g_width, g_height, g_yoff);
+			}
 		} else {
 			fprintf(stdout, "amiga: wb bar height %d implausible for %d lines - bar ignored\n",
 			        bar, h);

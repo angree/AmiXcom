@@ -197,15 +197,15 @@ def main():
         "display backend selection include")))
 
     # 3b. Name and version of the port. The main menu and the window title
-    #     say "AmiXcom 0.1.0 alpha" instead of "OpenXcom 1.0 Dev".
+    #     say "AmiXcom 0.2.0 alpha" instead of "OpenXcom 1.0 Dev".
     results.append(("version.h (AmiXcom)", edit(
         os.path.join(src, "version.h"),
         '#define OPENXCOM_VERSION_SHORT "1.0"\n'
         '#define OPENXCOM_VERSION_LONG "1.0.0.0"\n'
         '#define OPENXCOM_VERSION_NUMBER 1,0,0,0\n',
-        '#define OPENXCOM_VERSION_SHORT "0.1.0"\n'
-        '#define OPENXCOM_VERSION_LONG "0.1.0.0"\n'
-        '#define OPENXCOM_VERSION_NUMBER 0,1,0,0\n'
+        '#define OPENXCOM_VERSION_SHORT "0.2.0"\n'
+        '#define OPENXCOM_VERSION_LONG "0.2.0.0"\n'
+        '#define OPENXCOM_VERSION_NUMBER 0,2,0,0\n'
         '#define OPENXCOM_VERSION_GIT " alpha"\n',
         "port version")))
     results.append(("MainMenuState.cpp (AmiXcom title)", edit(
@@ -246,7 +246,7 @@ def main():
         os.path.join(src, "Engine", "Options.cpp"),
         "\t_info.push_back(OptionInfo(\"fpsCounter\", &fpsCounter, true)); /* AMIGA-PORT: default on */\n",
         "\t_info.push_back(OptionInfo(\"fpsCounter\", &fpsCounter, true)); /* AMIGA-PORT: default on */\n"
-        "\t_info.push_back(OptionInfo(\"amigaAppBar\", &amigaAppBar, false));\n"
+        "\t_info.push_back(OptionInfo(\"amigaAppBar\", &amigaAppBar, true));\n"
         "\t_info.push_back(OptionInfo(\"amigaCursor\", &amigaCursor, 1)); /* default: Amiga pointer */\n",
         "amiga OptionInfo")))
     results.append(("OptionsBaseState.h (btnAmiga)", edit(
