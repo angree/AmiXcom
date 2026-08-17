@@ -357,6 +357,14 @@ void SDL_GetRGBA(Uint32 pixel, const SDL_PixelFormat *format, Uint8 *r, Uint8 *g
 
 /* --------------------------------------------------------------- blits -- */
 
+/* TEMP perf counters (LISTA-ROBOT pkt 1): exact work counts per 100 frames,
+ * logged from SDL_Flip. Pixel counts are exact; times use the 20 ms tick and
+ * only mean anything summed over many frames. */
+static unsigned long s_perf_blits, s_perf_blits_ck;      /* calls */
+static unsigned long s_perf_px, s_perf_px_ck;            /* pixels copied */
+static unsigned long s_perf_fills, s_perf_fill_px;
+static unsigned long s_perf_c2p_ms, s_perf_last_ms;
+
 int SDL_FillRect(SDL_Surface *dst, SDL_Rect *dstrect, Uint32 color)
 {
 	int x, y, w, h, bpp;
@@ -378,6 +386,8 @@ int SDL_FillRect(SDL_Surface *dst, SDL_Rect *dstrect, Uint32 color)
 		if (x2 <= x1 || y2 <= y1) return 0;
 		x = x1; y = y1; w = x2 - x1; h = y2 - y1;
 	}
+	s_perf_fills++;
+	s_perf_fill_px += (unsigned long)w * h;
 
 	{
 		/* TEMP diagnostic (see SDL_UpperBlit): large fills of the 320x200
@@ -427,17 +437,49 @@ static void blit8(const SDL_Surface *src, const SDL_Rect *srcrect,
 	int w = srcrect->w, h = srcrect->h;
 
 	if (src->flags & SDL_SRCCOLORKEY) {
-		Uint8 key = (Uint8)(src->format->colorkey & 0xff);
+		/* Colorkey blit, 4 pixels at a time (LISTA-ROBOT pkt 2, wariant A).
+		 * Measured before this change: ~330k colorkey pixels per geoscape
+		 * frame (the globe's radar/country/marker layers are ~95% transparent
+		 * and full-screen). One longword compare skips 4 transparent pixels;
+		 * one longword store copies 4 opaque ones. The mixed case - only at
+		 * sprite edges - falls back to bytes. The has-a-key-byte test is the
+		 * classic (x-0x01010101) & ~x & 0x80808080 trick, no per-byte
+		 * compares. 68020 takes unaligned longword accesses. */
+		Uint8  key  = (Uint8)(src->format->colorkey & 0xff);
+		Uint32 key4 = (Uint32)key * 0x01010101UL;
+		s_perf_blits_ck++;
+		s_perf_px_ck += (unsigned long)w * h;
 		for (y = 0; y < h; y++) {
-			int x;
-			for (x = 0; x < w; x++) {
-				Uint8 c = sp[x];
-				if (c != key) dp[x] = c;
+			const Uint8 *s = sp;
+			Uint8 *d = dp;
+			int n = w;
+			while (n >= 4) {
+				Uint32 v;
+				memcpy(&v, s, 4);
+				if (v != key4) {
+					Uint32 xk = v ^ key4;
+					if (((xk - 0x01010101UL) & ~xk & 0x80808080UL) == 0) {
+						memcpy(d, &v, 4);
+					} else {
+						if (s[0] != key) d[0] = s[0];
+						if (s[1] != key) d[1] = s[1];
+						if (s[2] != key) d[2] = s[2];
+						if (s[3] != key) d[3] = s[3];
+					}
+				}
+				s += 4; d += 4; n -= 4;
+			}
+			while (n-- > 0) {
+				Uint8 c = *s++;
+				if (c != key) *d = c;
+				d++;
 			}
 			sp += src->pitch;
 			dp += dst->pitch;
 		}
 	} else {
+		s_perf_blits++;
+		s_perf_px += (unsigned long)w * h;
 		for (y = 0; y < h; y++) {
 			memcpy(dp, sp, (size_t)w);
 			sp += src->pitch;
@@ -600,7 +642,26 @@ int SDL_Flip(SDL_Surface *screen)
 			if (--SDLmini_diag_armed <= 0) SDLmini_diag_armed = 0;
 		}
 	}
-	amigagfx_blit(0, 0, screen->w, (s_req_h > 0 && s_req_h < screen->h) ? s_req_h : screen->h);
+	{
+		Uint32 t0_ = SDL_GetTicks();
+		amigagfx_blit(0, 0, screen->w, (s_req_h > 0 && s_req_h < screen->h) ? s_req_h : screen->h);
+		s_perf_c2p_ms += SDL_GetTicks() - t0_;
+	}
+	/* TEMP perf report, one line per 100 frames (LISTA-ROBOT pkt 1). */
+	if ((SDLmini_flips % 100) == 0) {
+		char b_[192];
+		Uint32 now_ = SDL_GetTicks();
+		snprintf(b_, sizeof b_,
+			"perf: 100 frames in %lu ms: c2p %lu ms, blits ck %lu (%lu px) plain %lu (%lu px), fills %lu (%lu px)",
+			(unsigned long)(now_ - s_perf_last_ms), s_perf_c2p_ms,
+			s_perf_blits_ck, s_perf_px_ck, s_perf_blits, s_perf_px,
+			s_perf_fills, s_perf_fill_px);
+		SDLmini_Log(b_);
+		s_perf_last_ms = now_;
+		s_perf_c2p_ms = 0;
+		s_perf_blits = s_perf_blits_ck = s_perf_px = s_perf_px_ck = 0;
+		s_perf_fills = s_perf_fill_px = 0;
+	}
 	return 0;
 }
 
