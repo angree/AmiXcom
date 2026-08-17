@@ -10,7 +10,7 @@ for **real classic hardware**: 68020+ without FPU, AGA chipset. Not PiStorm-, Va
 or Emu68-only. No SDL: the SDL 1.2 API the game expects is a small shim
 (`native/sdlmini/`) on top of a bare-metal Amiga graphics/audio layer.
 
-## Status: 0.1.0 — complete alpha
+## Status: 0.2.0 — alpha
 
 The whole game compiles and runs on the Amiga: main menu → new game → Geoscape → base
 → battle briefing → inventory → Battlescape. Both rulesets (UFO and TFTD) load.
@@ -18,14 +18,21 @@ The whole game compiles and runs on the Amiga: main menu → new game → Geosca
 hours in an emulator, not played to the end. Expect crashes, expect them to be reported
 in `oxc.log` (every Guru is caught and logged with its PC).
 
+New in 0.2.0 (details in the release notes):
+
+- Geoscape at **~40 fps** on an 040/40-class machine (was ~5): the globe repaints only
+  when something changed, colorkey blits run through a per-surface span cache, and a
+  forced 20 ms sleep per frame is gone.
+- New **"Amiga" options tab** (first tab): Amiga screen title bar on/off and mouse
+  pointer *original / Amiga-only* — both ON by default. With the bar the screen opens
+  taller, so the full 320×200 stays visible and the mouse maps 1:1.
+
 Known problems and gaps in this release, briefly:
 
-- **The Geoscape globe is slow** (~20 fps on a fast 68020 emulation, full redraw every
-  250 ms at most; rotating/zooming stalls for a moment). Rendering still uses soft-float
-  in a few places; span fills, radar cache, sin/cos tables and flat sun-shaded land
-  polygons are next on the list.
-- **No dirty rectangles** — the whole 320×200 screen is c2p-converted every frame
-  (~35–40 ms on a 68020), which caps everything at ~25 fps.
+- **No dirty rectangles yet** — the whole screen is still redrawn and c2p-converted
+  every frame; that is the next big speedup.
+- **Saving is very slow** (~1 min for a full save): YAML text serialization through
+  soft-float number formatting. On the list.
 - **AGA only, 320×200, 8-bit.** An RTG build (`openxcom-rtg`) is compiled but untested;
   the `-ask` build asks which one to use at start.
 - **No sound and no music yet** (built with `__NO_MUSIC`; the Paula/ADPCM path from the
