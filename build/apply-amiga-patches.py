@@ -1216,12 +1216,12 @@ def main():
         '#define OPENXCOM_VERSION_LONG "1.0.0.0"\n'
         '#define OPENXCOM_VERSION_NUMBER 1,0,0,0\n',
         '#ifdef AMIGA_FPU_BUILD\n'
-        '#define OPENXCOM_VERSION_SHORT "0.5.7 FPU"\n'
+        '#define OPENXCOM_VERSION_SHORT "0.6.0 FPU"\n'
         '#else\n'
-        '#define OPENXCOM_VERSION_SHORT "0.5.7"\n'
+        '#define OPENXCOM_VERSION_SHORT "0.6.0"\n'
         '#endif\n'
-        '#define OPENXCOM_VERSION_LONG "0.5.7.0"\n'
-        '#define OPENXCOM_VERSION_NUMBER 0,5,7,0\n'
+        '#define OPENXCOM_VERSION_LONG "0.6.0.0"\n'
+        '#define OPENXCOM_VERSION_NUMBER 0,6,0,0\n'
         '#define OPENXCOM_VERSION_GIT ""\n',
         "port version")))
     results.append(("MainMenuState.cpp (AmiXcom title)", edit(
@@ -2037,6 +2037,17 @@ def main():
         "\t\t\t\t\t\t\tUint32 now_ = SDL_GetTicks();\n"
         "\t\t\t\t\t\t\tUint32 w_ = now_ - agT_;\n"
         "\t\t\t\t\t\t\tchar gb_[224];\n"
+        "\t\t\t\t\t\t\tif (AmigaMapMs > 0)\n"
+        "\t\t\t\t\t\t\t\tsnprintf(gb_, sizeof gb_, \"prof: 100 frames in %lu ms | think %lu (%lu%%) | map %lu (%lu%%) | ui %lu (%lu%%) | flip %lu (%lu%%) | ev %lu (%lu%%) | tiles %lu, sprites %lu, anim %lu ms/%lu | %s\",\n"
+        "\t\t\t\t\t\t\t\t\t(unsigned long)w_,\n"
+        "\t\t\t\t\t\t\t\t\t(unsigned long)agTh_, (unsigned long)(w_ ? agTh_ * 100UL / w_ : 0),\n"
+        "\t\t\t\t\t\t\t\t\tAmigaMapMs, (unsigned long)(w_ ? AmigaMapMs * 100UL / w_ : 0),\n"
+        "\t\t\t\t\t\t\t\t\t(unsigned long)(agBl_ > AmigaMapMs ? agBl_ - AmigaMapMs : 0),\n"
+        "\t\t\t\t\t\t\t\t\t(unsigned long)(w_ ? (agBl_ > AmigaMapMs ? agBl_ - AmigaMapMs : 0) * 100UL / w_ : 0),\n"
+        "\t\t\t\t\t\t\t\t\t(unsigned long)agFl_, (unsigned long)(w_ ? agFl_ * 100UL / w_ : 0),\n"
+        "\t\t\t\t\t\t\t\t\tAmigaEvMs, (unsigned long)(w_ ? AmigaEvMs * 100UL / w_ : 0),\n"
+        "\t\t\t\t\t\t\t\t\tAmigaTileN, AmigaShadeN, AmigaAnimMs, AmigaAnimN, typeid(*_states.back()).name());\n"
+        "\t\t\t\t\t\t\telse\n"
         "\t\t\t\t\t\t\tsnprintf(gb_, sizeof gb_, \"geo: 100 frames in %lu ms: think %lu, blit %lu, flip %lu, events %lu/%lu, other %ld ms; t5s %lu ms/%lu, t10m %lu ms/%lu in %s\",\n"
         "\t\t\t\t\t\t\t\t(unsigned long)w_, (unsigned long)agTh_, (unsigned long)agBl_, (unsigned long)agFl_,\n"
         "\t\t\t\t\t\t\t\tAmigaEvMs, AmigaEvN,\n"
@@ -2044,9 +2055,12 @@ def main():
         "\t\t\t\t\t\t\t\tAmigaGeo5Ms, AmigaGeo5N, AmigaGeo10Ms, AmigaGeo10N,\n"
         "\t\t\t\t\t\t\t\ttypeid(*_states.back()).name());\n"
         "\t\t\t\t\t\t\tSDLmini_Log(gb_);\n"
+        "\t\t\t\t\t\t\tif (AmigaMapMs > 0 || AmigaCacheHitN() > 0) { char cb_[224]; AmigaCacheReport(cb_, sizeof cb_); SDLmini_Log(cb_); }\n"
         "\t\t\t\t\t\t\tagT_ = now_; agTh_ = agBl_ = agFl_ = 0; agN_ = 0;\n"
         "\t\t\t\t\t\t\tAmigaGeo5Ms = AmigaGeo5N = AmigaGeo10Ms = AmigaGeo10N = 0;\n"
         "\t\t\t\t\t\t\tAmigaEvMs = AmigaEvN = 0;\n"
+        "\t\t\t\t\t\t\tAmigaMapMs = AmigaMapN = AmigaTileN = AmigaShadeN = 0;\n"
+        "\t\t\t\t\t\t\tAmigaAnimMs = AmigaAnimN = 0;\n"
         "\t\t\t\t\t\t}\n"
         "\t\t\t\t\t}\n",
         "geo frame accounting")))
@@ -2154,6 +2168,10 @@ def main():
         'extern "C" { unsigned long AmigaGeo5Ms = 0, AmigaGeo5N = 0, AmigaGeo10Ms = 0, AmigaGeo10N = 0; }\n'
         'extern "C" { unsigned long AmigaEvMs = 0, AmigaEvT0 = 0, AmigaEvN = 0; }\n'
         'extern "C" { unsigned long AmigaFrTop = 0, AmigaFrClean = 0, AmigaFrEv = 0, AmigaFrFlip = 0; }\n'
+        'extern "C" { unsigned long AmigaMapMs = 0, AmigaMapN = 0, AmigaTileN = 0, AmigaShadeN = 0; }\n'
+        'extern "C" { unsigned long AmigaAnimMs = 0, AmigaAnimN = 0; }\n'
+        'extern "C" void AmigaCacheReport(char *b, unsigned long n);\n'
+        'extern "C" unsigned long AmigaCacheHitN(void);\n'
         'extern "C" unsigned long SDLmini_ProfAuto, SDLmini_ProfPump, SDLmini_ProfEvents, SDLmini_ProfPolls;\n'
         '#endif\n',
         "geo counters")))
@@ -2832,6 +2850,17 @@ def main():
         '#include "Map.h"\n'
         '#ifdef __AMIGA__\n'
         'extern "C" void SDLmini_Log(const char *msg);\n'
+        'extern "C" unsigned long AmigaMapMs, AmigaMapN, AmigaTileN, AmigaShadeN;\n'
+        'extern "C" unsigned long AmigaAnimMs, AmigaAnimN;\n'
+        'extern "C" unsigned long AmigaTileRevealN, AmigaTileShadeN;\n'
+        'extern "C" unsigned long AmigaShadeThruN;\n'
+        'extern int AmigaClipX0, AmigaClipY0, AmigaClipX1, AmigaClipY1;\n'
+        'const Uint8 *AmigaDirtyGrid = 0; int AmigaDirtyGridW = 0, AmigaDirtyGridH = 0;   /* dirty tile grid, set during a partial compose */\n'
+        'static int AmigaDirtyFullColumn = 0;   /* tight repair: force the full column while dirtying the OLD cursor tiles */\n'
+        'static unsigned long AmCp_full = 0, AmCp_fullMs = 0, AmCp_part = 0, AmCp_partMs = 0, AmCp_hit = 0, AmCp_partPx = 0, AmCp_partTiles = 0, AmCp_partBlits = 0, AmCp_partRects = 0, AmCp_fullBlits = 0;\n'
+        'static unsigned long AmCp_whySig = 0, AmCp_whyMiss = 0, AmCp_whyUnits = 0, AmCp_whyCur = 0, AmCp_whyProj = 0, AmCp_whyExpl = 0, AmCp_whyScroll = 0;\n'
+        'static unsigned long AmCp_lastSig = 0;\n'
+        'static unsigned long AmSg_[16], AmSgN_ = 0;   /* sig probe: per-component last values */\n'
         '#endif\n',
         "map probe extern")))
     results.append(("Map.cpp (render probe)", edit(
@@ -2846,8 +2875,11 @@ def main():
         "#ifdef __AMIGA__\n"
         "\t\tstatic Uint32 sum_ = 0; static int n_ = 0;\n"
         "\t\tUint32 t0_ = SDL_GetTicks();\n"
+        "\t\tunsigned long tb_ = AmigaTileN, fb_ = AmigaShadeThruN;\n"
         "\t\tdrawTerrain(this);\n"
-        "\t\tsum_ += SDL_GetTicks() - t0_;\n"
+        "\t\t{ Uint32 d_ = SDL_GetTicks() - t0_; sum_ += d_; AmigaMapMs += d_; ++AmigaMapN;\n"
+        "\t\t  if (AmigaClipX1 - AmigaClipX0 < getWidth()) { /* partial: counted by the caller */ } else { ++AmCp_full; AmCp_fullMs += d_; AmCp_fullBlits += AmigaShadeThruN - fb_; } }\n"
+        "\t\tamigaCacheStore();   /* dirty-rect cache: copy composed area back, clear clip */\n"
         "\t\tif (++n_ == 20)\n"
         "\t\t{\n"
         "\t\t\tchar b_[96];\n"
@@ -2906,8 +2938,19 @@ def main():
         "\tif (dx0 < 0) { sx0 -= dx0; cw += dx0; dx0 = 0; }\n"
         "\tif (dy0 < 0) { sy0 -= dy0; ch += dy0; dy0 = 0; }\n"
         "\tif (dx0 + cw > ds_->w) cw = ds_->w - dx0;\n"
+        "#ifdef __AMIGA__\n"
+        "\tif (dx0 < AmigaClipX0) { int d_ = AmigaClipX0 - dx0; sx0 += d_; cw -= d_; dx0 = AmigaClipX0; }\n"
+        "\tif (dx0 + cw > AmigaClipX1) cw = AmigaClipX1 - dx0;\n"
+        "#endif\n"
         "\tif (dy0 + ch > ds_->h) ch = ds_->h - dy0;\n"
+        "#ifdef __AMIGA__\n"
+        "\tif (dy0 < AmigaClipY0) { int d_ = AmigaClipY0 - dy0; sy0 += d_; ch -= d_; dy0 = AmigaClipY0; }\n"
+        "\tif (dy0 + ch > AmigaClipY1) ch = AmigaClipY1 - dy0;\n"
+        "#endif\n"
         "\tif (cw <= 0 || ch <= 0) return;\n"
+        "#ifdef __AMIGA__\n"
+        "\t++AmigaShadeThruN;\n"
+        "#endif\n"
         "\t{\n"
         "\tconst Uint8 *sp = (const Uint8 *)ss_->pixels + (size_t)sy0 * ss_->pitch + sx0;\n"
         "\tUint8 *dp = (Uint8 *)ds_->pixels + (size_t)dy0 * ds_->pitch + dx0;\n"
@@ -2956,37 +2999,1227 @@ def main():
         "\t}\n"
         "\telse\n"
         "\t{\n"
+        "\t\t/* AMIGA-PORT: shade LUT. The shaded blit is 69% of a battlescape\n"
+        "\t\t * frame, and the per-pixel work was and/add/compare/or. The result\n"
+        "\t\t * depends only on the source byte and the shade, so it is a 256-byte\n"
+        "\t\t * table per shade level, built once on first use. Same 4-bytes-at-a\n"
+        "\t\t * -time trick as the shade-0 path above. */\n"
+        "\t\tstatic Uint8 lut_[32][256];\n"
+        "\t\tstatic Uint8 lutOk_[32];\n"
+        "\t\tif (off < 0 || off > 31)\n"
+        "\t\t{\n"
+        "\t\t\tfor (yy = 0; yy < ch; ++yy)\n"
+        "\t\t\t{\n"
+        "\t\t\t\tconst Uint8 *s2 = sp; Uint8 *d2 = dp; int n = cw;\n"
+        "\t\t\t\twhile (n-- > 0)\n"
+        "\t\t\t\t{\n"
+        "\t\t\t\t\tUint8 c = *s2++;\n"
+        "\t\t\t\t\tif (c) { int ns = (c & 15) + off; *d2 = (ns > 15) ? 15 : (Uint8)((c & 0xF0) | ns); }\n"
+        "\t\t\t\t\t++d2;\n"
+        "\t\t\t\t}\n"
+        "\t\t\t\tsp += ss_->pitch; dp += ds_->pitch;\n"
+        "\t\t\t}\n"
+        "\t\t}\n"
+        "\t\telse\n"
+        "\t\t{\n"
+        "\t\tconst Uint8 *L_;\n"
+        "\t\tif (!lutOk_[off])\n"
+        "\t\t{\n"
+        "\t\t\tint ci_;\n"
+        "\t\t\tfor (ci_ = 0; ci_ < 256; ++ci_)\n"
+        "\t\t\t{\n"
+        "\t\t\t\tint ns_ = (ci_ & 15) + off;\n"
+        "\t\t\t\tlut_[off][ci_] = (ns_ > 15) ? 15 : (Uint8)((ci_ & 0xF0) | ns_);\n"
+        "\t\t\t}\n"
+        "\t\t\tlutOk_[off] = 1;\n"
+        "\t\t}\n"
+        "\t\tL_ = lut_[off];\n"
         "\t\tfor (yy = 0; yy < ch; ++yy)\n"
         "\t\t{\n"
         "\t\t\tconst Uint8 *s2 = sp; Uint8 *d2 = dp; int n = cw;\n"
-        "\t\t\twhile (n-- > 0)\n"
+        "\t\t\twhile (n >= 4)\n"
         "\t\t\t{\n"
-        "\t\t\t\tUint8 c = *s2++;\n"
-        "\t\t\t\tif (c) { int ns = (c & 15) + off; *d2 = (ns > 15) ? 15 : (Uint8)((c & 0xF0) | ns); }\n"
-        "\t\t\t\t++d2;\n"
+        "\t\t\t\tUint32 v;\n"
+        "\t\t\t\tmemcpy(&v, s2, 4);\n"
+        "\t\t\t\tif (v != 0)\n"
+        "\t\t\t\t{\n"
+        "\t\t\t\t\tif ((((v - 0x01010101UL) & ~v) & 0x80808080UL) == 0)\n"
+        "\t\t\t\t\t{\n"
+        "\t\t\t\t\t\td2[0] = L_[s2[0]]; d2[1] = L_[s2[1]];\n"
+        "\t\t\t\t\t\td2[2] = L_[s2[2]]; d2[3] = L_[s2[3]];\n"
+        "\t\t\t\t\t}\n"
+        "\t\t\t\t\telse\n"
+        "\t\t\t\t\t{\n"
+        "\t\t\t\t\t\tif (s2[0]) d2[0] = L_[s2[0]];\n"
+        "\t\t\t\t\t\tif (s2[1]) d2[1] = L_[s2[1]];\n"
+        "\t\t\t\t\t\tif (s2[2]) d2[2] = L_[s2[2]];\n"
+        "\t\t\t\t\t\tif (s2[3]) d2[3] = L_[s2[3]];\n"
+        "\t\t\t\t\t}\n"
+        "\t\t\t\t}\n"
+        "\t\t\t\ts2 += 4; d2 += 4; n -= 4;\n"
         "\t\t\t}\n"
+        "\t\t\twhile (n-- > 0) { Uint8 c = *s2++; if (c) *d2 = L_[c]; ++d2; }\n"
         "\t\t\tsp += ss_->pitch; dp += ds_->pitch;\n"
+        "\t\t}\n"
         "\t\t}\n"
         "\t}\n"
         "\t}\n"
         "}\n",
         "fast blitNShade")))
 
+    # 6w. amigaAutoBattle: boot straight into a generated battle. Reaching the
+    #     battlescape by hand costs ~35 s in the New Battle menu plus ~35 s in
+    #     the generator, which makes measuring the battlescape painful and
+    #     drives every test run through two screens that are not under test.
+    #     Set amigaAutoBattle: 1 in Work:user/options.cfg (no rebuild needed).
+    results.append(("Game.h (auto battle states accessor)", edit(
+        os.path.join(src, "Engine", "Game.h"),
+        "\tvoid popState();\n",
+        "\tvoid popState();\n"
+        "#ifdef __AMIGA__\n"
+        "\t/* amigaAutoBattle needs the state it just pushed, to click through\n"
+        "\t * the briefing without a human. */\n"
+        "\tstd::list<State*> *getStates() { return &_states; }\n"
+        "#endif\n",
+        "auto battle states accessor")))
+
+    results.append(("MainMenuState.cpp (auto battle)", edit(
+        os.path.join(src, "Menu", "MainMenuState.cpp"),
+        "\t_game->setState(new MainMenuState);\n"
+        "}\n",
+        "\t_game->setState(new MainMenuState);\n"
+        "#ifdef __AMIGA__\n"
+        "\tif (Options::amigaAutoBattle)\n"
+        "\t{\n"
+        "\t\tSDLmini_Log(\"autobattle: generating\");\n"
+        "\t\tNewBattleState *nb_ = new NewBattleState;\n"
+        "\t\t_game->pushState(nb_);\n"
+        "\t\tnb_->init();\n"
+        "\t\tnb_->btnOkClick(0);   /* pops NewBattle + MainMenu, pushes Briefing */\n"
+        "\t\tBriefingState *br_ = dynamic_cast<BriefingState*>(_game->getStates()->back());\n"
+        "\t\tif (br_ != 0) br_->btnOkClick(0);\n"
+        "\t\tSDLmini_Log(\"autobattle: in the battlescape\");\n"
+        "\t}\n"
+        "#endif\n"
+        "}\n",
+        "auto battle")))
+    results.append(("MainMenuState.cpp (auto battle includes)", edit(
+        os.path.join(src, "Menu", "MainMenuState.cpp"),
+        '#include "NewBattleState.h"\n',
+        '#include "NewBattleState.h"\n'
+        '#ifdef __AMIGA__\n'
+        '#include "../Battlescape/BriefingState.h"\n'
+        'extern "C" void SDLmini_Log(const char *msg);\n'
+        '#endif\n',
+        "auto battle includes")))
+    results.append(("BriefingState.cpp (auto battle skips inventory)", edit(
+        os.path.join(src, "Battlescape", "BriefingState.cpp"),
+        "\t\t_game->pushState(new InventoryState(false, bs));\n",
+        "#ifdef __AMIGA__\n"
+        "\t\tif (!Options::amigaAutoBattle)   /* straight into the battle */\n"
+        "#endif\n"
+        "\t\t_game->pushState(new InventoryState(false, bs));\n",
+        "auto battle skips inventory")))
+
+    # 6x. Battle frame profile. The battlescape runs at 3-4 fps on the
+    #     reference machine and nobody knows where the time goes, so count
+    #     the two things that scale with the map: tiles walked in the
+    #     drawTerrain triple loop, and shaded sprite blits.
+    results.append(("Map.cpp (tile counter)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "\t\t\t\t\ttile = _save->getTile(mapPosition);\n",
+        "#ifdef __AMIGA__\n"
+        "\t\t\t\t\t/* partial compose: draw every tile whose screen column can reach the clip\n"
+        "\t\t\t\t\t * box. NOT only the dirty-grid tiles: a tall object 2-3 tiles behind on a\n"
+        "\t\t\t\t\t * higher level hangs down into the box, and skipping it left holes that\n"
+        "\t\t\t\t\t * flickered every frame (2026-08-18). The clip bounds the blits. */\n"
+        "\t\t\t\t\tif (AmigaDirtyGrid != 0 && (screenPosition.x >= AmigaClipX1 || screenPosition.x + _spriteWidth <= AmigaClipX0 || screenPosition.y + _spriteHeight <= AmigaClipY0 || screenPosition.y - _spriteHeight * 3 >= AmigaClipY1)) continue;\n"
+        "\t\t\t\t\t++AmigaTileN;\n"
+        "#endif\n"
+        "\t\t\t\t\ttile = _save->getTile(mapPosition);\n",
+        "tile counter")))
+    results.append(("Surface.cpp (shade blit counter extern)", edit(
+        os.path.join(src, "Engine", "Surface.cpp"),
+        '#include "Surface.h"\n',
+        '#include "Surface.h"\n'
+        '#ifdef __AMIGA__\n'
+        'extern "C" unsigned long AmigaShadeN;\n'
+        'extern "C" { unsigned long AmigaShadeThruN = 0; }   /* blit-through counter */\n'
+        'int AmigaClipX0 = 0, AmigaClipY0 = 0, AmigaClipX1 = 1 << 14, AmigaClipY1 = 1 << 14;\n'
+        '#endif\n',
+        "shade blit counter extern")))
+    results.append(("Surface.cpp (shade blit counter)", edit(
+        os.path.join(src, "Engine", "Surface.cpp"),
+        "void Surface::blitNShade(Surface *surface, int x, int y, int off, bool half, int newBaseColor)\n"
+        "{\n",
+        "void Surface::blitNShade(Surface *surface, int x, int y, int off, bool half, int newBaseColor)\n"
+        "{\n"
+        "#ifdef __AMIGA__\n"
+        "\t++AmigaShadeN;\n"
+        "\t/* AMIGA-PORT: partial redraw. A sprite entirely outside the dirty\n"
+        "\t * rectangle costs one comparison instead of a full clipped blit. */\n"
+        "\tif (x >= AmigaClipX1 || y >= AmigaClipY1 ||\n"
+        "\t    x + _surface->w <= AmigaClipX0 || y + _surface->h <= AmigaClipY0) return;\n"
+        "#endif\n",
+        "shade blit counter")))
+
+    # 6y. Map::animate walks every tile of the map (14k on a 60x60x4) and every
+    #     unit on each animation tick. Time it, so the "think" slice of the
+    #     battle profile stops being one opaque number.
+    results.append(("Map.cpp (animate probe)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "void Map::animate(bool redraw)\n"
+        "{\n",
+        "void Map::animate(bool redraw)\n"
+        "{\n"
+        "#ifdef __AMIGA__\n"
+        "\tUint32 anT_ = SDL_GetTicks();\n"
+        "\tstruct AmAn_ { Uint32 t0; AmAn_(Uint32 t) : t0(t) {}\n"
+        "\t\t~AmAn_() { AmigaAnimMs += SDL_GetTicks() - t0; ++AmigaAnimN; } } amAn_(anT_);\n"
+        "#endif\n",
+        "animate probe")))
+
+    # 6z. Battlescape 8-phase frame cache. Composing the map is ~46% of a
+    #     battle frame even after the shade LUT, and standing still it composes
+    #     the SAME picture over and over: animated tiles cycle through exactly
+    #     8 frames, so at a standstill the map only ever has 8 distinct images.
+    #     Terrain and units cannot be split into layers (they are interleaved in
+    #     depth order), so the whole composed image is cached per animation
+    #     phase, keyed by a signature of everything that is NOT the animation
+    #     frame. Any change to camera, units, projectile, explosions, cursor or
+    #     selector changes the signature and drops all eight.
+    # 6z-pre-1. anim list: Map::animate() walked EVERY tile of the map (14k on
+    #     a 60x60x4) on every 100 ms tick to bump _currentFrame - a no-op on
+    #     the static majority. Only three kinds of tile change when animated:
+    #     an animated TYPE (8 distinct sprite frames), a UFO door mid-swing,
+    #     a tile holding vapor particles. SavedBattleGame keeps a list of
+    #     exactly those; a tile joins when it becomes one (door opened,
+    #     particle added, animated type placed) and never leaves (cheap, and
+    #     the list stays small).
+    results.append(("Tile.h (anim list flag)", edit(
+        os.path.join(src, "Savegame", "Tile.h"),
+        "\tstd::list<Particle*> _particles;\n",
+        "\tstd::list<Particle*> _particles;\n"
+        "#ifdef __AMIGA__\n"
+        "public:\n"
+        "\tbool _amigaAnimListed;   /* already on SavedBattleGame's animated-tile list */\n"
+        "private:\n"
+        "#endif\n",
+        "anim list flag")))
+    results.append(("Tile.cpp (anim list flag init)", edit(
+        os.path.join(src, "Savegame", "Tile.cpp"),
+        "Tile::Tile(const Position& pos): _smoke(0), _fire(0), _explosive(0), _explosiveType(0), _pos(pos), _unit(0), _animationOffset(0), _markerColor(0), _visible(false), _preview(-1), _TUMarker(-1), _overlaps(0), _danger(false)\n"
+        "{\n",
+        "Tile::Tile(const Position& pos): _smoke(0), _fire(0), _explosive(0), _explosiveType(0), _pos(pos), _unit(0), _animationOffset(0), _markerColor(0), _visible(false), _preview(-1), _TUMarker(-1), _overlaps(0), _danger(false)\n"
+        "{\n"
+        "#ifdef __AMIGA__\n"
+        "\t_amigaAnimListed = false;\n"
+        "#endif\n",
+        "anim list flag init")))
+    results.append(("SavedBattleGame.h (anim list)", edit(
+        os.path.join(src, "Savegame", "SavedBattleGame.h"),
+        "\tstd::vector<Node*> _nodes;\n",
+        "\tstd::vector<Node*> _nodes;\n"
+        "#ifdef __AMIGA__\n"
+        "public:\n"
+        "\tstd::vector<Tile*> _amigaAnimTiles;   /* anim list - see the patch script */\n"
+        "\tvoid amigaAnimListAdd(Tile *t);   /* body in the .cpp - Tile is incomplete here */\n"
+        "private:\n"
+        "#endif\n",
+        "anim list")))
+    # placing map data: an animated TYPE joins the list
+    results.append(("Tile.cpp (anim list on setMapData)", edit(
+        os.path.join(src, "Savegame", "Tile.cpp"),
+        "void Tile::setMapData(MapData *dat, int mapDataID, int mapDataSetID, int part)\n"
+        "{\n"
+        "\t_objects[part] = dat;\n"
+        "\t_mapDataID[part] = mapDataID;\n"
+        "\t_mapDataSetID[part] = mapDataSetID;\n"
+        "}\n",
+        "void Tile::setMapData(MapData *dat, int mapDataID, int mapDataSetID, int part)\n"
+        "{\n"
+        "\t_objects[part] = dat;\n"
+        "\t_mapDataID[part] = mapDataID;\n"
+        "\t_mapDataSetID[part] = mapDataSetID;\n"
+        "#ifdef __AMIGA__\n"
+        "\tif (dat && !_amigaAnimListed && (dat->amigaIsAnimated() || dat->isUFODoor())) AmigaAnimListPending(this);\n"
+        "#endif\n"
+        "}\n",
+        "anim list on setMapData")))
+    # Tile has no back-pointer to the save; a tiny global hook (set by
+    # SavedBattleGame) collects tiles. Same file-scope trick as the probes.
+    results.append(("Tile.cpp (anim list hook)", edit(
+        os.path.join(src, "Savegame", "Tile.cpp"),
+        '#include "Tile.h"\n',
+        '#include "Tile.h"\n'
+        '#ifdef __AMIGA__\n'
+        '#include "../Mod/MapData.h"\n'
+        'extern "C" { void (*AmigaAnimListHook)(OpenXcom::Tile *) = 0; }\n'
+        'static void AmigaAnimListPending(OpenXcom::Tile *t) { if (AmigaAnimListHook) AmigaAnimListHook(t); }\n'
+        '#endif\n',
+        "anim list hook")))
+    results.append(("Tile.cpp (anim list on particle)", edit(
+        os.path.join(src, "Savegame", "Tile.cpp"),
+        "void Tile::addParticle(Particle *particle)\n"
+        "{\n",
+        "void Tile::addParticle(Particle *particle)\n"
+        "{\n"
+        "#ifdef __AMIGA__\n"
+        "\tif (!_amigaAnimListed) AmigaAnimListPending(this);\n"
+        "#endif\n",
+        "anim list on particle")))
+    results.append(("SavedBattleGame.cpp (anim list hook install)", edit(
+        os.path.join(src, "Savegame", "SavedBattleGame.cpp"),
+        '#include "SavedBattleGame.h"\n',
+        '#include "SavedBattleGame.h"\n'
+        '#ifdef __AMIGA__\n'
+        'extern "C" { extern void (*AmigaAnimListHook)(OpenXcom::Tile *); }\n'
+        'static OpenXcom::SavedBattleGame *s_amigaAnimSave = 0;\n'
+        'static void amigaAnimListCollect(OpenXcom::Tile *t) { if (s_amigaAnimSave) s_amigaAnimSave->amigaAnimListAdd(t); }\n'
+        '#include "Tile.h"\n'
+        'void OpenXcom::SavedBattleGame::amigaAnimListAdd(Tile *t) { if (t && !t->_amigaAnimListed) { t->_amigaAnimListed = true; _amigaAnimTiles.push_back(t); } }\n'
+        '#endif\n',
+        "anim list hook install")))
+    results.append(("SavedBattleGame.cpp (anim list reset on initMap)", edit(
+        os.path.join(src, "Savegame", "SavedBattleGame.cpp"),
+        "\t_tiles = new Tile*[_mapsize_z * _mapsize_y * _mapsize_x];\n",
+        "#ifdef __AMIGA__\n"
+        "\t_amigaAnimTiles.clear();\n"
+        "\ts_amigaAnimSave = this; AmigaAnimListHook = amigaAnimListCollect;\n"
+        "#endif\n"
+        "\t_tiles = new Tile*[_mapsize_z * _mapsize_y * _mapsize_x];\n",
+        "anim list reset on initMap")))
+    # Map::animate: walk the list, not the map
+    results.append(("Map.cpp (anim list in animate)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "\t// animate tiles\n"
+        "\tfor (int i = 0; i < _save->getMapSizeXYZ(); ++i)\n"
+        "\t{\n"
+        "\t\t_save->getTiles()[i]->animate();\n"
+        "\t}\n",
+        "\t// animate tiles\n"
+        "#ifdef __AMIGA__\n"
+        "\t/* anim list: only tiles that actually change (animated type, UFO door,\n"
+        "\t * vapor particles) - not the whole map. */\n"
+        "\tfor (std::vector<Tile*>::iterator at_ = _save->_amigaAnimTiles.begin(); at_ != _save->_amigaAnimTiles.end(); ++at_)\n"
+        "\t\t(*at_)->animate();\n"
+        "#else\n"
+        "\tfor (int i = 0; i < _save->getMapSizeXYZ(); ++i)\n"
+        "\t{\n"
+        "\t\t_save->getTiles()[i]->animate();\n"
+        "\t}\n"
+        "#endif\n",
+        "anim list in animate")))
+
+    # 6z-pre0. Projectile::amigaTrajIndex(): the frame cache dirties only the
+    #     ENDS of the bullet trail (particles that entered/left the 35-window
+    #     since last frame), not the whole trail. Needs the trajectory index.
+    results.append(("Projectile.h (trail ends accessor)", edit(
+        os.path.join(src, "Battlescape", "Projectile.h"),
+        "\tPosition getPosition(int offset = 0) const;\n",
+        "\tPosition getPosition(int offset = 0) const;\n"
+        "#ifdef __AMIGA__\n"
+        "\tint amigaTrajIndex() const { return (int)_position; }\n"
+        "#endif\n",
+        "trail ends accessor")))
+
+    # 6z-pre1. bullet shade cache: castedShade()/isVoxelVisible() of the 35
+    #     trail particles are computed per TILE of the trail's bounding box on
+    #     every compose (dozens of voxel walks each). They depend only on the
+    #     particle, so compute once per compose and look up.
+    results.append(("Map.cpp (bullet shade cache decl)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "void Map::drawTerrain(Surface *surface)\n"
+        "{\n",
+        "void Map::drawTerrain(Surface *surface)\n"
+        "{\n"
+        "#ifdef __AMIGA__\n"
+        "\t/* bullet shade cache - see the patch script */\n"
+        "\tint bsZ_[BULLET_SPRITES]; signed char bsVis_[BULLET_SPRITES]; signed char bsOk_[BULLET_SPRITES];\n"
+        "\tfor (int bi_ = 0; bi_ < BULLET_SPRITES; ++bi_) bsOk_[bi_] = 0;\n"
+        "#endif\n",
+        "bullet shade cache decl")))
+    results.append(("Map.cpp (bullet shade cache use)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "\t\t\t\t\t\t\t\t\t\tPosition voxelPos = _projectile->getPosition(1-i);\n"
+        "\t\t\t\t\t\t\t\t\t\t// draw shadow on the floor\n"
+        "\t\t\t\t\t\t\t\t\t\tvoxelPos.z = _save->getTileEngine()->castedShade(voxelPos);\n"
+        "\t\t\t\t\t\t\t\t\t\tif (voxelPos.x / 16 == itX &&\n"
+        "\t\t\t\t\t\t\t\t\t\t\tvoxelPos.y / 16 == itY &&\n"
+        "\t\t\t\t\t\t\t\t\t\t\tvoxelPos.z / 24 == itZ &&\n"
+        "\t\t\t\t\t\t\t\t\t\t\t_save->getTileEngine()->isVoxelVisible(voxelPos))\n",
+        "\t\t\t\t\t\t\t\t\t\tPosition voxelPos = _projectile->getPosition(1-i);\n"
+        "\t\t\t\t\t\t\t\t\t\t// draw shadow on the floor\n"
+        "#ifdef __AMIGA__\n"
+        "\t\t\t\t\t\t\t\t\t\t/* cheap reject first: the particle's tile column */\n"
+        "\t\t\t\t\t\t\t\t\t\tif (voxelPos.x / 16 != itX || voxelPos.y / 16 != itY) continue;\n"
+        "\t\t\t\t\t\t\t\t\t\tif (!bsOk_[i]) { bsZ_[i] = _save->getTileEngine()->castedShade(voxelPos); Position sv_ = voxelPos; sv_.z = bsZ_[i]; bsVis_[i] = _save->getTileEngine()->isVoxelVisible(sv_) ? 1 : 0; bsOk_[i] = 1; }\n"
+        "\t\t\t\t\t\t\t\t\t\tvoxelPos.z = bsZ_[i];\n"
+        "\t\t\t\t\t\t\t\t\t\tif (voxelPos.z / 24 == itZ && bsVis_[i])\n"
+        "#else\n"
+        "\t\t\t\t\t\t\t\t\t\tvoxelPos.z = _save->getTileEngine()->castedShade(voxelPos);\n"
+        "\t\t\t\t\t\t\t\t\t\tif (voxelPos.x / 16 == itX &&\n"
+        "\t\t\t\t\t\t\t\t\t\t\tvoxelPos.y / 16 == itY &&\n"
+        "\t\t\t\t\t\t\t\t\t\t\tvoxelPos.z / 24 == itZ &&\n"
+        "\t\t\t\t\t\t\t\t\t\t\t_save->getTileEngine()->isVoxelVisible(voxelPos))\n"
+        "#endif\n",
+        "bullet shade cache use")))
+
+    # 6z-pre2. MapData::amigaIsAnimated(): a tile TYPE is animated iff its 8
+    #     sprite frames are not all the same. Computed once per MapData, used
+    #     by the frame cache to seed the other 7 phases with a small dirty
+    #     rect after a full recompose (instead of 7 more full recomposes).
+    results.append(("MapData.h (anim-seed flag)", edit(
+        os.path.join(src, "Mod", "MapData.h"),
+        "\tint _sprite[8];\n",
+        "\tint _sprite[8];\n"
+        "#ifdef __AMIGA__\n"
+        "\tmutable signed char _amigaAnim;   /* -1 unknown, 0 static, 1 animated */\n"
+        "public:\n"
+        "\tbool amigaIsAnimated() const\n"
+        "\t{\n"
+        "\t\tif (_amigaAnim < 0)\n"
+        "\t\t{\n"
+        "\t\t\t_amigaAnim = 0;\n"
+        "\t\t\tfor (int i_ = 1; i_ < 8; ++i_) if (_sprite[i_] != _sprite[0]) { _amigaAnim = 1; break; }\n"
+        "\t\t}\n"
+        "\t\treturn _amigaAnim == 1;\n"
+        "\t}\n"
+        "private:\n"
+        "#endif\n",
+        "anim-seed flag")))
+    results.append(("MapData.cpp (anim-seed init)", edit(
+        os.path.join(src, "Mod", "MapData.cpp"),
+        "MapData::MapData(MapDataSet *dataset) : _dataset(dataset)",
+        "MapData::MapData(MapDataSet *dataset) :\n"
+        "#ifdef __AMIGA__\n"
+        "\t_amigaAnim(-1),\n"
+        "#endif\n"
+        "\t_dataset(dataset)",
+        "anim-seed init")))
+
+    # 6z-pre. step-dirty counters in Tile: the frame cache does a FULL
+    #     recompose only when terrain was actually revealed or a tile's shade
+    #     actually changed - not on every step. See amigaFullSig().
+    results.append(("Tile.cpp (step-dirty counters)", edit(
+        os.path.join(src, "Savegame", "Tile.cpp"),
+        '#include "Tile.h"\n',
+        '#include "Tile.h"\n'
+        '#ifdef __AMIGA__\n'
+        'extern "C" { unsigned long AmigaTileRevealN = 0, AmigaTileShadeN = 0; }\n'
+        '#endif\n',
+        "step-dirty counters")))
+    results.append(("Tile.cpp (step-dirty reveal)", edit(
+        os.path.join(src, "Savegame", "Tile.cpp"),
+        "\tif (_discovered[part] != flag)\n"
+        "\t{\n"
+        "\t\t_discovered[part] = flag;\n",
+        "\tif (_discovered[part] != flag)\n"
+        "\t{\n"
+        "#ifdef __AMIGA__\n"
+        "\t\t++AmigaTileRevealN;\n"
+        "#endif\n"
+        "\t\t_discovered[part] = flag;\n",
+        "step-dirty reveal")))
+    results.append(("Tile.cpp (step-dirty shade)", edit(
+        os.path.join(src, "Savegame", "Tile.cpp"),
+        "void Tile::addLight(int light, int layer)\n"
+        "{\n"
+        "\tif (_light[layer] < light)\n"
+        "\t\t_light[layer] = light;\n"
+        "}\n",
+        "void Tile::addLight(int light, int layer)\n"
+        "{\n"
+        "#ifdef __AMIGA__\n"
+        "\t/* step-dirty: does this light change the tile's SHADE (= max over\n"
+        "\t * layers)? Only then does the picture change. In daylight the ambient\n"
+        "\t * layer is already 15 and a moving lamp changes nothing on screen. */\n"
+        "\tif (_light[layer] < light)\n"
+        "\t{\n"
+        "\t\tint other_ = 0;\n"
+        "\t\tfor (int l_ = 0; l_ < LIGHTLAYERS; ++l_) if (l_ != layer && _light[l_] > other_) other_ = _light[l_];\n"
+        "\t\tif (light > other_ && light > _light[layer] && light != _lastLight[layer]) ++AmigaTileShadeN;\n"
+        "\t\t_light[layer] = light;\n"
+        "\t}\n"
+        "#else\n"
+        "\tif (_light[layer] < light)\n"
+        "\t\t_light[layer] = light;\n"
+        "#endif\n"
+        "}\n",
+        "step-dirty shade")))
+    # resetLight zeroes the dynamic layer before every recalculation; a tile
+    # that WAS lit by a lamp and is not any more also changes shade. Count that
+    # too, but only if the layer was the shade-determining one.
+    results.append(("Tile.cpp (step-dirty reset)", edit(
+        os.path.join(src, "Savegame", "Tile.cpp"),
+        "void Tile::resetLight(int layer)\n"
+        "{\n"
+        "\t_light[layer] = 0;\n"
+        "\t_lastLight[layer] = _light[layer];\n"
+        "}\n",
+        "void Tile::resetLight(int layer)\n"
+        "{\n"
+        "#ifdef __AMIGA__\n"
+        "\t/* remember what this layer contributed, so addLight() can tell a\n"
+        "\t * re-lit tile (no change) from a newly lit or a darkened one. */\n"
+        "\t_lastLight[layer] = _light[layer];\n"
+        "\t_light[layer] = 0;\n"
+        "#else\n"
+        "\t_light[layer] = 0;\n"
+        "\t_lastLight[layer] = _light[layer];\n"
+        "#endif\n"
+        "}\n",
+        "step-dirty reset")))
+
+    # 6z. Battlescape frame cache, dirty-rect design (2026-08-18 evening).
+    #     Composing the map is the whole battle frame; standing still, only
+    #     8 distinct pictures ever exist (tiles animate in 8 frames). Keep the
+    #     8 pictures, and for every change keep - per picture - the union
+    #     rectangle of what changed since it was composed. A picture reaches
+    #     the screen only after its dirty rectangle has been recomposed, so a
+    #     stale cursor or unit can never be shown. The dirty area is composed
+    #     with the sprite blits clipped (AmigaClip*) AND the tile loop of
+    #     drawTerrain narrowed to the rectangle, so a cursor move costs a
+    #     handful of tiles, not the whole map.
+    results.append(("Map.h (dirty-rect cache members)", edit(
+        os.path.join(src, "Battlescape", "Map.h"),
+        "\tvoid drawTerrain(Surface *surface);\n",
+        "\tvoid drawTerrain(Surface *surface);\n"
+        "#ifdef __AMIGA__\n"
+        "\t/* dirty-rect cache: 8 animation phases, one picture + one dirty rect each */\n"
+        "\tUint8 *_fcPix[8];\n"
+        "\tint _fcValid[8];\n"
+        "\t/* dirty tile grid per phase - see the patch script (6z). */\n"
+        "\tUint8 *_fcGrid[8];          /* [mapY*mapX + mapX] 1 = dirty (all levels) */\n"
+        "\tint _fcGridW, _fcGridH;\n"
+        "\tint _fcDirtyN[8];            /* dirty tile count per phase */\n"
+        "\tint _fcBx0[8], _fcBy0[8], _fcBx1[8], _fcBy1[8];   /* screen box of the dirty tiles */\n"
+        "\tvoid amigaDirtyTile(int x, int y);       /* mark tile + 8 neighbours in all 8 phases */\n"
+        "\tvoid amigaDirtyTileOne(int ph, int x, int y);\n"
+        "\tvoid amigaMarkTileNoBox(int ph, int x, int y);   /* strip box: mark only, caller owns the box */\n"
+        "\tvoid amigaGrowBox(int ph, int x0, int y0, int x1, int y1);\n"
+        "\tvoid amigaBulletTiles(int i0, int i1);   /* trail particles i0..i1 -> tiles */\n"
+        "\tvoid amigaSeedOtherPhases(int except);\n"
+        "\tvoid amigaComposeVisible();\n"
+        "\tint _fcProjIdx;\n"
+        "\tint _fcCamX, _fcCamY;   /* scroll shift: camera offset the cached pictures were composed at */\n"
+        "\tbool _fcScrollStrip;   /* scroll propagate: copy the repaired strip to the other phases */\n"
+        "\tint _fcStripX0, _fcStripY0, _fcStripX1, _fcStripY1;   /* union of the exposed strips */\n"
+        "\tint _fcProjLx0, _fcProjLy0, _fcProjLx1, _fcProjLy1;   /* last bullet envelope (unused now) */\n"
+        "\tunsigned long _fcSig;\n"
+        "\tint _fcW, _fcH;\n"
+        "\tstd::vector<Position> _fcUnitPos;\n"
+        "\tstd::vector<int> _fcUnitState;\n"
+        "\tint _fcSelX, _fcSelY, _fcCurType, _fcCurSize;\n"
+        "\tint _fcProjX, _fcProjY, _fcProjOn;\n"
+        "\tint _fcExplN;\n"
+        "\tint _fcClipX0, _fcClipY0, _fcClipX1, _fcClipY1;   /* rect being composed now */\n"
+        "\tunsigned long amigaFullSig();\n"
+
+        "\tvoid amigaDirtyMapPos(const Position &p, int &x0, int &y0, int &x1, int &y1);\n"
+        "\tvoid amigaCacheStore();\n"
+        "#endif\n",
+        "dirty-rect cache members")))
+
+    results.append(("Map.cpp (dirty-rect cache init)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "\t_scrollMouseTimer = new Timer(SCROLL_INTERVAL);\n",
+        "#ifdef __AMIGA__\n"
+        "\tfor (int fc_ = 0; fc_ < 8; ++fc_) { _fcPix[fc_] = 0; _fcValid[fc_] = 0; _fcGrid[fc_] = 0; _fcDirtyN[fc_] = 0; _fcBx0[fc_] = _fcBy0[fc_] = 0; _fcBx1[fc_] = _fcBy1[fc_] = 0; }\n"
+        "\t_fcGridW = _fcGridH = 0;\n"
+        "\t_fcCamX = _fcCamY = -100000;\n"
+        "\t_fcScrollStrip = false; _fcStripX0 = _fcStripY0 = 0; _fcStripX1 = _fcStripY1 = 0;\n"
+        "\t_fcProjLx0 = _fcProjLy0 = 0; _fcProjLx1 = _fcProjLy1 = -1;\n"
+        "\t_fcProjIdx = -1;\n"
+        "\t_fcSig = 0; _fcW = _fcH = 0;\n"
+        "\t_fcSelX = _fcSelY = -9999; _fcCurType = _fcCurSize = -1;\n"
+        "\t_fcProjX = _fcProjY = 0; _fcProjOn = 0; _fcExplN = 0;\n"
+        "\t_fcClipX0 = _fcClipY0 = 0; _fcClipX1 = _fcClipY1 = 1 << 14;\n"
+        "#endif\n"
+        "\t_scrollMouseTimer = new Timer(SCROLL_INTERVAL);\n",
+        "dirty-rect cache init")))
+
+    results.append(("Map.cpp (cache probe report)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "/**\n"
+        " * Draws the whole map, part by part.\n"
+        " */\n"
+        "void Map::draw()\n"
+        "{\n",
+        "#ifdef __AMIGA__\n"
+        "extern \"C\" unsigned long AmigaCacheHitN(void) { return AmCp_hit; }\n"
+        "extern \"C\" void AmigaCacheReport(char *b, unsigned long n)\n"
+        "{\n"
+        "\t/* TEMP cache probe: per 100 frames, how Map::draw resolved and what it cost */\n"
+        "\tsnprintf(b, n, \"cache: hit %lu | partial %lu/%lu rects (%lu ms, %lu px, %lu tiles, %lu blits) | full %lu (%lu ms, %lu blits) | why: sig %lu miss %lu units %lu cur %lu proj %lu expl %lu scroll %lu\",\n"
+        "\t\tAmCp_hit, AmCp_part, AmCp_partRects, AmCp_partMs, AmCp_partPx, AmCp_partTiles, AmCp_partBlits, AmCp_full, AmCp_fullMs, AmCp_fullBlits,\n"
+        "\t\tAmCp_whySig, AmCp_whyMiss, AmCp_whyUnits, AmCp_whyCur, AmCp_whyProj, AmCp_whyExpl, AmCp_whyScroll);\n"
+        "\tAmCp_hit = AmCp_part = AmCp_partMs = AmCp_partPx = AmCp_partTiles = AmCp_full = AmCp_fullMs = AmCp_partBlits = AmCp_partRects = AmCp_fullBlits = 0;\n"
+        "\tAmCp_whySig = AmCp_whyMiss = AmCp_whyUnits = AmCp_whyCur = AmCp_whyProj = AmCp_whyExpl = AmCp_whyScroll = 0;\n"
+        "}\n"
+        "#endif\n"
+        "\n"
+        "/**\n"
+        " * Draws the whole map, part by part.\n"
+        " */\n"
+        "void Map::draw()\n"
+        "{\n",
+        "cache probe report")))
+
+    results.append(("Map.cpp (dirty-rect cache helpers)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "/**\n"
+        " * Draws the whole map, part by part.\n"
+        " */\n"
+        "void Map::draw()\n"
+        "{\n",
+        "#ifdef __AMIGA__\n"
+        "/* Everything that changes the WHOLE picture. Anything covered here drops\n"
+        " * all 8 cached phases; everything else is a dirty rectangle. */\n"
+        "unsigned long Map::amigaFullSig()\n"
+        "{\n"
+        "\tPosition o_ = _camera->getMapOffset();\n"
+        "\tunsigned long s_ = 2166136261UL;\n"
+        "\tunsigned long c_[16]; int ci_ = 0;\n"
+        "\tc_[ci_++] = 0;   /* scroll shift: camera x/y is a dirty producer now, not a full-sig component */\n"
+        "\tc_[ci_++] = (unsigned long)(_camera->getViewLevel() + 64) * 2UL + (_camera->getShowAllLayers() ? 1 : 0);\n"
+        "\tc_[ci_++] = (unsigned long)_waypoints.size();\n"
+        "\tc_[ci_++] = (unsigned long)_previewSetting * 2UL + (_save->getPathfinding()->isPathPreviewed() ? 1 : 0);\n"
+        "\tc_[ci_++] = (unsigned long)((_flashScreen ? 1 : 0) + (_unitDying ? 2 : 0) + (_save->getDebugMode() ? 4 : 0));\n"
+        "\tc_[ci_++] = (unsigned long)_save->getSelectedUnit();\n"
+        "\tc_[ci_++] = (unsigned long)_save->getUnits()->size();\n"
+        "\ts_ = s_ * 16777619UL ^ (unsigned long)(_camera->getViewLevel() + 64);\n"
+        "\ts_ = s_ * 16777619UL ^ (unsigned long)(_camera->getShowAllLayers() ? 1 : 0);\n"
+        "\ts_ = s_ * 16777619UL ^ (unsigned long)_waypoints.size();\n"
+        "\ts_ = s_ * 16777619UL ^ (unsigned long)_previewSetting;\n"
+        "\ts_ = s_ * 16777619UL ^ (unsigned long)(_save->getPathfinding()->isPathPreviewed() ? 1 : 0);\n"
+        "\ts_ = s_ * 16777619UL ^ (unsigned long)(_flashScreen ? 1 : 0);\n"
+        "\ts_ = s_ * 16777619UL ^ (unsigned long)(_unitDying ? 1 : 0);\n"
+        "\ts_ = s_ * 16777619UL ^ (unsigned long)(_save->getDebugMode() ? 1 : 0);\n"
+        "\ts_ = s_ * 16777619UL ^ (unsigned long)_save->getSelectedUnit();\n"
+        "\ts_ = s_ * 16777619UL ^ (unsigned long)_save->getUnits()->size();\n"
+        "\t/* tile contents: any unit standing on a different TILE than last time\n"
+        "\t * means FOV may have revealed terrain anywhere - full recompose. Also\n"
+        "\t * doors opening etc. happen on tile change. Explosion count changing\n"
+        "\t * likewise (debris, smoke, fire). */\n"
+        "\t/* step-dirty: NOT the unit positions (a step is a dirty rect) but\n"
+        "\t * whether terrain was revealed / a tile shade changed since last time */\n"
+        "\tunsigned long up_ = AmigaTileRevealN * 65536UL + AmigaTileShadeN;\n"
+        "\ts_ = s_ * 16777619UL ^ up_;\n"
+        "\tc_[ci_++] = up_;\n"
+        "\tc_[ci_++] = (unsigned long)_explosions.size();\n"
+        "\ts_ = s_ * 16777619UL ^ (unsigned long)_explosions.size();\n"
+        "\t/* sig probe: which component moved? (logged at most every 50th change) */\n"
+        "\tif (AmSgN_ > 0)\n"
+        "\t{\n"
+        "\t\tint diff_ = 0; unsigned long mask_ = 0;\n"
+        "\t\tfor (int k_ = 0; k_ < ci_; ++k_) if (c_[k_] != AmSg_[k_]) { diff_ = 1; mask_ |= (1UL << k_); }\n"
+        "\t\tif (diff_)\n"
+        "\t\t{\n"
+        "\t\t\tstatic unsigned long sgLog_ = 0;\n"
+        "\t\t\tif ((sgLog_++ % 50) == 0)\n"
+        "\t\t\t{\n"
+        "\t\t\t\tchar sb_[160];\n"
+        "\t\t\t\tsnprintf(sb_, sizeof sb_, \"sig: changed mask 0x%lx (bit0 cam,1 level,2 wp,3 preview,4 flags,5 selUnit,6 nUnits,7 reveal/shade,8 nExpl) cam %lu->%lu\", mask_, AmSg_[0], c_[0]);\n"
+        "\t\t\t\tSDLmini_Log(sb_);\n"
+        "\t\t\t}\n"
+        "\t\t}\n"
+        "\t}\n"
+        "\tfor (int k_ = 0; k_ < ci_; ++k_) AmSg_[k_] = c_[k_];\n"
+        "\tAmSgN_ = 1;\n"
+        "\treturn s_;\n"
+        "}\n"
+        "\n"
+        "/* dirty tile grid: mark ONE tile in ONE phase and grow that phase's screen box */\n"
+        "void Map::amigaDirtyTileOne(int ph, int x, int y)\n"
+        "{\n"
+        "\tif (x < 0 || y < 0 || x >= _fcGridW || y >= _fcGridH) return;\n"
+        "\tUint8 *g_ = _fcGrid[ph];\n"
+        "\tif (g_ == 0) return;\n"
+        "\tUint8 &c_ = g_[y * _fcGridW + x];\n"
+        "\tif (c_) return;\n"
+        "\tc_ = 1; ++_fcDirtyN[ph];\n"
+        "\t/* screen box: this tile's column from the floor up to the highest level\n"
+        "\t * that has content here (object part or unit) - an empty level above\n"
+        "\t * draws nothing, so the box need not cover it. */\n"
+        "\tint vl_ = _camera->getShowAllLayers() ? _save->getMapSizeZ() - 1 : _camera->getViewLevel();\n"
+        "\tint top_ = 0;\n"
+        "\tfor (int z_ = vl_; z_ >= 0; --z_)\n"
+        "\t{\n"
+        "\t\tTile *tz_ = _save->getTile(Position(x, y, z_));\n"
+        "\t\tif (tz_ && (tz_->getUnit() || tz_->getMapData(O_FLOOR) || tz_->getMapData(O_WESTWALL) || tz_->getMapData(O_NORTHWALL) || tz_->getMapData(O_OBJECT))) { top_ = z_; break; }\n"
+        "\t}\n"
+        "\t/* the cursor is drawn on every level up to the view level whatever is there */\n"
+        "\tif (top_ < vl_ && ((x == _selectorX && y == _selectorY) || AmigaDirtyFullColumn)) top_ = vl_;\n"
+        "\tPosition s0_, s1_;\n"
+        "\t_camera->convertMapToScreen(Position(x, y, 0), &s0_); s0_ += _camera->getMapOffset();\n"
+        "\t_camera->convertMapToScreen(Position(x, y, top_), &s1_); s1_ += _camera->getMapOffset();\n"
+        "\tint bx0 = s0_.x, by0 = s1_.y - _spriteHeight, bx1 = s0_.x + _spriteWidth, by1 = s0_.y + _spriteHeight;\n"
+        "\tamigaGrowBox(ph, bx0, by0, bx1, by1);\n"
+        "}\n"
+        "\n"
+        "void Map::amigaGrowBox(int ph, int x0, int y0, int x1, int y1)\n"
+        "{\n"
+        "\tif (_fcBx1[ph] <= _fcBx0[ph] || _fcBy1[ph] <= _fcBy0[ph]) { _fcBx0[ph] = x0; _fcBy0[ph] = y0; _fcBx1[ph] = x1; _fcBy1[ph] = y1; return; }\n"
+        "\tif (x0 < _fcBx0[ph]) _fcBx0[ph] = x0;\n"
+        "\tif (y0 < _fcBy0[ph]) _fcBy0[ph] = y0;\n"
+        "\tif (x1 > _fcBx1[ph]) _fcBx1[ph] = x1;\n"
+        "\tif (y1 > _fcBy1[ph]) _fcBy1[ph] = y1;\n"
+        "}\n"
+        "\n"
+        "void Map::amigaMarkTileNoBox(int ph, int x, int y)\n"
+        "{\n"
+        "\tif (x < 0 || y < 0 || x >= _fcGridW || y >= _fcGridH) return;\n"
+        "\tUint8 *g_ = _fcGrid[ph];\n"
+        "\tif (g_ == 0) return;\n"
+        "\tUint8 &c_ = g_[y * _fcGridW + x];\n"
+        "\tif (c_) return;\n"
+        "\tc_ = 1; ++_fcDirtyN[ph];\n"
+        "}\n"
+        "\n"
+        "/* mark a tile AND its 8 neighbours (overlap on screen) in all 8 phases -\n"
+        " * or, in a scroll frame (scroll-frame producers), in the current phase only:\n"
+        " * the repaired area is propagated to the other 7 after the repair. */\n"
+        "void Map::amigaDirtyTile(int x, int y)\n"
+        "{\n"
+        "\tif (_fcScrollStrip)\n"
+        "\t{\n"
+        "\t\tint cph_ = _animFrame & 7;\n"
+        "\t\tfor (int dy_ = -1; dy_ <= 1; ++dy_)\n"
+        "\t\t\tfor (int dx_ = -1; dx_ <= 1; ++dx_)\n"
+        "\t\t\t\tamigaDirtyTileOne(cph_, x + dx_, y + dy_);\n"
+        "\t\treturn;\n"
+        "\t}\n"
+        "\tfor (int ph_ = 0; ph_ < 8; ++ph_)\n"
+        "\t\tfor (int dy_ = -1; dy_ <= 1; ++dy_)\n"
+        "\t\t\tfor (int dx_ = -1; dx_ <= 1; ++dx_)\n"
+        "\t\t\t\tamigaDirtyTileOne(ph_, x + dx_, y + dy_);\n"
+        "}\n"
+        "\n"
+        "/* bullet trail particles i0..i1 (0 = head) -> the tiles under them and\n"
+        " * under their floor shadows */\n"
+        "void Map::amigaBulletTiles(int i0, int i1)\n"
+        "{\n"
+        "\tif (!_projectile) return;\n"
+        "\tint part_ = _projectile->getItem() ? 0 : BULLET_SPRITES - 1;\n"
+        "\tif (i1 > part_) i1 = part_;\n"
+        "\tif (i0 < 0) i0 = 0;\n"
+        "\tint lx_ = -1, ly_ = -1;\n"
+        "\tfor (int i_ = i0; i_ <= i1; ++i_)\n"
+        "\t{\n"
+        "\t\tPosition v_ = _projectile->getPosition(1 - i_);\n"
+        "\t\tint tx_ = v_.x / 16, ty_ = v_.y / 16;\n"
+        "\t\tif (tx_ != lx_ || ty_ != ly_) { amigaDirtyTile(tx_, ty_); lx_ = tx_; ly_ = ty_; }\n"
+        "\t}\n"
+        "}\n"
+        "\n"
+        "/* kept for the unit producer: screen box of a map position (unused by the grid) */\n"
+        "void Map::amigaSeedOtherPhases(int except)\n"
+        "{\n"
+        "\tconst int w_ = getWidth(), h_ = getHeight();\n"
+        "\tint beginX, endX, beginY, endY, dummy;\n"
+        "\t_camera->convertScreenToMap(0, 0, &beginX, &dummy);\n"
+        "\t_camera->convertScreenToMap(w_, 0, &dummy, &beginY);\n"
+        "\t_camera->convertScreenToMap(w_ + _spriteWidth, h_ + _spriteHeight, &endX, &dummy);\n"
+        "\t_camera->convertScreenToMap(0, h_ + _spriteHeight, &dummy, &endY);\n"
+        "\tbeginY -= (_camera->getViewLevel() * 2); beginX -= (_camera->getViewLevel() * 2);\n"
+        "\tif (beginX < 0) beginX = 0; if (beginY < 0) beginY = 0;\n"
+        "\tint endZ = _camera->getShowAllLayers() ? _save->getMapSizeZ() - 1 : _camera->getViewLevel();\n"
+        "\tSDL_Surface *ss_ = getSurface();\n"
+        "\tfor (int i_ = 0; i_ < 8; ++i_)\n"
+        "\t{\n"
+        "\t\tif (i_ == except) continue;\n"
+        "\t\tif (_fcPix[i_] == 0) _fcPix[i_] = new Uint8[(size_t)w_ * h_];\n"
+        "\t\tif (_fcPix[i_] == 0) continue;\n"
+        "\t\tconst Uint8 *sp_ = (const Uint8 *)ss_->pixels; Uint8 *dp_ = _fcPix[i_];\n"
+        "\t\tfor (int y_ = 0; y_ < h_; ++y_) { memcpy(dp_, sp_, w_); dp_ += w_; sp_ += ss_->pitch; }\n"
+        "\t\t_fcValid[i_] = 1;\n"
+        "\t\tif (_fcGrid[i_]) memset(_fcGrid[i_], 0, (size_t)_fcGridW * _fcGridH);\n"
+        "\t\t_fcDirtyN[i_] = 0; _fcBx0[i_] = _fcBy0[i_] = 0; _fcBx1[i_] = _fcBy1[i_] = 0;\n"
+        "\t}\n"
+        "\tint nAnim_ = 0;\n"
+        "\tfor (int itZ = 0; itZ <= endZ; ++itZ)\n"
+        "\t\tfor (int itX = beginX; itX <= endX; ++itX)\n"
+        "\t\t\tfor (int itY = beginY; itY <= endY; ++itY)\n"
+        "\t\t\t{\n"
+        "\t\t\t\tTile *tl_ = _save->getTile(Position(itX, itY, itZ));\n"
+        "\t\t\t\tif (!tl_ || !tl_->isDiscovered(2)) continue;\n"
+        "\t\t\t\tbool an_ = false;\n"
+        "\t\t\t\tfor (int pt_ = 0; pt_ < 4 && !an_; ++pt_) { MapData *md_ = tl_->getMapData(pt_); if (md_ && md_->amigaIsAnimated()) an_ = true; }\n"
+        "\t\t\t\tif (!an_ && tl_->getFire() == 0 && tl_->getSmoke() == 0) continue;\n"
+        "\t\t\t\t++nAnim_;\n"
+        "\t\t\t\tfor (int i_ = 0; i_ < 8; ++i_) if (i_ != except)\n"
+        "\t\t\t\t\tfor (int dy_ = -1; dy_ <= 1; ++dy_) for (int dx_ = -1; dx_ <= 1; ++dx_) amigaDirtyTileOne(i_, itX + dx_, itY + dy_);\n"
+        "\t\t\t}\n"
+        "\t{\n"
+        "\t\tstatic unsigned long sp_n_ = 0;\n"
+        "\t\tif ((sp_n_++ % 10) == 0) { char sb_[96]; snprintf(sb_, sizeof sb_, \"seed: %d animated tiles in view\", nAnim_); SDLmini_Log(sb_); }\n"
+        "\t}\n"
+        "}\n"
+        "\n"
+        "/* screen rect covering a map position: the tile sprite plus room for a\n"
+        " * standing unit / tall object above it. Grows the given rect. */\n"
+        "void Map::amigaDirtyMapPos(const Position &p, int &x0, int &y0, int &x1, int &y1)\n"
+        "{\n"
+        "\tPosition s_;\n"
+        "\t_camera->convertMapToScreen(p, &s_);\n"
+        "\ts_ += _camera->getMapOffset();\n"
+        "\tint ax0 = s_.x - _spriteWidth / 2, ay0 = s_.y - _spriteHeight;\n"
+        "\tint ax1 = s_.x + _spriteWidth + _spriteWidth / 2, ay1 = s_.y + _spriteHeight + _spriteHeight / 2;\n"
+        "\tif (ax0 < x0) x0 = ax0;\n"
+        "\tif (ay0 < y0) y0 = ay0;\n"
+        "\tif (ax1 > x1) x1 = ax1;\n"
+        "\tif (ay1 > y1) y1 = ay1;\n"
+        "}\n"
+        "\n"
+        "/* tight cursor rect: the cursor is drawn on tiles (selX-size+1..selX,\n"
+        " * selY-size+1..selY) on EVERY level 0..viewLevel, one 32x40 sprite each\n"
+        " * (Map::drawTerrain, the CURSOR.PCK blits). That, and only that. */\n"
+        "static void amigaCursorRect_(Camera *cam, int selX, int selY, int size, int vl, int sw, int sh, int &x0, int &y0, int &x1, int &y1)\n"
+        "{\n"
+        "\tPosition mo_ = cam->getMapOffset();\n"
+        "\tfor (int z_ = 0; z_ <= vl; ++z_)\n"
+        "\t\tfor (int dx_ = 0; dx_ < size; ++dx_)\n"
+        "\t\t\tfor (int dy_ = 0; dy_ < size; ++dy_)\n"
+        "\t\t\t{\n"
+        "\t\t\t\tPosition s_;\n"
+        "\t\t\t\tcam->convertMapToScreen(Position(selX - dx_, selY - dy_, z_), &s_);\n"
+        "\t\t\t\ts_ += mo_;\n"
+        "\t\t\t\tif (s_.x < x0) x0 = s_.x;\n"
+        "\t\t\t\tif (s_.y < y0) y0 = s_.y;\n"
+        "\t\t\t\tif (s_.x + sw > x1) x1 = s_.x + sw;\n"
+        "\t\t\t\tif (s_.y + sh > y1) y1 = s_.y + sh;\n"
+        "\t\t\t}\n"
+        "}\n"
+        "\n"
+        "/* After drawTerrain: copy the composed area (whole picture or the clip\n"
+        " * rect) into the current phase's cache and mark that phase clean. */\n"
+        "void Map::amigaCacheStore()\n"
+        "{\n"
+        "\tconst int w_ = getWidth(), h_ = getHeight();\n"
+        "\tconst int ph_ = _animFrame & 7;\n"
+        "\t\tbool wasFull_ = (AmigaClipX0 <= 0 && AmigaClipY0 <= 0 && AmigaClipX1 >= w_ && AmigaClipY1 >= h_);\n"
+        "\tif (_fcPix[ph_] == 0) _fcPix[ph_] = new Uint8[(size_t)w_ * h_];\n"
+        "\tif (_fcPix[ph_] != 0)\n"
+        "\t{\n"
+        "\t\tint x0 = AmigaClipX0, y0 = AmigaClipY0, x1 = AmigaClipX1, y1 = AmigaClipY1;\n"
+        "\t\tif (x0 < 0) x0 = 0;\n"
+        "\t\tif (y0 < 0) y0 = 0;\n"
+        "\t\tif (x1 > w_) x1 = w_;\n"
+        "\t\tif (y1 > h_) y1 = h_;\n"
+        "\t\tif (x1 > x0 && y1 > y0)\n"
+        "\t\t{\n"
+        "\t\t\tSDL_Surface *s_ = getSurface();\n"
+        "\t\t\tconst Uint8 *sp_ = (const Uint8 *)s_->pixels + (size_t)y0 * s_->pitch + x0;\n"
+        "\t\t\tUint8 *dp_ = _fcPix[ph_] + (size_t)y0 * w_ + x0;\n"
+        "\t\t\tfor (int y_ = y0; y_ < y1; ++y_) { memcpy(dp_, sp_, x1 - x0); dp_ += w_; sp_ += s_->pitch; }\n"
+        "\t\t}\n"
+        "\t\t_fcValid[ph_] = 1;\n"
+        "\t\tif (wasFull_) { if (_fcGrid[ph_]) memset(_fcGrid[ph_], 0, (size_t)_fcGridW * _fcGridH); _fcDirtyN[ph_] = 0; _fcBx0[ph_] = _fcBy0[ph_] = 0; _fcBx1[ph_] = _fcBy1[ph_] = 0; }\n"
+        "\t\tif (wasFull_) { amigaSeedOtherPhases(ph_); _fcScrollStrip = false; }\n"
+        "\t}\n"
+        "\t_fcClipX0 = _fcClipY0 = 0; _fcClipX1 = _fcClipY1 = 1 << 14;\n"
+        "\tif (wasFull_) { AmigaClipX0 = 0; AmigaClipY0 = 0; AmigaClipX1 = 1 << 14; AmigaClipY1 = 1 << 14; }\n"
+        "}\n"
+        "#endif\n"
+        "\n"
+        "/**\n"
+        " * Draws the whole map, part by part.\n"
+        " */\n"
+        "void Map::draw()\n"
+        "{\n",
+        "dirty-rect cache helpers")))
+
+    results.append(("Map.cpp (dirty-rect cache draw)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "\t_redraw = false;\n"
+        "\tclear(Palette::blockOffset(0)+15);\n",
+        "#ifdef __AMIGA__\n"
+        "\t/* AMIGA-PORT dirty-rect cache - see the comment at amigaFullSig(). */\n"
+        "\tbool amPartial_ = false;\n"
+        "\t{\n"
+        "\t\tconst int w_ = getWidth(), h_ = getHeight();\n"
+        "\t\tconst int ph_ = _animFrame & 7;\n"
+        "\t\tconst unsigned long sig_ = amigaFullSig();\n"
+        "\t\tstd::vector<BattleUnit*> *us_ = _save->getUnits();\n"
+        "\t\tconst size_t un_ = us_->size();\n"
+        "\t\t/* grid sized to the map, allocated once per battle size */\n"
+        "\t\tif (_fcGridW != _save->getMapSizeX() || _fcGridH != _save->getMapSizeY())\n"
+        "\t\t{\n"
+        "\t\t\t_fcGridW = _save->getMapSizeX(); _fcGridH = _save->getMapSizeY();\n"
+        "\t\t\tfor (int i_ = 0; i_ < 8; ++i_) { delete[] _fcGrid[i_]; _fcGrid[i_] = new Uint8[(size_t)_fcGridW * _fcGridH]; memset(_fcGrid[i_], 0, (size_t)_fcGridW * _fcGridH); _fcDirtyN[i_] = 0; _fcValid[i_] = 0; }\n"
+        "\t\t}\n"
+        "\t\tif (w_ != _fcW || h_ != _fcH || sig_ != _fcSig || _fcUnitPos.size() != un_)\n"
+        "\t\t{\n"
+        "\t\t\t++AmCp_whySig;\n"
+        "\t\t\tfor (int i_ = 0; i_ < 8; ++i_) { _fcValid[i_] = 0; if (_fcGrid[i_]) memset(_fcGrid[i_], 0, (size_t)_fcGridW * _fcGridH); _fcDirtyN[i_] = 0; _fcBx0[i_] = _fcBy0[i_] = 0; _fcBx1[i_] = _fcBy1[i_] = 0; }\n"
+        "\t\t\t_fcSig = sig_; _fcW = w_; _fcH = h_;\n"
+        "\t\t\t_fcUnitPos.resize(un_); _fcUnitState.resize(un_);\n"
+        "\t\t\tfor (size_t i_ = 0; i_ < un_; ++i_)\n"
+        "\t\t\t{\n"
+        "\t\t\t\tBattleUnit *bu_ = (*us_)[i_];\n"
+        "\t\t\t\t_fcUnitPos[i_] = bu_->getPosition();\n"
+        "\t\t\t\t_fcUnitState[i_] = bu_->getDirection() * 64 + (int)bu_->getStatus() * 8\n"
+        "\t\t\t\t\t+ bu_->getWalkingPhase() + (bu_->getVisible() ? 4096 : 0);\n"
+        "\t\t\t}\n"
+        "\t\t\t_fcSelX = _selectorX; _fcSelY = _selectorY;\n"
+        "\t\t\t_fcCurType = (int)_cursorType; _fcCurSize = _cursorSize;\n"
+        "\t\t\t_fcProjOn = (_projectile != 0);\n"
+        "\t\t\t_fcProjIdx = _projectile ? _projectile->amigaTrajIndex() : -1;\n"
+        "\t\t\t_fcExplN = (int)_explosions.size();\n"
+        "\t\t\t{ Position mo_ = _camera->getMapOffset(); _fcCamX = mo_.x; _fcCamY = mo_.y; }\n"
+        "\t\t}\n"
+        "\t\telse\n"
+        "\t\t{\n"
+        "\t\t\t/* scroll shift: camera moved by (dx,dy) with everything else equal.\n"
+        "\t\t\t * The picture is the SAME picture translated - shift all 8 cached\n"
+        "\t\t\t * buffers by (dx,dy) and dirty only the exposed strip (as tiles). A\n"
+        "\t\t\t * jump larger than a third of the screen is a re-centre: full drop. */\n"
+        "\t\t\t{\n"
+        "\t\t\t\tPosition mo_ = _camera->getMapOffset();\n"
+        "\t\t\t\tint dx_ = mo_.x - _fcCamX, dy_ = mo_.y - _fcCamY;\n"
+        "\t\t\t\tif (dx_ != 0 || dy_ != 0)\n"
+        "\t\t\t\t{\n"
+        "\t\t\t\t\tint adx_ = dx_ < 0 ? -dx_ : dx_, ady_ = dy_ < 0 ? -dy_ : dy_;\n"
+        "\t\t\t\t\tif (adx_ >= w_ / 3 || ady_ >= h_ / 3)\n"
+        "\t\t\t\t\t{\n"
+        "\t\t\t\t\t\t++AmCp_whySig;\n"
+        "\t\t\t\t\t\tfor (int i_ = 0; i_ < 8; ++i_) { _fcValid[i_] = 0; if (_fcGrid[i_]) memset(_fcGrid[i_], 0, (size_t)_fcGridW * _fcGridH); _fcDirtyN[i_] = 0; }\n"
+        "\t\t\t\t\t}\n"
+        "\t\t\t\t\telse\n"
+        "\t\t\t\t\t{\n"
+        "\t\t\t\t\t\t++AmCp_whyScroll;\n"
+        "\t\t\t\t\t\t/* shift every valid buffer; the dirty grids are in MAP tiles and\n"
+        "\t\t\t\t\t\t * stay valid as they are (their screen boxes are recomputed below) */\n"
+        "\t\t\t\t\t\tfor (int i_ = 0; i_ < 8; ++i_)\n"
+        "\t\t\t\t\t\t{\n"
+        "\t\t\t\t\t\t\tif (!_fcValid[i_] || _fcPix[i_] == 0) continue;\n"
+        "\t\t\t\t\t\t\tUint8 *b_ = _fcPix[i_];\n"
+        "\t\t\t\t\t\t\tif (dy_ > 0)      { for (int y_ = h_ - 1; y_ >= dy_; --y_) memmove(b_ + (size_t)y_ * w_, b_ + (size_t)(y_ - dy_) * w_, w_); }\n"
+        "\t\t\t\t\t\t\telse if (dy_ < 0) { for (int y_ = 0; y_ < h_ + dy_; ++y_) memmove(b_ + (size_t)y_ * w_, b_ + (size_t)(y_ - dy_) * w_, w_); }\n"
+        "\t\t\t\t\t\t\tif (dx_ > 0)      { for (int y_ = 0; y_ < h_; ++y_) memmove(b_ + (size_t)y_ * w_ + dx_, b_ + (size_t)y_ * w_, w_ - dx_); }\n"
+        "\t\t\t\t\t\t\telse if (dx_ < 0) { for (int y_ = 0; y_ < h_; ++y_) memmove(b_ + (size_t)y_ * w_, b_ + (size_t)y_ * w_ - dx_, w_ + dx_); }\n"
+        "\t\t\t\t\t\t\t/* the exposed strips hold stale pixels: clear them to the map background\n"
+        "\t\t\t\t\t\t\t * (beyond the map edge no tile will repaint them) */\n"
+        "\t\t\t\t\t\t\tif (dy_ > 0)      memset(b_, Palette::blockOffset(0)+15, (size_t)dy_ * w_);\n"
+        "\t\t\t\t\t\t\telse if (dy_ < 0) memset(b_ + (size_t)(h_ + dy_) * w_, Palette::blockOffset(0)+15, (size_t)(-dy_) * w_);\n"
+        "\t\t\t\t\t\t\tif (dx_ > 0)      { for (int y_ = 0; y_ < h_; ++y_) memset(b_ + (size_t)y_ * w_, Palette::blockOffset(0)+15, dx_); }\n"
+        "\t\t\t\t\t\t\telse if (dx_ < 0) { for (int y_ = 0; y_ < h_; ++y_) memset(b_ + (size_t)y_ * w_ + w_ + dx_, Palette::blockOffset(0)+15, -dx_); }\n"
+        "\t\t\t\t\t\t}\n"
+        "\t\t\t\t\t\t/* the exposed strip(s): every tile in view whose screen column touches\n"
+        "\t\t\t\t\t\t * them - the grid halo takes care of overlap. Screen boxes of already\n"
+        "\t\t\t\t\t\t * dirty tiles are rebuilt from scratch below (they moved on screen). */\n"
+        "\t\t\t\t\t\tint sx0_ = 0, sx1_ = 0, sy0_ = 0, sy1_ = 0;   /* exposed strips in screen px */\n"
+        "\t\t\t\t\t\tif (dx_ > 0) { sx0_ = 0; sx1_ = dx_; } else if (dx_ < 0) { sx0_ = w_ + dx_; sx1_ = w_; }\n"
+        "\t\t\t\t\t\tif (dy_ > 0) { sy0_ = 0; sy1_ = dy_; } else if (dy_ < 0) { sy0_ = h_ + dy_; sy1_ = h_; }\n"
+        "\t\t\t\t\t\t_fcScrollStrip = true;   /* scroll frame: every producer marks the current phase only */\n"
+        "\t\t\t\t\t\t/* the strip union (an L when scrolling diagonally) as one box */\n"
+        "\t\t\t\t\t\t_fcStripX0 = 0; _fcStripY0 = 0; _fcStripX1 = w_; _fcStripY1 = h_;\n"
+        "\t\t\t\t\t\tif (sx1_ > sx0_ && !(sy1_ > sy0_)) { _fcStripX0 = sx0_; _fcStripX1 = sx1_; }\n"
+        "\t\t\t\t\t\telse if (sy1_ > sy0_ && !(sx1_ > sx0_)) { _fcStripY0 = sy0_; _fcStripY1 = sy1_; }\n"
+        "\t\t\t\t\t\t/* diagonal: keep the full box (copy is cheap; correctness first) */\n"
+        "\t\t\t\t\t\tint bX, eX, bY, eY, dm_;\n"
+        "\t\t\t\t\t\t_camera->convertScreenToMap(0, 0, &bX, &dm_);\n"
+        "\t\t\t\t\t\t_camera->convertScreenToMap(w_, 0, &dm_, &bY);\n"
+        "\t\t\t\t\t\t_camera->convertScreenToMap(w_ + _spriteWidth, h_ + _spriteHeight, &eX, &dm_);\n"
+        "\t\t\t\t\t\t_camera->convertScreenToMap(0, h_ + _spriteHeight, &dm_, &eY);\n"
+        "\t\t\t\t\t\tbY -= (_camera->getViewLevel() * 2); bX -= (_camera->getViewLevel() * 2);\n"
+        "\t\t\t\t\t\tif (bX < 0) bX = 0; if (bY < 0) bY = 0;\n"
+        "\t\t\t\t\t\tint vl_ = _camera->getViewLevel();\n"
+        "\t\t\t\t\t\tfor (int tx_ = bX; tx_ <= eX; ++tx_)\n"
+        "\t\t\t\t\t\t\tfor (int ty_ = bY; ty_ <= eY; ++ty_)\n"
+        "\t\t\t\t\t\t\t{\n"
+        "\t\t\t\t\t\t\t\tPosition s0_, s1_;\n"
+        "\t\t\t\t\t\t\t\t_camera->convertMapToScreen(Position(tx_, ty_, 0), &s0_); s0_ += mo_;\n"
+        "\t\t\t\t\t\t\t\t_camera->convertMapToScreen(Position(tx_, ty_, vl_), &s1_); s1_ += mo_;\n"
+        "\t\t\t\t\t\t\t\tint cx0 = s0_.x, cx1 = s0_.x + _spriteWidth, cy0 = s1_.y - _spriteHeight, cy1 = s0_.y + _spriteHeight;\n"
+        "\t\t\t\t\t\t\t\tbool hit_ = false;\n"
+        "\t\t\t\t\t\t\t\tif (sx1_ > sx0_ && cx1 > sx0_ && cx0 < sx1_) hit_ = true;\n"
+        "\t\t\t\t\t\t\t\tif (sy1_ > sy0_ && cy1 > sy0_ && cy0 < sy1_) hit_ = true;\n"
+        "\t\t\t\t\t\t\t\tif (hit_)\n"
+        "\t\t\t\t\t\t\t\t{\n"
+        "\t\t\t\t\t\t\t\t\t/* scroll propagate: strip tiles go to the CURRENT phase only; the\n"
+        "\t\t\t\t\t\t\t\t\t * repaired strip is copied to the other 7 after the repair, and only\n"
+        "\t\t\t\t\t\t\t\t\t * their ANIMATED tiles in the strip stay dirty. Marking all 8 made\n"
+        "\t\t\t\t\t\t\t\t\t * the idle phases pile up 7 scroll steps of dirt each (2026-08-19). */\n"
+        "\t\t\t\t\t\t\t\t\tamigaMarkTileNoBox(ph_, tx_, ty_);\n"
+        "\t\t\t\t\t\t\t\t\tTile *st_ = _save->getTile(Position(tx_, ty_, vl_));\n"
+        "\t\t\t\t\t\t\t\t\tbool an_ = false;\n"
+        "\t\t\t\t\t\t\t\t\tfor (int z2_ = 0; z2_ <= vl_ && !an_; ++z2_) { Tile *tz_ = _save->getTile(Position(tx_, ty_, z2_)); if (!tz_) continue; for (int pt_ = 0; pt_ < 4 && !an_; ++pt_) { MapData *md_ = tz_->getMapData(pt_); if (md_ && md_->amigaIsAnimated()) an_ = true; } if (tz_->getFire() || tz_->getSmoke()) an_ = true; }\n"
+        "\t\t\t\t\t\t\t\t\t(void)st_;\n"
+        "\t\t\t\t\t\t\t\t\tif (an_) for (int ph2_ = 0; ph2_ < 8; ++ph2_) if (ph2_ != ph_) amigaMarkTileNoBox(ph2_, tx_, ty_);\n"
+        "\t\t\t\t\t\t\t\t\t_fcScrollStrip = true;\n"
+        "\t\t\t\t\t\t\t\t}\n"
+        "\t\t\t\t\t\t\t}\n"
+        "\t\t\t\t\t\t/* strip box: existing boxes just moved with the pixels - shift them; the\n"
+        "\t\t\t\t\t\t * strip is its own box (drawing the strip tiles clipped to it is all the\n"
+        "\t\t\t\t\t\t * exposed pixels need - below the strip their sprites repaint identical\n"
+        "\t\t\t\t\t\t * pixels). No tile columns for the strip: that was 85% of the screen. */\n"
+        "\t\t\t\t\t\tfor (int i_ = 0; i_ < 8; ++i_)\n"
+        "\t\t\t\t\t\t{\n"
+        "\t\t\t\t\t\t\tif (_fcBx1[i_] > _fcBx0[i_] && _fcBy1[i_] > _fcBy0[i_])\n"
+        "\t\t\t\t\t\t\t{\n"
+        "\t\t\t\t\t\t\t\t_fcBx0[i_] += dx_; _fcBx1[i_] += dx_; _fcBy0[i_] += dy_; _fcBy1[i_] += dy_;\n"
+        "\t\t\t\t\t\t\t\tif (_fcBx0[i_] < 0) _fcBx0[i_] = 0; if (_fcBy0[i_] < 0) _fcBy0[i_] = 0;\n"
+        "\t\t\t\t\t\t\t\tif (_fcBx1[i_] > w_) _fcBx1[i_] = w_; if (_fcBy1[i_] > h_) _fcBy1[i_] = h_;\n"
+        "\t\t\t\t\t\t\t}\n"
+        "\t\t\t\t\t\t\tif (_fcDirtyN[i_] > 0 && _fcScrollStrip)\n"
+        "\t\t\t\t\t\t\t{\n"
+        "\t\t\t\t\t\t\t\tif (sx1_ > sx0_) amigaGrowBox(i_, sx0_, 0, sx1_, h_);\n"
+        "\t\t\t\t\t\t\t\tif (sy1_ > sy0_) amigaGrowBox(i_, 0, sy0_, w_, sy1_);\n"
+        "\t\t\t\t\t\t\t}\n"
+        "\t\t\t\t\t\t}\n"
+        "\t\t\t\t\t}\n"
+        "\t\t\t\t\t_fcCamX = mo_.x; _fcCamY = mo_.y;\n"
+        "\t\t\t\t}\n"
+        "\t\t\t}\n"
+        "\t\t\t/* incremental producers mark TILES */\n"
+        "\t\t\tfor (size_t i_ = 0; i_ < un_; ++i_)\n"
+        "\t\t\t{\n"
+        "\t\t\t\tBattleUnit *bu_ = (*us_)[i_];\n"
+        "\t\t\t\tint st_ = bu_->getDirection() * 64 + (int)bu_->getStatus() * 8\n"
+        "\t\t\t\t\t+ bu_->getWalkingPhase() + (bu_->getVisible() ? 4096 : 0);\n"
+        "\t\t\t\tif (st_ == _fcUnitState[i_] && bu_->getPosition() == _fcUnitPos[i_]) continue;\n"
+        "\t\t\t\t++AmCp_whyUnits;\n"
+        "\t\t\t\tint sz_ = bu_->getArmor()->getSize();\n"
+        "\t\t\t\tfor (int a_ = 0; a_ < sz_; ++a_) for (int b_ = 0; b_ < sz_; ++b_) { amigaDirtyTile(_fcUnitPos[i_].x + a_, _fcUnitPos[i_].y + b_); amigaDirtyTile(bu_->getPosition().x + a_, bu_->getPosition().y + b_); }\n"
+        "\t\t\t\t_fcUnitPos[i_] = bu_->getPosition(); _fcUnitState[i_] = st_;\n"
+        "\t\t\t}\n"
+        "\t\t\tif (_selectorX != _fcSelX || _selectorY != _fcSelY\n"
+        "\t\t\t\t|| (int)_cursorType != _fcCurType || _cursorSize != _fcCurSize)\n"
+        "\t\t\t{\n"
+        "\t\t\t\t++AmCp_whyCur;\n"
+        "\t\t\t\tint cs_ = _cursorSize > 0 ? _cursorSize : 1;\n"
+        "\t\t\t\tint ocs_ = _fcCurSize > 0 ? _fcCurSize : 1;\n"
+        "\t\t\t\tAmigaDirtyFullColumn = 1;\n"
+        "\t\t\t\tif (_fcSelX > -9000) for (int a_ = 0; a_ < ocs_; ++a_) for (int b_ = 0; b_ < ocs_; ++b_) amigaDirtyTile(_fcSelX - a_, _fcSelY - b_);\n"
+        "\t\t\t\tAmigaDirtyFullColumn = 0;\n"
+        "\t\t\t\tfor (int a_ = 0; a_ < cs_; ++a_) for (int b_ = 0; b_ < cs_; ++b_) amigaDirtyTile(_selectorX - a_, _selectorY - b_);\n"
+        "\t\t\t\t_fcSelX = _selectorX; _fcSelY = _selectorY;\n"
+        "\t\t\t\t_fcCurType = (int)_cursorType; _fcCurSize = _cursorSize;\n"
+        "\t\t\t}\n"
+        "\t\t\tif (_projectile)\n"
+        "\t\t\t{\n"
+        "\t\t\t\tint idx_ = _projectile->amigaTrajIndex();\n"
+        "\t\t\t\tif (_fcProjIdx < 0 || !_fcProjOn) { ++AmCp_whyProj; amigaBulletTiles(0, BULLET_SPRITES - 1); }\n"
+        "\t\t\t\telse if (idx_ != _fcProjIdx)\n"
+        "\t\t\t\t{\n"
+        "\t\t\t\t\t++AmCp_whyProj;\n"
+        "\t\t\t\t\tint d_ = idx_ - _fcProjIdx; if (d_ < 0) d_ = -d_;\n"
+        "\t\t\t\t\tif (d_ >= BULLET_SPRITES) d_ = BULLET_SPRITES - 1;\n"
+        "\t\t\t\t\tamigaBulletTiles(0, d_);                                    /* head: new positions */\n"
+        "\t\t\t\t\tamigaBulletTiles(BULLET_SPRITES - 1 - d_, BULLET_SPRITES - 1); /* tail: current tail */\n"
+        "\t\t\t\t\tfor (int k_ = 1; k_ <= d_; ++k_)                             /* fell out of the window */\n"
+        "\t\t\t\t\t{ Position v_ = _projectile->getPosition(1 - (BULLET_SPRITES - 1) - k_); amigaDirtyTile(v_.x / 16, v_.y / 16); }\n"
+        "\t\t\t\t}\n"
+        "\t\t\t\t_fcProjIdx = idx_; _fcProjOn = 1;\n"
+        "\t\t\t}\n"
+        "\t\t\telse if (_fcProjOn)\n"
+        "\t\t\t{\n"
+        "\t\t\t\t/* bullet gone: it was drawn LAST frame along its whole trail; those\n"
+        "\t\t\t\t * tiles are already dirty from the head/tail marking over its flight\n"
+        "\t\t\t\t * only if the animation phase repaired them... be safe: full drop. */\n"
+        "\t\t\t\t++AmCp_whyProj;\n"
+        "\t\t\t\tfor (int i_ = 0; i_ < 8; ++i_) _fcValid[i_] = 0;\n"
+        "\t\t\t\t_fcProjOn = 0; _fcProjIdx = -1;\n"
+        "\t\t\t}\n"
+        "\t\t\tif (!_explosions.empty())\n"
+        "\t\t\t{\n"
+        "\t\t\t\t++AmCp_whyExpl;\n"
+        "\t\t\t\tfor (std::list<Explosion*>::const_iterator e_ = _explosions.begin(); e_ != _explosions.end(); ++e_)\n"
+        "\t\t\t\t{\n"
+        "\t\t\t\t\tPosition ep_ = (*e_)->getPosition();\n"
+        "\t\t\t\t\tint tx_ = ep_.x / 16, ty_ = ep_.y / 16;\n"
+        "\t\t\t\t\tif ((*e_)->isBig()) { for (int a_ = -2; a_ <= 2; ++a_) for (int b_ = -2; b_ <= 2; ++b_) amigaDirtyTile(tx_ + a_, ty_ + b_); }\n"
+        "\t\t\t\t\telse amigaDirtyTile(tx_, ty_);\n"
+        "\t\t\t\t}\n"
+        "\t\t\t}\n"
+        "\t\t}\n"
+        "\t\t/* current phase usable? */\n"
+        "\t\tif (_fcValid[ph_] && _fcPix[ph_] != 0)\n"
+        "\t\t{\n"
+        "\t\t\tSDL_Surface *d_ = getSurface();\n"
+        "\t\t\tconst Uint8 *sp_ = _fcPix[ph_];\n"
+        "\t\t\tUint8 *dp_ = (Uint8 *)d_->pixels;\n"
+        "\t\t\tfor (int y_ = 0; y_ < h_; ++y_) { memcpy(dp_, sp_, w_); sp_ += w_; dp_ += d_->pitch; }\n"
+        "\t\t\tif (_fcDirtyN[ph_] == 0)\n"
+        "\t\t\t{\n"
+        "\t\t\t\t++AmCp_hit;\n"
+        "\t\t\t\t_fcScrollStrip = false;   /* nothing to propagate this frame */\n"
+        "\t\t\t\t_redraw = false;\n"
+        "\t\t\t\treturn;\n"
+        "\t\t\t}\n"
+        "\t\t\t/* dirty hit: ONE compose over the view, skipping clean tiles */\n"
+        "\t\t\tamPartial_ = true; ++AmCp_part; ++AmCp_partRects;\n"
+        "\t\t\tint x0 = _fcBx0[ph_] < 0 ? 0 : _fcBx0[ph_], y0 = _fcBy0[ph_] < 0 ? 0 : _fcBy0[ph_];\n"
+        "\t\t\tint x1 = _fcBx1[ph_] > w_ ? w_ : _fcBx1[ph_], y1 = _fcBy1[ph_] > h_ ? h_ : _fcBy1[ph_];\n"
+        "\t\t\tif (x1 > x0 && y1 > y0)\n"
+        "\t\t\t{\n"
+        "\t\t\t\tAmCp_partPx += (unsigned long)(x1 - x0) * (unsigned long)(y1 - y0);\n"
+        "\t\t\t\tAmigaClipX0 = x0; AmigaClipY0 = y0; AmigaClipX1 = x1; AmigaClipY1 = y1;\n"
+        "\t\t\t\tAmigaDirtyGrid = _fcGrid[ph_]; AmigaDirtyGridW = _fcGridW; AmigaDirtyGridH = _fcGridH;\n"
+        "\t\t\t\t/* clear the dirty tiles' pixels: not the box (it holds clean tiles too)\n"
+        "\t\t\t\t * but per dirty tile column - drawTerrain paints floors first, so a\n"
+        "\t\t\t\t * dirty tile fully repaints itself; only the box beyond the map edge\n"
+        "\t\t\t\t * needs the background. Simplest correct: clear the box. Clean tiles\n"
+        "\t\t\t\t * inside it are neighbours of dirty ones and were marked too. */\n"
+        "\t\t\t\tUint8 *cp_ = (Uint8 *)d_->pixels + (size_t)y0 * d_->pitch + x0;\n"
+        "\t\t\t\tfor (int y_ = y0; y_ < y1; ++y_) { memset(cp_, Palette::blockOffset(0)+15, x1 - x0); cp_ += d_->pitch; }\n"
+        "\t\t\t\tUint32 t0_ = SDL_GetTicks(); unsigned long tb_ = AmigaTileN, bb_ = AmigaShadeThruN;\n"
+        "\t\t\t\tamigaComposeVisible();\n"
+        "\t\t\t\t{ Uint32 dd_ = SDL_GetTicks() - t0_; AmCp_partMs += dd_; AmCp_partTiles += AmigaTileN - tb_; AmCp_partBlits += AmigaShadeThruN - bb_; }\n"
+        "\t\t\t\tAmigaDirtyGrid = 0;\n"
+        "\t\t\t\tif (_fcScrollStrip)\n"
+        "\t\t\t\t{\n"
+        "\t\t\t\t\t/* scroll propagate: the repaired area of THIS phase is, bar the animated\n"
+        "\t\t\t\t\t * tiles (left dirty there), the same in every other phase - copy it. */\n"
+        "\t\t\t\t\tfor (int i_ = 0; i_ < 8; ++i_)\n"
+        "\t\t\t\t\t{\n"
+        "\t\t\t\t\t\tif (i_ == ph_ || !_fcValid[i_] || _fcPix[i_] == 0) continue;\n"
+        "\t\t\t\t\t\tconst Uint8 *rs_ = (const Uint8 *)d_->pixels + (size_t)y0 * d_->pitch + x0;\n"
+        "\t\t\t\t\t\tUint8 *rd_ = _fcPix[i_] + (size_t)y0 * w_ + x0;\n"
+        "\t\t\t\t\t\tfor (int y_ = y0; y_ < y1; ++y_) { memcpy(rd_, rs_, x1 - x0); rd_ += w_; rs_ += d_->pitch; }\n"
+        "\t\t\t\t\t}\n"
+        "\t\t\t\t\t/* animated tiles anywhere in the copied box now show phase ph_ in the\n"
+        "\t\t\t\t\t * other phases - mark them dirty there so they repaint on their turn */\n"
+        "\t\t\t\t\t{\n"
+        "\t\t\t\t\t\tint bX, eX, bY, eY, dm_;\n"
+        "\t\t\t\t\t\t_camera->convertScreenToMap(0, 0, &bX, &dm_);\n"
+        "\t\t\t\t\t\t_camera->convertScreenToMap(w_, 0, &dm_, &bY);\n"
+        "\t\t\t\t\t\t_camera->convertScreenToMap(w_ + _spriteWidth, h_ + _spriteHeight, &eX, &dm_);\n"
+        "\t\t\t\t\t\t_camera->convertScreenToMap(0, h_ + _spriteHeight, &dm_, &eY);\n"
+        "\t\t\t\t\t\tint vl2_ = _camera->getViewLevel();\n"
+        "\t\t\t\t\t\tbY -= vl2_ * 2; bX -= vl2_ * 2; if (bX < 0) bX = 0; if (bY < 0) bY = 0;\n"
+        "\t\t\t\t\t\tPosition mo2_ = _camera->getMapOffset();\n"
+        "\t\t\t\t\t\tfor (int tx_ = bX; tx_ <= eX; ++tx_) for (int ty_ = bY; ty_ <= eY; ++ty_)\n"
+        "\t\t\t\t\t\t{\n"
+        "\t\t\t\t\t\t\tPosition s0_, s1_;\n"
+        "\t\t\t\t\t\t\t_camera->convertMapToScreen(Position(tx_, ty_, 0), &s0_); s0_ += mo2_;\n"
+        "\t\t\t\t\t\t\t_camera->convertMapToScreen(Position(tx_, ty_, vl2_), &s1_); s1_ += mo2_;\n"
+        "\t\t\t\t\t\t\tif (s0_.x + _spriteWidth <= x0 || s0_.x >= x1 || s0_.y + _spriteHeight <= y0 || s1_.y - _spriteHeight >= y1) continue;\n"
+        "\t\t\t\t\t\t\tbool an_ = false;\n"
+        "\t\t\t\t\t\t\tfor (int z2_ = 0; z2_ <= vl2_ && !an_; ++z2_) { Tile *tz_ = _save->getTile(Position(tx_, ty_, z2_)); if (!tz_) continue; for (int pt_ = 0; pt_ < 4 && !an_; ++pt_) { MapData *md_ = tz_->getMapData(pt_); if (md_ && md_->amigaIsAnimated()) an_ = true; } if (tz_->getFire() || tz_->getSmoke()) an_ = true; }\n"
+        "\t\t\t\t\t\t\tif (an_) for (int i_ = 0; i_ < 8; ++i_) if (i_ != ph_) { amigaMarkTileNoBox(i_, tx_, ty_); amigaGrowBox(i_, s0_.x, s1_.y - _spriteHeight, s0_.x + _spriteWidth, s0_.y + _spriteHeight); }\n"
+        "\t\t\t\t\t\t}\n"
+        "\t\t\t\t\t}\n"
+        "\t\t\t\t\t_fcScrollStrip = false;\n"
+        "\t\t\t\t}\n"
+        "\t\t\t}\n"
+        "\t\t\tif (_fcGrid[ph_]) memset(_fcGrid[ph_], 0, (size_t)_fcGridW * _fcGridH);\n"
+        "\t\t\t_fcDirtyN[ph_] = 0; _fcBx0[ph_] = _fcBy0[ph_] = 0; _fcBx1[ph_] = _fcBy1[ph_] = 0;\n"
+        "\t\t\tAmigaClipX0 = 0; AmigaClipY0 = 0; AmigaClipX1 = 1 << 14; AmigaClipY1 = 1 << 14;\n"
+        "\t\t\t_fcClipX0 = _fcClipY0 = 0; _fcClipX1 = _fcClipY1 = 1 << 14;\n"
+        "\t\t\t_redraw = false;\n"
+        "\t\t\treturn;\n"
+        "\t\t}\n"
+        "\t\telse\n"
+        "\t\t{\n"
+        "\t\t\t++AmCp_whyMiss;\n"
+        "\t\t\t_fcClipX0 = 0; _fcClipY0 = 0; _fcClipX1 = w_; _fcClipY1 = h_;\n"
+        "\t\t}\n"
+        "\t}\n"
+        "\tAmigaClipX0 = _fcClipX0; AmigaClipY0 = _fcClipY0;\n"
+        "\tAmigaClipX1 = _fcClipX1; AmigaClipY1 = _fcClipY1;\n"
+        "\t_redraw = false;\n"
+        "\tclear(Palette::blockOffset(0)+15);\n"
+        "#else\n"
+        "\t_redraw = false;\n"
+        "\tclear(Palette::blockOffset(0)+15);\n"
+        "#endif\n"
+        "#ifdef __AMIGA__\n"
+        "\tamigaComposeVisible();   /* compose split */\n"
+        "}\n"
+        "\n"
+        "/* The part of draw() that actually composes: FOV visibility flags for the\n"
+        " * bullet/explosions, then drawTerrain (or the hidden-movement screen).\n"
+        " * Called for a full compose and, with AmigaClip* set, for each dirty rect. */\n"
+        "void Map::amigaComposeVisible()\n"
+        "{\n"
+        "#endif\n",
+        "dirty-rect cache draw")))
+
+    # The hidden-movement message path must not leave a stale clip and must
+    # not be cached: drop the phases so the next real frame recomposes.
+    results.append(("Map.cpp (dirty-rect cache message path)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "\telse\n"
+        "\t{\n"
+        "\t\t_message->blit(this);\n"
+        "\t}\n"
+        "}\n",
+        "\telse\n"
+        "\t{\n"
+        "#ifdef __AMIGA__\n"
+        "\t\tAmigaClipX0 = 0; AmigaClipY0 = 0; AmigaClipX1 = 1 << 14; AmigaClipY1 = 1 << 14;\n"
+        "\t\t_fcClipX0 = _fcClipY0 = 0; _fcClipX1 = _fcClipY1 = 1 << 14;\n"
+        "\t\tif (AmigaClipX1 - AmigaClipX0 < getWidth()) clear(Palette::blockOffset(0)+15);\n"
+        "\t\t/* the hidden-movement screen is NOT cached, but it must not throw\n"
+        "\t\t * the cached map away either: an alien turn flips between this\n"
+        "\t\t * screen and the map on every shot, and each flip used to be a full\n"
+        "\t\t * recompose. The map underneath is still valid. */\n"
+        "#endif\n"
+        "\t\t_message->blit(this);\n"
+        "\t}\n"
+        "}\n",
+        "dirty-rect cache message path")))
+
+    # drawTerrain: narrow the tile loop to the clip rect. The corners of the
+    # SURFACE become the corners of the rect being composed. Outside the port
+    # (or with a full clip) this is exactly upstream's computation.
+    results.append(("Map.cpp (dirty-rect narrow tile loop)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "\t_camera->convertScreenToMap(0, 0, &beginX, &dummy);\n"
+        "\t_camera->convertScreenToMap(surface->getWidth(), 0, &dummy, &beginY);\n"
+        "\t_camera->convertScreenToMap(surface->getWidth() + _spriteWidth, surface->getHeight() + _spriteHeight, &endX, &dummy);\n"
+        "\t_camera->convertScreenToMap(0, surface->getHeight() + _spriteHeight, &dummy, &endY);\n",
+        "#ifdef __AMIGA__\n"
+        "\t{\n"
+        "\t\tint cx0_ = (AmigaDirtyGrid != 0 || AmigaClipX0 < 0) ? 0 : AmigaClipX0;\n"
+        "\t\tint cy0_ = (AmigaDirtyGrid != 0 || AmigaClipY0 < 0) ? 0 : AmigaClipY0;\n"
+        "\t\tint cx1_ = (AmigaDirtyGrid != 0 || AmigaClipX1 > surface->getWidth()) ? surface->getWidth() : AmigaClipX1;\n"
+        "\t\tint cy1_ = (AmigaDirtyGrid != 0 || AmigaClipY1 > surface->getHeight()) ? surface->getHeight() : AmigaClipY1;\n"
+        "\t\t/* tall objects on tiles ABOVE the rect can hang down into it: give the\n"
+        "\t\t * top edge extra room (up to a whole level of walls). */\n"
+        "\t\tint top_ = cy0_ - _spriteHeight * 2; if (top_ < 0) top_ = 0;\n"
+        "\t\t_camera->convertScreenToMap(cx0_, top_, &beginX, &dummy);\n"
+        "\t\t_camera->convertScreenToMap(cx1_, top_, &dummy, &beginY);\n"
+        "\t\t_camera->convertScreenToMap(cx1_ + _spriteWidth, cy1_ + _spriteHeight, &endX, &dummy);\n"
+        "\t\t_camera->convertScreenToMap(cx0_, cy1_ + _spriteHeight, &dummy, &endY);\n"
+        "\t}\n"
+        "#else\n"
+        "\t_camera->convertScreenToMap(0, 0, &beginX, &dummy);\n"
+        "\t_camera->convertScreenToMap(surface->getWidth(), 0, &dummy, &beginY);\n"
+        "\t_camera->convertScreenToMap(surface->getWidth() + _spriteWidth, surface->getHeight() + _spriteHeight, &endX, &dummy);\n"
+        "\t_camera->convertScreenToMap(0, surface->getHeight() + _spriteHeight, &dummy, &endY);\n"
+        "#endif\n",
+        "dirty-rect narrow tile loop")))
+
+    results.append(("Map.cpp (dirty-rect cache free)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "\tdelete _scrollMouseTimer;\n",
+        "#ifdef __AMIGA__\n"
+        "\tfor (int fc_ = 0; fc_ < 8; ++fc_) { delete[] _fcPix[fc_]; delete[] _fcGrid[fc_]; }\n"
+        "#endif\n"
+        "\tdelete _scrollMouseTimer;\n",
+        "dirty-rect cache free")))
+
     # 6b. Battle animation tick from an option (default 200 ms on this port -
-    #     upstream's 100 ms demanded a full map render 10x per second).
+    #     since 0.6.0 back to 100 ms: with the frame cache a redraw is cheap.
     results.append(("Options (amigaAnimMs)", edit(
         os.path.join(src, "Engine", "Options.inc.h"),
         "OPT int amigaAccurateFov; /* 0 fast, 1 accurate, 2 test */\n",
         "OPT int amigaAccurateFov; /* 0 fast, 1 accurate, 2 test */\n"
         "OPT int amigaAnimMs;     /* battle animation tick, ms */\n"
-        "OPT int amigaFlatGlobe;  /* 1 = flat sun-shaded land polygons */\n",
+        "OPT int amigaFlatGlobe;  /* 1 = flat sun-shaded land polygons */\n"
+        "OPT int amigaAutoBattle; /* 1 = boot straight into a New Battle */\n",
         "amigaAnimMs var")))
     results.append(("Options.cpp (amigaAnimMs)", edit(
         os.path.join(src, "Engine", "Options.cpp"),
         "\t_info.push_back(OptionInfo(\"amigaAccurateFov\", &amigaAccurateFov, 1)); /* default: Accurate - same speed since the pair-update */\n",
         "\t_info.push_back(OptionInfo(\"amigaAccurateFov\", &amigaAccurateFov, 1)); /* default: Accurate - same speed since the pair-update */\n"
-        "\t_info.push_back(OptionInfo(\"amigaAnimMs\", &amigaAnimMs, 200));\n"
-        "\t_info.push_back(OptionInfo(\"amigaFlatGlobe\", &amigaFlatGlobe, 1)); /* test: default on; 0 = textured land */\n",
+        "\t_info.push_back(OptionInfo(\"amigaAnimMs\", &amigaAnimMs, 100));\n"
+        "\t_info.push_back(OptionInfo(\"amigaFlatGlobe\", &amigaFlatGlobe, 1)); /* test: default on; 0 = textured land */\n"
+        "\t_info.push_back(OptionInfo(\"amigaAutoBattle\", &amigaAutoBattle, 0)); /* 1 = skip the menus, generate a battle at boot */\n",
         "amigaAnimMs info")))
     results.append(("BattlescapeState.cpp (anim timer option)", edit(
         os.path.join(src, "Battlescape", "BattlescapeState.cpp"),

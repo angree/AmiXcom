@@ -2,6 +2,81 @@
 
 Newest first. Facts and measurements only; plans live in `PORT_RESEARCH.md`.
 
+## 2026-08-18 wieczor / 2026-08-19 noc: 0.6.0 - bitwa 3.8 -> 35 fps (postoj); cache klatek
+
+Wydane jako v0.6.0 (zip gotowy, notki napisane; wypchniecie po tescie usera).
+Wszystko na maszynie odniesienia 040/40 = 68020, bez JIT, **-80%**, amigaAnimMs 100.
+
+**Diagnoza wyjsciowa** (sonda `prof:` = pelne rozliczenie 100 klatek: think/map/ui/
+flip/ev + kafle/sprite'y/anim; sonda `cache:` = trafienia/naprawy/pelne + powod):
+klatka bitwy na postoju 260 ms = `Map::drawTerrain` 181 ms (69%), think 46,
+UI 20, flip 11. c2p/flip = 4% - dotychczasowe przyspieszenia grafiki nie mialy
+juz czego zbierac. 100 zlozen mapy na 100 klatek: timer animacji (200 ms) tykal
+czesciej niz trwala klatka i wymuszal pelne zlozenie w kazdej (bledne kolo -
+stad regresja przy przejsciu z -70% na -80%: klatka przekroczyla 200 ms).
+
+**Zrobione, w kolejnosci, kazde zmierzone:**
+1. LUT cieniowania w `Surface::blitNShade` (256 B na poziom cienia, 4 px naraz):
+   jedno zlozenie 185 -> 110 ms; sam ten krok 3.8 -> 15.5 fps przy 200 ms.
+2. Cache 8 faz animacji (`Map::draw`): kafle animuja w 8 klatkach, na postoju
+   mapa ma tylko 8 obrazow - trzymane i odtwarzane memcpy. Postoj ~35 fps.
+3. Czesciowe przerysowanie: NAJPIERW jako prostokat obejmujacy (Opus) - blad:
+   7 faz zostawalo "waznych" ze starym kursorem -> duch kursora skaczacy sam;
+   POTEM jako brudne prostokaty per faza (Fable) - blad: prostokat obejmujacy
+   to zly prymityw (6 animowanych kafli rozrzuconych = rect 416x240 na
+   ekranie 320x200; smuga pocisku start..koniec = pol ekranu; 4 recty x wlasne
+   przejscie po kaflach = 2300 kafli/klatke). OSTATECZNIE: **brudna siatka
+   kafli per faza** (bitmapa mapy) + jeden box ekranowy; producenci brudza
+   konkretne kafle (kursor, jednostka, koncowki smugi pocisku, eksplozja,
+   seed = dokladnie animowane kafle); jedna naprawa = jedno przejscie
+   drawTerrain po kaflach przecinajacych box, blity klipowane (AmigaClip*).
+4. `Map::animate()` po LISCIE animowanych kafli (typ animowany = 8 roznych
+   sprite'ow w MCD, drzwi UFO w ruchu, kafle z czastkami) zamiast po 14 tys.:
+   `anim` 2700-4000 -> 20-160 ms/100 klatek, think na postoju 30% -> 2%.
+5. Cache `castedShade`/`isVoxelVisible` per zlozenie dla 35 czastek smugi
+   (upstream liczyl je per KAFEL obwiedni toru - dziesiatki marszy po wokselach
+   na kazdy kafel na kazda klatke lotu). Koncowki smugi zamiast calej obwiedni.
+6. Ekran "ukryty ruch" nie kasuje bufora (kazdy strzal obcego flipowal
+   ekran i skladal mape od nowa).
+7. Krok jednostki = brudne kafle, nie pelne zlozenie; pelne tylko gdy FOV
+   faktycznie odslonil kafle (`Tile::setDiscovered` licznik) albo dynamiczne
+   swiatlo zmienilo cien kafla (`Tile::addLight`, tylko gdy ta warstwa wygrywa
+   z ambientem - za dnia nigdy, w nocy lampa zolnierza = pelne zlozenie,
+   nieuniknione).
+8. Scroll: kamera x/y wyjeta z pelnej sygnatury; przesuniecie < 1/3 ekranu =
+   memmove 8 buforow + pas odslonietych kafli (box = sam pas, nie kolumny) +
+   propagacja naprawionego obszaru do 7 faz (jak seed); w klatce scrollu
+   KAZDY producent brudzi tylko biezaca faze (kursor skacze co 15 ms przy
+   krawedzi i zbieral 7 boxow w bezczynnych fazach).
+
+**Wyniki (user, -80%):** postoj 3.8 -> ~35 fps; ruch kursorem 4 -> ~9-13;
+strzal 1-2 -> ~9 (srednia z okna; szczyty nizej); scroll 3-4 -> 8-13
+(rzadka mapa 13, gesta 8). Chodzenie ~6 (limit: FOV/logika, nie rysowanie).
+
+**Sufity, zmierzone:** strzal jest przyklejony do `_gameTimer` = 100 ms na
+krok pocisku (`DEFAULT_ANIM_SPEED`; `battleFireSpeed` 6 -> 12 ustawione w
+options.cfg skraca lot 2x). Przy scrollu `ui`+`flip` (blit mapy na ekran +
+c2p) = 45 ms/klatke niezaleznie od cache'u -> sufit ~20 fps.
+
+**NIENAPRAWIONE, znane, do zrobienia (user ma racje):** na GESTEJ mapie
+brudny kafel dostaje pelna kolumne ekranowa (do poziomu widoku, ~110 px), bo
+na kazdym poziomie cos stoi -> otoczka 3x3 kafle x kolumna = ~15% ekranu na
+KAZDA zmiane; naprawa rosnie z gestoscia mapy, nie ze zmiana. Wlasciwie
+wystarczy 1-2 kafle NAD brudnym (te, ktorych sprite'y nachodza), obciete
+klipem - nie cala kolumna. Zamiast tego proba "filtr per kafel siatki"
+zostawila dziury (wysokie obiekty 2-3 kafle za, wyzszy poziom) i migotala -
+wycofana; ta poprawna wersja to: box kafla = jego sprite + 1-2 kafle w gore
+po izometrii, nie kolumna do poziomu widoku.
+
+Pulapki z tego wieczoru, zeby nie wrocily: (1) autoinput.txt jest czytany
+JEDNYM haustem do RAM i od razu kasowany - kasowanie pliku nic nie przerywa,
+tylko restart; teraz caly autoinput jest za bramka `Work:autoinput.on` (bez
+tego pliku nie szuka skryptu). (2) `sig 96 miss 96` = jedno uniewaznienie
+sygnatury -> 8 pelnych zlozen (kazda faza z osobna); seed 7 faz po pelnym
+zlozeniu likwiduje kaskade. (3) Heredoc w Bashu zjada backslashe w tresci
+lat - pisac skrypty lat przez Write, nie przez `python - <<EOF`.
+(4) `restore_file.sh` z NIEPELNA lista = PATCH FAILED (StartState).
+
 ## 2026-08-18 (popoludnie): 0.5.7 - geoscape zamarzal na 10-30 s przy ruchu myszy
 
 Wydane jako v0.5.7. Objaw: na geoscape (po postawieniu bazy) gra zamierala

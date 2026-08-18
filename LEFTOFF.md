@@ -1,8 +1,8 @@
-# LEFTOFF — hand-off for the next session (written 2026-08-18, after v0.5.7)
+# LEFTOFF — hand-off for the next session (written 2026-08-19 night, after v0.6.0 build)
 
 Read this, then `CLAUDE.md` (rules), then the top entry of `PROGRESS.md` (proofs).
 
-## Where the port stands (2026-08-18, after 0.5.7)
+## Where the port stands (2026-08-19, 0.6.0 built, release pending user test)
 
 **Released**: github.com/angree/AmiXcom - v0.1.0..v0.5.7 (code without
 ROM/HDF/CGX-headers/game data; releases without X-COM data). Bar shows
@@ -30,6 +30,19 @@ from Work:run (old one kept as Work:run.autostart) - binaries are
 launched from Workbench icons, so oxc.log stays empty and the probes
 land in sdlmini.log instead.
 
+**0.6.0 (built, zip + notes ready in C:	empmiga_oxcomelease, NOT pushed
+yet - user tests first)**: battlescape frame cache. Idle 3.8 -> ~35 fps, cursor
+~9-13, shot ~9 (gameTimer-bound: 100 ms per bullet step), scroll 8-13, walking
+~6 (FOV logic). Full story + numbers + the one known gap (dense map: dirty
+tile box = whole column, should be sprite + 1-2 tiles up) in PROGRESS.md top
+entry. Design in one line: 8 cached pictures (one per animation phase), a
+per-phase dirty TILE grid + screen box, producers mark tiles, repair =
+one clipped drawTerrain, seed/propagate to the other 7 phases after a full
+compose or a scroll. All of it is the "6z" block in apply-amiga-patches.py.
+`amigaAutoBattle: 1` (options.cfg) boots straight into a battle. Autoinput
+is gated behind `Work:autoinput.on` (absent = never reads a script).
+Reference machine is now -80% (all older numbers were -70%).
+
 **Performance today** (040/40-class = 68020, no JIT, **-80% throttle** -
 the user's calibration since 0.5.7, all older numbers were at -70%;
 proofs in PROGRESS.md):
@@ -47,6 +60,16 @@ proofs in PROGRESS.md):
   Work:autoinput.txt` in run (boot drives menu->battle->autosave->F5->F9).
 
 **THE PLAN** - remaining (details LISTA-ROBOT.txt):
+0a. BATTLE CACHE, known gap (user is right, do this next in the cache): on a
+   dense map a dirty tile's screen box is its whole column up to the view
+   level (~110 px) because every level has content -> 3x3 halo x column =
+   ~15% of the screen per change; repair cost scales with map density, not
+   with the change. Correct box = the tile's sprite + the 1-2 tiles ABOVE it
+   in iso order (whose sprites overlap), clipped - not the column. The naive
+   "draw only grid tiles" filter left holes (tall objects 2-3 tiles behind on
+   a higher level) and flickered - reverted; that is not the fix, the box is.
+   Ceiling after that: ui+flip (map blit to screen + c2p) = ~45 ms/frame at
+   -80% -> ~20 fps for anything that moves.
 0. MEASURED IN 0.5.7, NOT FIXED - both are the biggest waits the user hits:
    a) New Battle OK -> briefing = `bgen.run` 9.2 s unthrottled (~35 s for the
       user). `recalcFOV` 3.0 s (runs the full tiles=true FOV for ALIENS too -
@@ -66,8 +89,8 @@ proofs in PROGRESS.md):
 2. Save-load: load parse ~11 s (hand parser for battleGame - our format);
    dziwne 5.5 s/region w sanityzacji regionow (zmierzone, niewyjasnione).
 3. Cleanup TEMP probes (perf:/slow frame/step:/fov:/map:/globe:/load:/
-   save:/splash:/geo:/frameprof:/bgen:/gmap:/newbattle:). NOTE frameprof:
-   fires on every frame >=300 ms - in battle at 3-4 fps that is every frame.
+   save:/splash:/geo:/frameprof:/bgen:/gmap:/newbattle:/prof:/cache:/sig:/
+   seed:). frameprof: fires on every frame >=300 ms.
 4. Save-list dates show "????" (cosmetic); guard in-game F12 screenshot.
 5. MUSIC (SFX work; Paula/ADPCM streaming from OpenTTD port not wired),
    RTG test, 32 MB RAM reduction (now needs ~50 MB).

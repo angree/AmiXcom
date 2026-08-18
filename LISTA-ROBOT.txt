@@ -5,7 +5,26 @@ UWAGA POMIAROWA: uzytkownik przelacza JIT/throttle recznie w F12 - przy
 porownaniach patrzec na liczby wzgledne z tej samej sesji, nie miedzy sesjami.
 
 
-ZROBIONE 18.08 popoludniu (0.5.7):
+ZROBIONE 18.08 wieczor - 19.08 noc (0.6.0, zbudowane, wypchniecie po tescie):
+ - BITWA: LUT cieniowania + cache 8 faz animacji + brudna SIATKA KAFLI per
+   faza + lista animowanych kafli w Map::animate + cache castedShade smugi
+   + koncowki smugi + hidden-movement nie kasuje bufora + krok = brudne
+   kafle (pelne tylko przy odslonieciu FOV / zmianie cienia) + scroll przez
+   memmove buforow z pasem i propagacja. Postoj 3.8 -> 35 fps, kursor/strzal
+   ~9-13, scroll 8-13, chodzenie ~6 (FOV). Szczegoly PROGRESS.md.
+ - Strzal ograniczony przez _gameTimer 100 ms/krok; battleFireSpeed 6->12.
+ - amigaAutoBattle (options.cfg) - boot prosto do walki. Autoinput za bramka
+   Work:autoinput.on (bez pliku nigdy nie czyta skryptu).
+ - Ikony WB przepisane, autostart z Work:run usuniety (run.autostart), -80%.
+
+DO ZROBIENIA - z 0.6.0:
+ 0. GESTA MAPA: box brudnego kafla = cala kolumna do poziomu widoku (~110 px)
+    -> 15% ekranu na kazda zmiane. Ma byc: sprite kafla + 1-2 kafle NAD nim
+    (izometrycznie nachodzace), obciete klipem. Nie "filtr per kafel siatki"
+    (dziury+migotanie, wycofane). Po tym sufit = ui+flip ~45 ms -> ~20 fps.
+ 1. Sprzatanie sond: prof:/cache:/sig:/seed: + wczesniejsze.
+
+
  - GEOSCAPE ZAMARZAL 10-30 s przy ruchu myszy - NAPRAWIONE. Kazde zdarzenie
    ruchu myszy kosztowalo 370-1500 ms na maszynie z FPU (Globe::cartToPolar
    -> wersja 68881 mathieeedoub*.library) i ruchy kumulowaly sie w kolejce.

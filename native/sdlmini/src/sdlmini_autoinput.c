@@ -129,9 +129,33 @@ static Uint32 run_line(char *line)
 	return 0;
 }
 
+/* Opt-in, and off unless the file says so.
+ *
+ * This layer injects mouse moves and clicks into the game's own event queue.
+ * It exists for agent-driven test runs, and it has no business running while
+ * somebody is playing: a script left behind (or still held in memory from an
+ * earlier load - the file is read in one go and deleted immediately) makes the
+ * cursor move on its own, which reads exactly like a bug in the game. It now
+ * requires Work:autoinput.on to exist; without that file the poll never even
+ * looks for a script. Checked once, at the first poll. */
+static int autoinput_enabled(void)
+{
+	static int s_enabled = -1;
+	if (s_enabled < 0) {
+		FILE *f = fopen("PROGDIR:autoinput.on", "r");
+		s_enabled = (f != NULL);
+		if (f != NULL) fclose(f);
+		SDLmini_Log(s_enabled ? "autoinput: ENABLED (Work:autoinput.on present)"
+		                      : "autoinput: disabled (no Work:autoinput.on)");
+	}
+	return s_enabled;
+}
+
 void SDLmini_AutoinputPoll(void)
 {
 	Uint32 now = SDL_GetTicks();
+
+	if (!autoinput_enabled()) return;
 
 	if (s_cursor == NULL) {
 		if (now - s_last_poll < 500) return;
