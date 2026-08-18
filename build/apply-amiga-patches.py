@@ -4203,6 +4203,47 @@ def main():
         "\tdelete _scrollMouseTimer;\n",
         "dirty-rect cache free")))
 
+    # 6c. Config migration. Players carry options.cfg across releases, so a
+    #     better default never reaches them. amigaCfgVersion in the file says
+    #     which port defaults it has seen; anything older gets the new values
+    #     forced once (they can change them again afterwards - the number is
+    #     bumped, so it will not be forced a second time). Add a new
+    #     `if (amigaCfgVersion < N)` block and bump AMIGA_CFG_VERSION for the
+    #     next batch.
+    results.append(("Options.cpp (config migration)", edit(
+        os.path.join(src, "Engine", "Options.cpp"),
+        "\t\tfor (std::vector<OptionInfo>::iterator i = _info.begin(); i != _info.end(); ++i)\n"
+        "\t\t{\n"
+        "\t\t\ti->load(doc[\"options\"]);\n"
+        "\t\t}\n"
+        "\n"
+        "\t\tmods.clear();\n",
+        "\t\tfor (std::vector<OptionInfo>::iterator i = _info.begin(); i != _info.end(); ++i)\n"
+        "\t\t{\n"
+        "\t\t\ti->load(doc[\"options\"]);\n"
+        "\t\t}\n"
+        "#ifdef __AMIGA__\n"
+        "\t\t{\n"
+        "\t\t\tconst int AMIGA_CFG_VERSION = 1;\n"
+        "\t\t\tif (amigaCfgVersion < 1)\n"
+        "\t\t\t{\n"
+        "\t\t\t\t/* 0.6.0: on this machine a bullet step and a scroll step each cost\n"
+        "\t\t\t\t * one composed frame, so bigger steps make both feel twice as fast */\n"
+        "\t\t\t\tif (battleFireSpeed < 12) battleFireSpeed = 12;\n"
+        "\t\t\t\tif (battleScrollSpeed < 16) battleScrollSpeed = 16;\n"
+        "\t\t\t\tamigaAnimMs = 100;\n"
+        "\t\t\t}\n"
+        "\t\t\tif (amigaCfgVersion < AMIGA_CFG_VERSION)\n"
+        "\t\t\t{\n"
+        "\t\t\t\tamigaCfgVersion = AMIGA_CFG_VERSION;\n"
+        "\t\t\t\tLog(LOG_INFO) << \"Amiga: options migrated to cfg version \" << AMIGA_CFG_VERSION;\n"
+        "\t\t\t}\n"
+        "\t\t}\n"
+        "#endif\n"
+        "\n"
+        "\t\tmods.clear();\n",
+        "config migration")))
+
     # 6b. Battle animation tick from an option (default 200 ms on this port -
     #     since 0.6.0 back to 100 ms: with the frame cache a redraw is cheap.
     results.append(("Options (amigaAnimMs)", edit(
@@ -4211,7 +4252,8 @@ def main():
         "OPT int amigaAccurateFov; /* 0 fast, 1 accurate, 2 test */\n"
         "OPT int amigaAnimMs;     /* battle animation tick, ms */\n"
         "OPT int amigaFlatGlobe;  /* 1 = flat sun-shaded land polygons */\n"
-        "OPT int amigaAutoBattle; /* 1 = boot straight into a New Battle */\n",
+        "OPT int amigaAutoBattle; /* 1 = boot straight into a New Battle */\n"
+        "OPT int amigaCfgVersion; /* config migration: bumped by the port when it forces new defaults */\n",
         "amigaAnimMs var")))
     results.append(("Options.cpp (amigaAnimMs)", edit(
         os.path.join(src, "Engine", "Options.cpp"),
@@ -4219,7 +4261,8 @@ def main():
         "\t_info.push_back(OptionInfo(\"amigaAccurateFov\", &amigaAccurateFov, 1)); /* default: Accurate - same speed since the pair-update */\n"
         "\t_info.push_back(OptionInfo(\"amigaAnimMs\", &amigaAnimMs, 100));\n"
         "\t_info.push_back(OptionInfo(\"amigaFlatGlobe\", &amigaFlatGlobe, 1)); /* test: default on; 0 = textured land */\n"
-        "\t_info.push_back(OptionInfo(\"amigaAutoBattle\", &amigaAutoBattle, 0)); /* 1 = skip the menus, generate a battle at boot */\n",
+        "\t_info.push_back(OptionInfo(\"amigaAutoBattle\", &amigaAutoBattle, 0)); /* 1 = skip the menus, generate a battle at boot */\n"
+        "\t_info.push_back(OptionInfo(\"amigaCfgVersion\", &amigaCfgVersion, 0));\n",
         "amigaAnimMs info")))
     results.append(("BattlescapeState.cpp (anim timer option)", edit(
         os.path.join(src, "Battlescape", "BattlescapeState.cpp"),

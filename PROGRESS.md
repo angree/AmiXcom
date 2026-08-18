@@ -4,7 +4,11 @@ Newest first. Facts and measurements only; plans live in `PORT_RESEARCH.md`.
 
 ## 2026-08-18 wieczor / 2026-08-19 noc: 0.6.0 - bitwa 3.8 -> 35 fps (postoj); cache klatek
 
-Wydane jako v0.6.0 (zip gotowy, notki napisane; wypchniecie po tescie usera).
+Wydane jako v0.6.0 (2026-08-19 ~01:20). Do tego migracja options.cfg:
+nowa opcja `amigaCfgVersion` (0 w starych plikach); przy wczytaniu, jesli
+< wersji w kodzie (1), port wymusza battleFireSpeed>=12, battleScrollSpeed>=16,
+amigaAnimMs=100 i podbija numer (utrwala sie przy Options::save). Nastepna
+partia = `if (amigaCfgVersion < 2)` + stala.
 Wszystko na maszynie odniesienia 040/40 = 68020, bez JIT, **-80%**, amigaAnimMs 100.
 
 **Diagnoza wyjsciowa** (sonda `prof:` = pelne rozliczenie 100 klatek: think/map/ui/
