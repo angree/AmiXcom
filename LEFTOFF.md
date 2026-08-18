@@ -1,12 +1,12 @@
-# LEFTOFF — hand-off for the next session (written 2026-08-18, after v0.5.6)
+# LEFTOFF — hand-off for the next session (written 2026-08-18, after v0.5.7)
 
 Read this, then `CLAUDE.md` (rules), then the top entry of `PROGRESS.md` (proofs).
 
-## Where the port stands (2026-08-18, after 0.5.6)
+## Where the port stands (2026-08-18, after 0.5.7)
 
-**Released**: github.com/angree/AmiXcom - v0.1.0..v0.5.6 (code without
+**Released**: github.com/angree/AmiXcom - v0.1.0..v0.5.7 (code without
 ROM/HDF/CGX-headers/game data; releases without X-COM data). Bar shows
-"AmiXcom 68K 0.5.6" (version.h patch in apply-amiga-patches.py is the ONE source).
+"AmiXcom 68K 0.5.7" (version.h patch in apply-amiga-patches.py is the ONE source).
 
 **New since 0.5.0**: 0.5.5 keyboard fix (raw-key lookup was MISCOMPILED at
 -O1 - every key typed 'r'; direct 128-entry map at optimize(0)) + title
@@ -17,8 +17,22 @@ YamlTickHook inside yaml-cpp Stream::get for the language parse), palette
 blanked at OpenScreen, Intuition pens fixed at indices 0/15/17/19.
 Swap intro/*.png -> next build re-bakes automatically.
 
-**Performance today** (040/40-class = 68020, no JIT, -70% throttle; proofs in
-PROGRESS.md top entry):
+**0.5.7**: geoscape no longer freezes 10-30 s on mouse movement. Motion
+events are coalesced in the sdlmini queue (queue_push) - one move used to
+cost 370-1500 ms with an FPU present (Globe::cartToPolar -> the 68881
+flavour of mathieeedoub*.library) and they piled up on each other. Full
+diagnosis and numbers: PROGRESS.md top entry. Also in 0.5.7: an
+experimental hardware-FPU build (`AMIGA_FPU=1 build.sh`, ships as
+openxcom-aga-fpu, title bar says "0.5.7 FPU") - user measured no real
+difference in battle, kept for testing only; opaque Workbench icons
+(build/mkicon.py, OpenTTD icon format); autostart of the game removed
+from Work:run (old one kept as Work:run.autostart) - binaries are
+launched from Workbench icons, so oxc.log stays empty and the probes
+land in sdlmini.log instead.
+
+**Performance today** (040/40-class = 68020, no JIT, **-80% throttle** -
+the user's calibration since 0.5.7, all older numbers were at -70%;
+proofs in PROGRESS.md):
 - Battle save 45-60 s -> ~8 s; battle load ~90 s -> ~20-25 s (probes
   `save:`/`load:` in oxc.log show the phase split; parse ~11 s dominates load).
 - Globe 3D ~10x: integer Q1.14 geometry + precomputed vertex trig, shadow
@@ -33,13 +47,27 @@ PROGRESS.md top entry):
   Work:autoinput.txt` in run (boot drives menu->battle->autosave->F5->F9).
 
 **THE PLAN** - remaining (details LISTA-ROBOT.txt):
+0. MEASURED IN 0.5.7, NOT FIXED - both are the biggest waits the user hits:
+   a) New Battle OK -> briefing = `bgen.run` 9.2 s unthrottled (~35 s for the
+      user). `recalcFOV` 3.0 s (runs the full tiles=true FOV for ALIENS too -
+      they only need our fast tiles=false path), MCD+PCK terrain reload 2.5 s
+      (byte-at-a-time istream, same loadPck as the 110 s startup), initMap +
+      initUtilities 2.5 s (14k separate `new Tile` + as many Pathfinding nodes).
+   b) Main menu -> New Battle screen = ~17 s unthrottled (~35 s for the user):
+      `NewBattleState::load()` parses user/xcom2/battle.cfg (27 KB of dense
+      YAML) and rebuilds base + 30 soldiers + all mod items/research EVERY
+      time. Cheapest fix: keep the built SavedGame and reuse it on re-entry.
+   c) `Globe::cartToPolar` still double trig - with an FPU one mouse move is
+      still expensive, it just no longer accumulates. Q1.14 + LUT like the
+      rest of the globe.
 1. GAME START ~3 min: loadVanillaResources+loadBattlescapeResources
    (screens/PCK/CAT) = ~110 s of it (measured via splash probes) - speed up
    loadPck/loadScr/loadCat; rulesets ~60 s; language parse ~20 s.
 2. Save-load: load parse ~11 s (hand parser for battleGame - our format);
    dziwne 5.5 s/region w sanityzacji regionow (zmierzone, niewyjasnione).
 3. Cleanup TEMP probes (perf:/slow frame/step:/fov:/map:/globe:/load:/
-   save:/splash:).
+   save:/splash:/geo:/frameprof:/bgen:/gmap:/newbattle:). NOTE frameprof:
+   fires on every frame >=300 ms - in battle at 3-4 fps that is every frame.
 4. Save-list dates show "????" (cosmetic); guard in-game F12 screenshot.
 5. MUSIC (SFX work; Paula/ADPCM streaming from OpenTTD port not wired),
    RTG test, 32 MB RAM reduction (now needs ~50 MB).

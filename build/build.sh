@@ -37,13 +37,28 @@ NATIVE=$WORK/native
 # across it is slow enough to matter for every single test run.
 DEPLOY=/mnt/c/temp/amiga_oxcom/work
 
-CPU="-mcpu=68020 -msoft-float"
+# AMIGA_FPU=1 builds the same sources against the 68881 multilib instead of
+# soft float. EXPERIMENT (2026-08-18): with hardware FP the game never calls
+# mathieee*.library, which is what makes one mouse move on the geoscape cost
+# ~370 ms on a machine that HAS an FPU. Binaries are named
+# openxcom-<backend>-fpu and use their own object directory, so the normal
+# soft-float build is untouched. NOTE: libnix has no 68881 multilib (only
+# libm.a), so anything in libnix returning a double returns it the soft way
+# - treat wrong numbers in this build as that, not as a game bug.
+if [ "$AMIGA_FPU" = "1" ]; then
+	CPU="-mcpu=68020 -m68881"
+	DEFS_FPU="-DAMIGA_FPU_BUILD"
+	FPUSUF="-fpu"
+else
+	CPU="-mcpu=68020 -msoft-float"
+	FPUSUF=""
+fi
 OPT="-O1"
 COMMON="$CPU $OPT -noixemul -fomit-frame-pointer"
 # __NO_OPENGL and __NO_MUSIC are upstream's own switches: the first compiles
 # OpenGL.cpp away to nothing, the second removes the music player (which on
 # this port is replaced by streamed ADPCM in a later stage, not by SDL_mixer).
-DEFS="-D__AMIGA__ -D__NO_OPENGL -D__NO_MUSIC -DYAML_CPP_STATIC_DEFINE"
+DEFS="-D__AMIGA__ -D__NO_OPENGL -D__NO_MUSIC -DYAML_CPP_STATIC_DEFINE $DEFS_FPU"
 # cgx-include holds the CyberGraphX developer headers the RTG path needs; they
 # are not in the toolchain and not redistributable, so they are supplied by the
 # user (see native/cgx-include/README).
@@ -77,7 +92,7 @@ python3 "$REPO/build/apply-amiga-patches.py" "$SRC/src" "$YAML"
 
 # ------------------------------------------------------------------ build --
 
-OBJ=$WORK/obj
+OBJ=$WORK/obj$FPUSUF
 mkdir -p "$OBJ"
 
 # Is any file the object depends on newer than the object? The dependency list
@@ -242,7 +257,7 @@ link_variant() {
 	m68k-amigaos-gcc $CFLAGS -DAMIGA_BACKEND_DEFAULT=$default \
 		-c "$NATIVE/sdlmini/src/sdlmini_backend.c" -o "$OBJ/backend_$name.o"
 
-	m68k-amigaos-g++ $COMMON -o "$WORK/openxcom-$name" \
+	m68k-amigaos-g++ $COMMON -o "$WORK/openxcom-$name$FPUSUF" \
 		$GAME_OBJS $NATIVE_OBJS "$OBJ/backend_$name.o" $YAML_OBJS -lamiga -lm
 
 	# DO NOT STRIP. m68k-amigaos-strip produces a Hunk executable that loads
@@ -252,8 +267,8 @@ link_variant() {
 	# stripped is silent. (The openttd port configures with --disable-strip,
 	# which is the same conclusion reached from the other direction.)
 	# The cost is ~3 MB of symbols in a 15 MB binary; correctness first.
-	cp "$WORK/openxcom-$name" "$DEPLOY/openxcom-$name"
-	ls -la "$WORK/openxcom-$name"
+	cp "$WORK/openxcom-$name$FPUSUF" "$DEPLOY/openxcom-$name$FPUSUF"
+	ls -la "$WORK/openxcom-$name$FPUSUF"
 }
 
 link_variant aga 0     # AGA screen + chunky-to-planar

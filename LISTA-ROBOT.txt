@@ -4,6 +4,37 @@ Claude testuje sam; pomiary czytane z oxc.log (sondy perf:/fov:/map:/step:).
 UWAGA POMIAROWA: uzytkownik przelacza JIT/throttle recznie w F12 - przy
 porownaniach patrzec na liczby wzgledne z tej samej sesji, nie miedzy sesjami.
 
+
+ZROBIONE 18.08 popoludniu (0.5.7):
+ - GEOSCAPE ZAMARZAL 10-30 s przy ruchu myszy - NAPRAWIONE. Kazde zdarzenie
+   ruchu myszy kosztowalo 370-1500 ms na maszynie z FPU (Globe::cartToPolar
+   -> wersja 68881 mathieeedoub*.library) i ruchy kumulowaly sie w kolejce.
+   Fix: sklejanie ruchow do najnowszej pozycji w sdlmini queue_push (ruch
+   wzgledny sumowany). Zmierzone: 13 940 ms -> <20 ms na te sama serie.
+ - Wersja z twardym FPU do testow: AMIGA_FPU=1 build.sh -> openxcom-aga-fpu
+   (pasek "0.5.7 FPU"). Uzytkownik: w bitwie 3-4 fps tak samo jak soft,
+   roznice drobne. NIE jest domyslna.
+ - Ikony Workbencha przepisane (build/mkicon.py, format z portu OpenTTD,
+   zero pikseli w penie 0). Autostart gry usuniety z Work:run.
+ - Maszyna odniesienia: cpu_throttle -700.0 -> -800.0 (uzytkownik: -80% to
+   prawdziwe 040/40). Czasy sprzed 0.5.7 byly przy -70%.
+
+DO ZROBIENIA - zmierzone w 0.5.7, nienaprawione:
+ A. New Battle (klik OK) = 9.2 s bez throttle, ~35 s u uzytkownika:
+    recalcFOV 3.0 s (pelny FOV z odslanianiem kafli leci takze dla OBCYCH -
+    im wystarczy nasza szybka sciezka tiles=false), MCD+PCK terenu 2.5 s
+    (ladowane od nowa co bitwe, bajt po bajcie przez istream - ten sam
+    loadPck co 110 s startu), initMap+initUtilities 2.5 s (14 tys.
+    osobnych new Tile + tyle samo wezlow Pathfindingu).
+ B. Menu glowne -> New Battle = ~17 s bez throttle, ~35 s u uzytkownika:
+    NewBattleState::load() parsuje battle.cfg (27 KB gestego YAML) i buduje
+    baze + 30 zolnierzy + wszystkie itemy/badania moda PRZY KAZDYM wejsciu.
+    Najtansze: zapamietac zbudowany SavedGame i uzyc go ponownie.
+ C. cartToPolar dalej na double - z FPU jeden ruch myszy nadal drogi, tylko
+    juz sie nie kumuluje. Docelowo Q1.14 + LUT jak reszta globu.
+ D. Sonda frameprof: loguje kazda klatke >=300 ms - w bitwie przy 3-4 fps
+    to KAZDA klatka. Przy sprzataniu sond usunac albo podniesc prog.
+
 1. DIRTY RECTANGLES - ZROBIONE 17.08 wieczorem (0.3.6)
    sdlmini: unia dirty + diff-blit pelnoekranowego blitu (32-bajtowe
    komorki); Screen::clear nie zeruje juz fizycznego ekranu. Menu/bitwa

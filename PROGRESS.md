@@ -2,6 +2,82 @@
 
 Newest first. Facts and measurements only; plans live in `PORT_RESEARCH.md`.
 
+## 2026-08-18 (popoludnie): 0.5.7 - geoscape zamarzal na 10-30 s przy ruchu myszy
+
+Wydane jako v0.5.7. Objaw: na geoscape (po postawieniu bazy) gra zamierala
+na 10-30 s, potem "puszczala"; z FPU w maszynie zawsze, bez FPU krotkie
+tapniecie. Zdiagnozowane sondami, nie zgadywaniem - kolejnosc ma znaczenie,
+bo trzy pierwsze hipotezy byly BLEDNE (glob, logika zegara, pompa IDCMP):
+
+1. Sonda `geo:` (agregat 100 klatek: think/blit/flip/other) pokazala, ze
+   rysowanie i logika sa NIEZMIENIONE w oknie zwisu (think 1200 vs 820 ms,
+   blit 3060 vs 2820), a caly czas siedzi w "other" - 48 180 ms z 53 440.
+   Sonda `globe:` w tym samym oknie: glob zrobil 0-300 ms roboty. Zero
+   `CPU TRAP`, zero `save:` - wiec ani Guru, ani autosave.
+2. Sonda `frameprof:` (pelne rozliczenie JEDNEJ klatki >300 ms, plus rozbicie
+   pompy na autoinput/IDCMP) przypiela to jednoznacznie:
+   `total 32260 = clean 0 + ev 32200 + think 0 + blit 40 + flip 20 + delay 0;
+   pump auto 20 idcmp 0 polls 17 evs 21` - czyli OBSLUGA zdarzen, przy
+   darmowej pompie. 21 zdarzen = 32 s.
+3. Dowod przez eksperyment: wstrzykniete 15 ruchow myszy (autoinput `move`)
+   -> jedna klatka `ev 13940 ms, evs 38`. Bez ruchu myszy `evs 0` i zero
+   zwisow. Te same 15 ruchow na maszynie BEZ FPU: `ev` 0-20 ms.
+
+Przyczyna: kazdy ruch myszy na geoscape idzie przez `Globe::mouseOver` ->
+`cartToPolar` (sqrt/asin/sin/cos/atan2 na double). Bez FPU liczy to
+programowa mathieeedoub*.library i jest szybko; z FPU Kickstart podstawia
+wersje 68881 i te same wywolania kosztuja ~370-1500 ms. Do tego sprzezenie
+zwrotne: im wolniejsza obsluga, tym wiecej ruchow zdazy sie nazbierac w
+kolejce (38 zdarzen z FPU vs 7 bez), wiec 0.5 s tapniecia rosnie do 30 s.
+
+FIX (native/sdlmini/src/sdlmini_events.c, queue_push): ciag ruchow myszy
+sklejany do najnowszej pozycji, ruch wzgledny sumowany (drag-scroll ma
+przejechac tyle samo). Tak samo robi prawdziwe SDL przy zapchanej kolejce.
+Po zmianie ta sama seria ruchow: zadnej klatki >440 ms, `ev` 0-20 ms,
+agregat `events 20-260 ms / 100 klatek`. Przed: 13 940 ms w jednej klatce.
+
+NIE naprawione (zostaje): `cartToPolar` dalej liczy na double, wiec z FPU
+pojedynczy ruch nadal jest drogi - tylko juz sie nie kumuluje. Wlasciwa
+naprawa to trygonometria na Q1.14 + LUT, jak reszta globu.
+
+Przy okazji zmierzone i NIE naprawione (do LISTA-ROBOT):
+- New Battle -> klikniecie OK: `bgen.run` 9220 ms na maszynie bez throttle
+  (~35 s u uzytkownika). Rozbicie: `generateMap` 5880 (z tego MCD+PCK
+  terenu ~2460, `initMap`+`initUtilities` 2500), `recalcFOV` 3000,
+  reszta <400 ms. `recalculateFOV` wola pelne `calculateFOV(tiles=true)`
+  dla WSZYSTKICH jednostek, takze obcych - obcym wystarczy nasza szybka
+  sciezka `tiles=false`.
+- Menu glowne -> New Battle: ~17 s bez throttle (~35 s u uzytkownika),
+  z czego wiekszosc to `NewBattleState::load()`: `YAML::LoadFile` na
+  user/xcom2/battle.cfg (27 KB gestego YAML) + `Base::load` (30 zolnierzy,
+  craft z setkami itemow) + petle po wszystkich itemach i badaniach moda.
+
+Wersja z twardym FPU: `AMIGA_FPU=1 build.sh` buduje przeciwko multilib
+68881 (`-mcpu=68020 -m68881`, wlasny katalog obiektow, binarka
+openxcom-<backend>-fpu, `-DAMIGA_FPU_BUILD` -> pasek "0.5.7 FPU").
+Potwierdzone: 3498 instrukcji `fmove` vs 1 w wersji soft. Zmierzone przez
+uzytkownika na 040/40 -80% bez JIT: w bitwie 3-4 fps w obu wersjach,
+roznice drobne - wersja FPU zostaje W WYDANIU DO TESTOW, nie jako domyslna.
+UWAGA: libnix nie ma multilib 68881 (jest tylko libm.a), wiec funkcje
+libnixa zwracajace double (m.in. strtod) uzywaja soft-ABI - bledne liczby
+w tej wersji to jest TO, a nie blad gry.
+
+Maszyna odniesienia: `cpu_throttle` zmieniony z -700.0 na **-800.0** we
+wszystkich configach nojit - wedlug uzytkownika -80% to prawdziwe 040/40,
+-70% bylo za szybkie. Wszystkie czasy od 0.5.7 sa wzgledem -80%.
+
+Ikony: build/mkicon.py przepisany na format ikony z portu OpenTTD (jeden
+obraz, `Flags=0x0004` GADGIMAGE|GADGHCOMP, bez SelectRender). Poprzednie
+(0x0005 GADGHBOX + drugi obraz) byly "prześwitujące". Zadnego piksela w
+penie 0 (to tlo Workbencha - piksel na zerze czyta sie jako dziura).
+Osobna ikona na wariant: AGA / FPU / RTG / ASK.
+
+Autostart wylaczony na zyczenie uzytkownika: `Work:run` juz nie odpala
+gry (stare zostalo jako `Work:run.autostart`), Workbench wstaje pusty,
+binarki startuje sie z ikon. UWAGA przy starcie z ikony `oxc.log` zostaje
+pusty (to bylo przekierowanie stdout z CLI) - sondy sa w `sdlmini.log`,
+ktory program otwiera sam (`PROGDIR:sdlmini.log`).
+
 ## 2026-08-18 (przedpoludnie): 0.5.6 - loading splash z paskiem postepu
 
 Wydane jako v0.5.6. Boot->menu trwa ~3 min na 040/40 -70%; teraz zamiast

@@ -1,61 +1,85 @@
 #!/usr/bin/env python3
 """
 Generate classic AmigaOS .info icons for the release: tool icons for the
-three binaries (with the 1 MB stack the game needs written into the icon,
-so a Workbench start gets it too) and IconX project icons for the run scripts.
+binaries (with the 1 MB stack the game needs written into the icon, so a
+Workbench start gets it too) and IconX project icons for the run scripts.
+
+Format follows the OpenTTD 68k port's icon, which renders correctly here:
+one image only (no SelectRender - Intuition complements the image when the
+icon is selected) and Gadget flags GFLG_GADGIMAGE|GFLG_GADGHCOMP = 0x0004.
+The earlier version used 0x0005 (GADGHBOX) plus a second image, which is
+what the "see-through / broken" icons were.
+
+Nothing is drawn in pen 0. Pen 0 is the Workbench background pen, so any
+pixel left at 0 reads as a hole in the icon on a patterned desktop. Every
+icon here is a solid block: black frame, solid field, solid glyph.
 
 Usage: mkicon.py <output-dir>
 """
-import math
 import os
 import struct
 import sys
 
-W, H, DEPTH = 48, 26, 2       # 2 planes = Workbench colours 0..3
+W, H, DEPTH = 48, 40, 2       # 2 planes = Workbench pens 0..3
 NO_POS = 0x80000000
 
+# Workbench 3.x default pens: 0 grey (background), 1 black, 2 white, 3 blue.
+BLACK, WHITE, BLUE = 1, 2, 3
 
-def draw(selected):
-    """Return list of rows, each a list of colour indices 0..3
-    (0 grey, 1 black, 2 white, 3 blue)."""
-    px = [[0] * W for _ in range(H)]
-    # frame
+# 5x7 glyphs, enough for the few letters the icons need.
+FONT = {
+    "A": ("01110", "10001", "10001", "11111", "10001", "10001", "10001"),
+    "X": ("10001", "10001", "01010", "00100", "01010", "10001", "10001"),
+    "C": ("01110", "10001", "10000", "10000", "10000", "10001", "01110"),
+    "F": ("11111", "10000", "10000", "11110", "10000", "10000", "10000"),
+    "P": ("11110", "10001", "10001", "11110", "10000", "10000", "10000"),
+    "U": ("10001", "10001", "10001", "10001", "10001", "10001", "01110"),
+    "R": ("11110", "10001", "10001", "11110", "10100", "10010", "10001"),
+    "T": ("11111", "00100", "00100", "00100", "00100", "00100", "00100"),
+    "G": ("01110", "10001", "10000", "10011", "10001", "10001", "01110"),
+    "S": ("01111", "10000", "10000", "01110", "00001", "00001", "11110"),
+    "K": ("10001", "10010", "10100", "11000", "10100", "10010", "10001"),
+    "?": ("01110", "10001", "00001", "00110", "00100", "00000", "00100"),
+    "!": ("00100", "00100", "00100", "00100", "00100", "00000", "00100"),
+}
+
+
+def text(px, s, x0, y0, colour, scale=1):
+    for ch in s:
+        g = FONT.get(ch)
+        if g is not None:
+            for gy, row in enumerate(g):
+                for gx, bit in enumerate(row):
+                    if bit == "1":
+                        for sy in range(scale):
+                            for sx in range(scale):
+                                x, y = x0 + gx * scale + sx, y0 + gy * scale + sy
+                                if 0 <= x < W and 0 <= y < H:
+                                    px[y][x] = colour
+        x0 += (5 * scale) + scale
+
+
+def draw(field, glyph, label):
+    """Solid icon: black frame, `field` background, `glyph`-coloured art."""
+    px = [[field] * W for _ in range(H)]
+
+    # 1 px black frame plus a 1 px inner highlight, so the icon has an edge
+    # against any desktop colour.
     for x in range(W):
-        px[0][x] = 1
-        px[H - 1][x] = 1
+        px[0][x] = px[H - 1][x] = BLACK
     for y in range(H):
-        px[y][0] = 1
-        px[y][W - 1] = 1
-    # globe: blue disc with a white highlight
-    cx, cy, r = 13, 13, 9
-    for y in range(H):
-        for x in range(W):
-            d = math.hypot(x - cx, (y - cy) * 1.15)
-            if d <= r:
-                px[y][x] = 3
-            if d <= r and math.hypot(x - cx + 3, (y - cy + 3) * 1.15) <= 3:
-                px[y][x] = 2
-            if r < d <= r + 0.9:
-                px[y][x] = 1
-    # a big X to the right (2 px thick diagonals)
-    x0, x1, y0, y1 = 27, 44, 4, H - 5
-    for t in range(0, 100):
-        f = t / 99.0
-        for dx in (0, 1):
-            xa = int(round(x0 + f * (x1 - x0))) + dx
-            ya = int(round(y0 + f * (y1 - y0)))
-            xb = int(round(x1 - f * (x1 - x0))) + dx
-            if 0 < xa < W - 1 and 0 < ya < H - 1:
-                px[ya][xa] = 1
-            if 0 < xb < W - 1 and 0 < ya < H - 1:
-                px[ya][xb] = 1
-    if selected:
-        for y in range(H):
-            for x in range(W):
-                if px[y][x] == 0:
-                    px[y][x] = 3
-                elif px[y][x] == 3:
-                    px[y][x] = 0
+        px[y][0] = px[y][W - 1] = BLACK
+
+    # A big X across the upper part - the series is X-COM after all.
+    for i in range(4, 26):
+        for t in (0, 1):
+            for x in (10 + i + t, 37 - i + t):
+                if 1 < x < W - 2:
+                    px[i][x] = glyph
+
+    # Label along the bottom, centred.
+    tw = len(label) * 6 - 1
+    text(px, label, (W - tw) // 2, H - 11, glyph)
     return px
 
 
@@ -73,19 +97,20 @@ def planes(px):
 
 
 def image(px):
-    data = planes(px)
+    # Image: LeftEdge, TopEdge, Width, Height, Depth, ImageData,
+    #        PlanePick, PlaneOnOff, NextImage
     hdr = struct.pack(">hhhhhIBBI", 0, 0, W, H, DEPTH, 1, (1 << DEPTH) - 1, 0, 0)
-    return hdr + data
+    return hdr + planes(px)
 
 
-def icon(kind, default_tool=None, tooltypes=(), stack=0):
-    """kind: 3 = tool, 4 = project."""
+def icon(kind, px, default_tool=None, tooltypes=(), stack=0):
+    """kind: 3 = tool (WBTOOL), 4 = project (WBPROJECT)."""
     gadget = struct.pack(">IhhhhHHHIIIIIHI",
                          0, 0, 0, W, H,
-                         0x0005,       # GADGIMAGE | GADGHBOX
+                         0x0004,       # GFLG_GADGIMAGE | GFLG_GADGHCOMP
                          0x0003,       # RELVERIFY | GADGIMMEDIATE
                          0x0001,       # BOOLGADGET
-                         1, 1,         # GadgetRender, SelectRender (non-zero = present)
+                         1, 0,         # GadgetRender set, SelectRender none
                          0, 0, 0, 0, 0)
     body = struct.pack(">HH", 0xE310, 1) + gadget
     body += struct.pack(">BBIIIIIIi", kind, 0,
@@ -94,7 +119,7 @@ def icon(kind, default_tool=None, tooltypes=(), stack=0):
                         NO_POS, NO_POS,
                         0, 0, stack)
     assert len(body) == 78, len(body)
-    body += image(draw(False)) + image(draw(True))
+    body += image(px)
     if default_tool:
         s = default_tool.encode("latin-1") + b"\0"
         body += struct.pack(">I", len(s)) + s
@@ -106,15 +131,33 @@ def icon(kind, default_tool=None, tooltypes=(), stack=0):
     return body
 
 
+# binary name -> (background pen, glyph pen, label)
+TOOLS = {
+    "openxcom-aga":     (BLUE,  WHITE, "AGA"),
+    "openxcom-aga-fpu": (WHITE, BLUE,  "FPU"),
+    "openxcom-rtg":     (BLUE,  WHITE, "RTG"),
+    "openxcom-ask":     (WHITE, BLACK, "ASK"),
+}
+
+SCRIPTS = {
+    "run":     (WHITE, BLACK, "RUN"),
+    "run-rtg": (WHITE, BLACK, "RTG"),
+    "run-ask": (WHITE, BLACK, "ASK"),
+    "run-fpu": (WHITE, BLUE,  "FPU"),
+}
+
+
 def main():
-    out = sys.argv[1]
-    for name in ("openxcom-aga", "openxcom-rtg", "openxcom-ask"):
+    out = sys.argv[1] if len(sys.argv) > 1 else "."
+    for name, (field, glyph, label) in TOOLS.items():
+        px = draw(field, glyph, label)
         with open(os.path.join(out, name + ".info"), "wb") as f:
-            f.write(icon(3, stack=1000000))
-    for name in ("run", "run-rtg", "run-ask"):
+            f.write(icon(3, px, stack=1000000))
+    for name, (field, glyph, label) in SCRIPTS.items():
+        px = draw(field, glyph, label)
         with open(os.path.join(out, name + ".info"), "wb") as f:
-            f.write(icon(4, default_tool="C:IconX", tooltypes=("STACK=1000000",),
-                         stack=8192))
+            f.write(icon(4, px, default_tool="C:IconX",
+                         tooltypes=("STACK=1000000",), stack=8192))
     print("icons written to", out)
 
 

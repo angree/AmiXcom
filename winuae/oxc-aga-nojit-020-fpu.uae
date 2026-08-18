@@ -1,4 +1,4 @@
-; oxc-aga-nojit-040-40.uae - THE reference timing machine: JIT OFF (cachesize=0) and
+; oxc-aga-nojit-020-fpu.uae (COPY + FPU)  - THE reference timing machine: JIT OFF (cachesize=0) and
 ; cpu_throttle=-800.0 (= the CPU speed slider at -80%, which the OpenTTD port calibrated
 ; with SysInfo to a real A4000/040/40). 256 MB fast RAM. Every fps/ms claim in this repo
 ; must come from this config; cpu_speed=max alone (oxc-aga-nojit-ram256.uae) is ~3x too fast.
@@ -24,7 +24,7 @@ config_description=Amiga OpenXcom - plain 68020, 256 MB fast: RAM-headroom probe
 ; --- CPU: 68040 with JIT, for turnaround. The BINARY is plain 68020 code. ---
 cpu_type=68020
 cpu_model=68020
-fpu_model=0
+fpu_model=68882
 cpu_compatible=false
 cpu_24bit_addressing=false
 cpu_speed=max

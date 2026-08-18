@@ -111,6 +111,28 @@ static void queue_push(const SDL_Event *ev)
 {
 	int next = (s_tail + 1) % QUEUE_SIZE;
 	if (s_ignore[ev->type]) return;
+
+	/* AMIGA-PORT: collapse a run of mouse moves into the newest position.
+	 * Only the latest position means anything to the game, but every queued
+	 * one is handled separately - and on the geoscape one motion event costs
+	 * hundreds of ms on a machine with an FPU (Globe::cartToPolar goes through
+	 * the 68881 flavour of mathieeedoubtrans). That fed itself: the slower the
+	 * handling, the more moves piled up, so a flick of the mouse froze the
+	 * geoscape for 14-32 s (measured 2026-08-18). Relative motion is summed so
+	 * drag-scrolling still travels the same distance. Real SDL coalesces the
+	 * same way when the queue backs up. */
+	if (ev->type == SDL_MOUSEMOTION && s_tail != s_head) {
+		int last = (s_tail + QUEUE_SIZE - 1) % QUEUE_SIZE;
+		if (s_queue[last].type == SDL_MOUSEMOTION) {
+			Sint16 rx = (Sint16)(s_queue[last].motion.xrel + ev->motion.xrel);
+			Sint16 ry = (Sint16)(s_queue[last].motion.yrel + ev->motion.yrel);
+			s_queue[last] = *ev;
+			s_queue[last].motion.xrel = rx;
+			s_queue[last].motion.yrel = ry;
+			return;
+		}
+	}
+
 	if (next == s_head) return;             /* full: drop, never block */
 	s_queue[s_tail] = *ev;
 	s_tail = next;
@@ -214,12 +236,23 @@ void SDLmini_InjectKey(int sym, int down)
 
 void SDLmini_AutoinputPoll(void);
 
+/* TEMP (2026-08-18): the geoscape stalls for 10-50 s with an FPU present and
+ * the whole stall lands outside think/blit/flip, i.e. in this pump. These
+ * counters split it so one stalled frame is one complete answer. */
+unsigned long SDLmini_ProfAuto = 0, SDLmini_ProfPump = 0;
+unsigned long SDLmini_ProfEvents = 0, SDLmini_ProfPolls = 0;
+
 void SDLmini_PumpEvents(void)
 {
 	AmigaGfxEvent ae;
+	Uint32 pT_ = SDL_GetTicks();
 
 	SDLmini_AutoinputPoll();
+	SDLmini_ProfAuto += SDL_GetTicks() - pT_;
+	++SDLmini_ProfPolls;
+	pT_ = SDL_GetTicks();
 	while (amigagfx_poll(&ae)) {
+		++SDLmini_ProfEvents;
 		SDL_Event ev;
 		memset(&ev, 0, sizeof(ev));
 
@@ -319,6 +352,7 @@ void SDLmini_PumpEvents(void)
 			break;
 		}
 	}
+	SDLmini_ProfPump += SDL_GetTicks() - pT_;
 }
 
 void SDL_PumpEvents(void) { SDLmini_PumpEvents(); }

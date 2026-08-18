@@ -1215,9 +1215,13 @@ def main():
         '#define OPENXCOM_VERSION_SHORT "1.0"\n'
         '#define OPENXCOM_VERSION_LONG "1.0.0.0"\n'
         '#define OPENXCOM_VERSION_NUMBER 1,0,0,0\n',
-        '#define OPENXCOM_VERSION_SHORT "0.5.6"\n'
-        '#define OPENXCOM_VERSION_LONG "0.5.6.0"\n'
-        '#define OPENXCOM_VERSION_NUMBER 0,5,6,0\n'
+        '#ifdef AMIGA_FPU_BUILD\n'
+        '#define OPENXCOM_VERSION_SHORT "0.5.7 FPU"\n'
+        '#else\n'
+        '#define OPENXCOM_VERSION_SHORT "0.5.7"\n'
+        '#endif\n'
+        '#define OPENXCOM_VERSION_LONG "0.5.7.0"\n'
+        '#define OPENXCOM_VERSION_NUMBER 0,5,7,0\n'
         '#define OPENXCOM_VERSION_GIT ""\n',
         "port version")))
     results.append(("MainMenuState.cpp (AmiXcom title)", edit(
@@ -2013,6 +2017,180 @@ def main():
         "\t\t\t\t}\n"
         "\t\t\t\tAMIGA_FRAME(\"screen flip done\");",
         "Game::run flip markers")))
+
+    # TEMP. A geoscape frame can take 20 s with an FPU present while the globe
+    #       probe says the globe itself did 0 ms of work and the blit counters
+    #       are unchanged. Account for the whole frame unconditionally, and
+    #       time the two geoscape clock handlers separately, so the stall can
+    #       be pinned on logic or on drawing instead of guessed at.
+    results.append(("Engine/Game.cpp (geo frame accounting)", edit(
+        os.path.join(src, "Engine", "Game.cpp"),
+        "\t\t\t\t\ttf_ = SDL_GetTicks() - tf_;\n",
+        "\t\t\t\t\ttf_ = SDL_GetTicks() - tf_;\n"
+        "\t\t\t\t\t{\n"
+        "\t\t\t\t\t\tstatic Uint32 agT_ = 0, agTh_ = 0, agBl_ = 0, agFl_ = 0;\n"
+        "\t\t\t\t\t\tstatic int agN_ = 0;\n"
+        "\t\t\t\t\t\tif (agT_ == 0) agT_ = SDL_GetTicks();\n"
+        "\t\t\t\t\t\tagTh_ += AmigaSlow_think; agBl_ += AmigaSlow_blit; agFl_ += tf_;\n"
+        "\t\t\t\t\t\tif (++agN_ >= 100)\n"
+        "\t\t\t\t\t\t{\n"
+        "\t\t\t\t\t\t\tUint32 now_ = SDL_GetTicks();\n"
+        "\t\t\t\t\t\t\tUint32 w_ = now_ - agT_;\n"
+        "\t\t\t\t\t\t\tchar gb_[224];\n"
+        "\t\t\t\t\t\t\tsnprintf(gb_, sizeof gb_, \"geo: 100 frames in %lu ms: think %lu, blit %lu, flip %lu, events %lu/%lu, other %ld ms; t5s %lu ms/%lu, t10m %lu ms/%lu in %s\",\n"
+        "\t\t\t\t\t\t\t\t(unsigned long)w_, (unsigned long)agTh_, (unsigned long)agBl_, (unsigned long)agFl_,\n"
+        "\t\t\t\t\t\t\t\tAmigaEvMs, AmigaEvN,\n"
+        "\t\t\t\t\t\t\t\t(long)w_ - (long)(agTh_ + agBl_ + agFl_ + AmigaEvMs),\n"
+        "\t\t\t\t\t\t\t\tAmigaGeo5Ms, AmigaGeo5N, AmigaGeo10Ms, AmigaGeo10N,\n"
+        "\t\t\t\t\t\t\t\ttypeid(*_states.back()).name());\n"
+        "\t\t\t\t\t\t\tSDLmini_Log(gb_);\n"
+        "\t\t\t\t\t\t\tagT_ = now_; agTh_ = agBl_ = agFl_ = 0; agN_ = 0;\n"
+        "\t\t\t\t\t\t\tAmigaGeo5Ms = AmigaGeo5N = AmigaGeo10Ms = AmigaGeo10N = 0;\n"
+        "\t\t\t\t\t\t\tAmigaEvMs = AmigaEvN = 0;\n"
+        "\t\t\t\t\t\t}\n"
+        "\t\t\t\t\t}\n",
+        "geo frame accounting")))
+
+    results.append(("Engine/Game.cpp (event pump probe)", edit(
+        os.path.join(src, "Engine", "Game.cpp"),
+        "\t\t// Process events\n"
+        "\t\twhile (SDL_PollEvent(&_event))\n",
+        "\t\tAmigaEvT0 = SDL_GetTicks();\n"
+        "\t\t// Process events\n"
+        "\t\twhile (SDL_PollEvent(&_event))\n",
+        "event pump probe")))
+
+    results.append(("Engine/Game.cpp (event pump probe end)", edit(
+        os.path.join(src, "Engine", "Game.cpp"),
+        "\t\t// Process rendering\n",
+        "\t\tAmigaEvMs += SDL_GetTicks() - AmigaEvT0; ++AmigaEvN;\n"
+        "\t\t// Process rendering\n",
+        "event pump probe end")))
+
+    # TEMP. Full per-frame accounting in ONE build: every phase of the main
+    #       loop, plus the pump's own split (autoinput vs IDCMP). Any frame
+    #       over 300 ms prints the complete breakdown, so a single stall is a
+    #       single line and needs no follow-up probe.
+    results.append(("Engine/Game.cpp (frame profile top)", edit(
+        os.path.join(src, "Engine", "Game.cpp"),
+        "\t\tAMIGA_FRAME(\"loop iteration\");\n"
+        "\t\t// Clean up states\n",
+        "\t\tAMIGA_FRAME(\"loop iteration\");\n"
+        "\t\tAmigaFrTop = SDL_GetTicks();\n"
+        "\t\t// Clean up states\n",
+        "frame profile top")))
+
+    results.append(("Engine/Game.cpp (frame profile clean)", edit(
+        os.path.join(src, "Engine", "Game.cpp"),
+        "\t\t// Initialize active state\n",
+        "\t\tAmigaFrClean = SDL_GetTicks() - AmigaFrTop;\n"
+        "\t\t// Initialize active state\n",
+        "frame profile clean")))
+
+    results.append(("Engine/Game.cpp (frame profile events)", edit(
+        os.path.join(src, "Engine", "Game.cpp"),
+        "\t\tAmigaEvMs += SDL_GetTicks() - AmigaEvT0; ++AmigaEvN;\n",
+        "\t\tAmigaFrEv = SDL_GetTicks() - AmigaEvT0;\n"
+        "\t\tAmigaEvMs += AmigaFrEv; ++AmigaEvN;\n",
+        "frame profile events")))
+
+    results.append(("Engine/Game.cpp (frame profile flip)", edit(
+        os.path.join(src, "Engine", "Game.cpp"),
+        "\t\t\t\t\ttf_ = SDL_GetTicks() - tf_;\n",
+        "\t\t\t\t\ttf_ = SDL_GetTicks() - tf_;\n"
+        "\t\t\t\t\tAmigaFrFlip = tf_;\n",
+        "frame profile flip")))
+
+    results.append(("Engine/Game.cpp (frame profile dump)", edit(
+        os.path.join(src, "Engine", "Game.cpp"),
+        "\t\t// Save on CPU\n"
+        "\t\tswitch (runningState)\n"
+        "\t\t{\n"
+        "\t\t\tcase RUNNING: \n"
+        "\t\t\t\tSDL_Delay(1); //Save CPU from going 100%\n"
+        "\t\t\t\tbreak;\n"
+        "\t\t\tcase SLOWED: case PAUSED:\n"
+        "\t\t\t\tSDL_Delay(100); break; //More slowing down.\n"
+        "\t\t}\n",
+        "\t\t// Save on CPU\n"
+        "\t\t{\n"
+        "\t\tunsigned long dl_ = SDL_GetTicks();\n"
+        "\t\tstatic unsigned long pa_ = 0, pp_ = 0, pe_ = 0, pn_ = 0;\n"
+        "\t\tswitch (runningState)\n"
+        "\t\t{\n"
+        "\t\t\tcase RUNNING: \n"
+        "\t\t\t\tSDL_Delay(1); //Save CPU from going 100%\n"
+        "\t\t\t\tbreak;\n"
+        "\t\t\tcase SLOWED: case PAUSED:\n"
+        "\t\t\t\tSDL_Delay(100); break; //More slowing down.\n"
+        "\t\t}\n"
+        "\t\t{\n"
+        "\t\t\tunsigned long now_ = SDL_GetTicks();\n"
+        "\t\t\tunsigned long total_ = now_ - AmigaFrTop;\n"
+        "\t\t\tdl_ = now_ - dl_;\n"
+        "\t\t\tif (total_ >= 300)\n"
+        "\t\t\t{\n"
+        "\t\t\t\tchar fb_[256];\n"
+        "\t\t\t\tsnprintf(fb_, sizeof fb_,\n"
+        "\t\t\t\t\t\"frameprof: total %lu = clean %lu + ev %lu + think %lu + blit %lu + flip %lu + delay %lu; pump auto %lu idcmp %lu polls %lu evs %lu; state %s\",\n"
+        "\t\t\t\t\ttotal_, AmigaFrClean, AmigaFrEv,\n"
+        "\t\t\t\t\t(unsigned long)AmigaSlow_think, (unsigned long)AmigaSlow_blit, AmigaFrFlip, dl_,\n"
+        "\t\t\t\t\tSDLmini_ProfAuto - pa_, SDLmini_ProfPump - pp_,\n"
+        "\t\t\t\t\tSDLmini_ProfPolls - pn_, SDLmini_ProfEvents - pe_,\n"
+        "\t\t\t\t\ttypeid(*_states.back()).name());\n"
+        "\t\t\t\tSDLmini_Log(fb_);\n"
+        "\t\t\t}\n"
+        "\t\t\tpa_ = SDLmini_ProfAuto; pp_ = SDLmini_ProfPump;\n"
+        "\t\t\tpe_ = SDLmini_ProfEvents; pn_ = SDLmini_ProfPolls;\n"
+        "\t\t}\n"
+        "\t\t}\n",
+        "frame profile dump")))
+
+    results.append(("Engine/Game.cpp (geo counters)", edit(
+        os.path.join(src, "Engine", "Game.cpp"),
+        '#include "Game.h"\n',
+        '#include "Game.h"\n'
+        '#ifdef __AMIGA__\n'
+        'extern "C" { unsigned long AmigaGeo5Ms = 0, AmigaGeo5N = 0, AmigaGeo10Ms = 0, AmigaGeo10N = 0; }\n'
+        'extern "C" { unsigned long AmigaEvMs = 0, AmigaEvT0 = 0, AmigaEvN = 0; }\n'
+        'extern "C" { unsigned long AmigaFrTop = 0, AmigaFrClean = 0, AmigaFrEv = 0, AmigaFrFlip = 0; }\n'
+        'extern "C" unsigned long SDLmini_ProfAuto, SDLmini_ProfPump, SDLmini_ProfEvents, SDLmini_ProfPolls;\n'
+        '#endif\n',
+        "geo counters")))
+
+    results.append(("Geoscape/GeoscapeState.cpp (geo clock extern)", edit(
+        os.path.join(src, "Geoscape", "GeoscapeState.cpp"),
+        '#include "GeoscapeState.h"\n',
+        '#include "GeoscapeState.h"\n'
+        '#ifdef __AMIGA__\n'
+        'extern "C" unsigned long AmigaGeo5Ms, AmigaGeo5N, AmigaGeo10Ms, AmigaGeo10N;\n'
+        'extern "C" unsigned int SDL_GetTicks(void);\n'
+        '#endif\n',
+        "geo clock extern")))
+
+    results.append(("Geoscape/GeoscapeState.cpp (t5s probe)", edit(
+        os.path.join(src, "Geoscape", "GeoscapeState.cpp"),
+        "void GeoscapeState::time5Seconds()\n"
+        "{\n",
+        "void GeoscapeState::time5Seconds()\n"
+        "{\n"
+        "#ifdef __AMIGA__\n"
+        "\tstruct AmGeo5_ { unsigned int t0; AmGeo5_() : t0(SDL_GetTicks()) {} \n"
+        "\t\t~AmGeo5_() { AmigaGeo5Ms += SDL_GetTicks() - t0; ++AmigaGeo5N; } } amGeo5_;\n"
+        "#endif\n",
+        "t5s probe")))
+
+    results.append(("Geoscape/GeoscapeState.cpp (t10m probe)", edit(
+        os.path.join(src, "Geoscape", "GeoscapeState.cpp"),
+        "void GeoscapeState::time10Minutes()\n"
+        "{\n",
+        "void GeoscapeState::time10Minutes()\n"
+        "{\n"
+        "#ifdef __AMIGA__\n"
+        "\tstruct AmGeo10_ { unsigned int t0; AmGeo10_() : t0(SDL_GetTicks()) {} \n"
+        "\t\t~AmGeo10_() { AmigaGeo10Ms += SDL_GetTicks() - t0; ++AmigaGeo10N; } } amGeo10_;\n"
+        "#endif\n",
+        "t10m probe")))
 
     results.append(("Engine/Game.cpp (include)", edit(
         os.path.join(src, "Engine", "Game.cpp"),
@@ -2874,6 +3052,243 @@ def main():
         "\tout << YAML::BeginDoc;\n",
         "\tydump_ += \"---\\n\"; /* AMIGA-PORT */\n",
         "fast writer begindoc")))
+    # TEMP. New Battle takes ~30 s on the 040/40 reference machine. These
+    #       probes split BattlescapeGenerator::run() into its phases so the
+    #       report rests on numbers, not on a plausible story. Remove with the
+    #       rest of the TEMP probes (LEFTOFF.md point 3).
+    results.append(("BattlescapeGenerator.cpp (newbattle probe head)", edit(
+        os.path.join(src, "Battlescape", "BattlescapeGenerator.cpp"),
+        '#include "BattlescapeGenerator.h"\n',
+        '#include "BattlescapeGenerator.h"\n'
+        '#ifdef __AMIGA__\n'
+        '#include <cstdio>\n'
+        'extern "C" void SDLmini_Log(const char *msg);\n'
+        'extern "C" unsigned int SDL_GetTicks(void);\n'
+        'static unsigned int g_bgMap_ = 0, g_bgRmp_ = 0, g_bgInit_ = 0;\n'
+        'static unsigned int g_bgMapN_ = 0, g_bgRmpN_ = 0;\n'
+        '#define BGP1_(f, a) do { char bgb_[128]; snprintf(bgb_, sizeof bgb_, f, (unsigned)(a)); SDLmini_Log(bgb_); } while (0)\n'
+        '#endif\n',
+        "newbattle probe head")))
+
+    results.append(("BattlescapeGenerator.cpp (newbattle probe run)", edit(
+        os.path.join(src, "Battlescape", "BattlescapeGenerator.cpp"),
+        "\tgenerateMap(script);\n"
+        "\n"
+        "\tsetupObjectives(ruleDeploy);\n"
+        "\n"
+        "\tdeployXCOM();\n"
+        "\n"
+        "\tsize_t unitCount = _save->getUnits()->size();\n"
+        "\n"
+        "\tdeployAliens(ruleDeploy);\n",
+        "#ifdef __AMIGA__\n"
+        "\tunsigned int bgT0_ = SDL_GetTicks();\n"
+        "#endif\n"
+        "\tgenerateMap(script);\n"
+        "#ifdef __AMIGA__\n"
+        "\tBGP1_(\"bgen: generateMap %u ms\", SDL_GetTicks() - bgT0_); bgT0_ = SDL_GetTicks();\n"
+        "#endif\n"
+        "\n"
+        "\tsetupObjectives(ruleDeploy);\n"
+        "#ifdef __AMIGA__\n"
+        "\tBGP1_(\"bgen: objectives %u ms\", SDL_GetTicks() - bgT0_); bgT0_ = SDL_GetTicks();\n"
+        "#endif\n"
+        "\n"
+        "\tdeployXCOM();\n"
+        "#ifdef __AMIGA__\n"
+        "\tBGP1_(\"bgen: deployXCOM %u ms\", SDL_GetTicks() - bgT0_); bgT0_ = SDL_GetTicks();\n"
+        "#endif\n"
+        "\n"
+        "\tsize_t unitCount = _save->getUnits()->size();\n"
+        "\n"
+        "\tdeployAliens(ruleDeploy);\n"
+        "#ifdef __AMIGA__\n"
+        "\tBGP1_(\"bgen: deployAliens %u ms\", SDL_GetTicks() - bgT0_); bgT0_ = SDL_GetTicks();\n"
+        "#endif\n",
+        "newbattle probe run")))
+
+    results.append(("BattlescapeGenerator.cpp (newbattle probe light)", edit(
+        os.path.join(src, "Battlescape", "BattlescapeGenerator.cpp"),
+        "\t// set shade (alien bases are a little darker, sites depend on worldshade)\n"
+        "\t_save->setGlobalShade(_worldShade);\n"
+        "\n"
+        "\t_save->getTileEngine()->calculateSunShading();\n"
+        "\t_save->getTileEngine()->calculateTerrainLighting();\n"
+        "\t_save->getTileEngine()->calculateUnitLighting();\n"
+        "\t_save->getTileEngine()->recalculateFOV();\n"
+        "}\n",
+        "\t// set shade (alien bases are a little darker, sites depend on worldshade)\n"
+        "\t_save->setGlobalShade(_worldShade);\n"
+        "\n"
+        "#ifdef __AMIGA__\n"
+        "\tBGP1_(\"bgen: rest %u ms\", SDL_GetTicks() - bgT0_); bgT0_ = SDL_GetTicks();\n"
+        "#endif\n"
+        "\t_save->getTileEngine()->calculateSunShading();\n"
+        "#ifdef __AMIGA__\n"
+        "\tBGP1_(\"bgen: sunShading %u ms\", SDL_GetTicks() - bgT0_); bgT0_ = SDL_GetTicks();\n"
+        "#endif\n"
+        "\t_save->getTileEngine()->calculateTerrainLighting();\n"
+        "#ifdef __AMIGA__\n"
+        "\tBGP1_(\"bgen: terrainLight %u ms\", SDL_GetTicks() - bgT0_); bgT0_ = SDL_GetTicks();\n"
+        "#endif\n"
+        "\t_save->getTileEngine()->calculateUnitLighting();\n"
+        "#ifdef __AMIGA__\n"
+        "\tBGP1_(\"bgen: unitLight %u ms\", SDL_GetTicks() - bgT0_); bgT0_ = SDL_GetTicks();\n"
+        "#endif\n"
+        "\t_save->getTileEngine()->recalculateFOV();\n"
+        "#ifdef __AMIGA__\n"
+        "\tBGP1_(\"bgen: recalcFOV %u ms\", SDL_GetTicks() - bgT0_);\n"
+        "#endif\n"
+        "}\n",
+        "newbattle probe light")))
+
+    results.append(("BattlescapeGenerator.cpp (newbattle probe genstart)", edit(
+        os.path.join(src, "Battlescape", "BattlescapeGenerator.cpp"),
+        '\t_dummy = new MapBlock("dummy");\n'
+        "\n"
+        "\tinit();\n",
+        "#ifdef __AMIGA__\n"
+        "\tg_bgMap_ = g_bgRmp_ = g_bgInit_ = g_bgMapN_ = g_bgRmpN_ = 0;\n"
+        "\tunsigned int gmT_ = SDL_GetTicks();\n"
+        "#endif\n"
+        '\t_dummy = new MapBlock("dummy");\n'
+        "\n"
+        "\tinit();\n",
+        "newbattle probe genstart")))
+
+    results.append(("BattlescapeGenerator.cpp (newbattle probe datasets)", edit(
+        os.path.join(src, "Battlescape", "BattlescapeGenerator.cpp"),
+        "\tRuleTerrain* ufoTerrain = 0;\n",
+        "#ifdef __AMIGA__\n"
+        "\tBGP1_(\"gmap: datasets+init %u ms\", SDL_GetTicks() - gmT_); gmT_ = SDL_GetTicks();\n"
+        "#endif\n"
+        "\tRuleTerrain* ufoTerrain = 0;\n",
+        "newbattle probe datasets")))
+
+    results.append(("BattlescapeGenerator.cpp (newbattle probe script)", edit(
+        os.path.join(src, "Battlescape", "BattlescapeGenerator.cpp"),
+        "\tif (_blocksToDo)\n"
+        "\t{\n"
+        '\t\tthrow Exception("Map failed to fully generate.");\n'
+        "\t}\n"
+        "\n"
+        "\tloadNodes();\n",
+        "#ifdef __AMIGA__\n"
+        "\tBGP1_(\"gmap: script %u ms\", SDL_GetTicks() - gmT_); gmT_ = SDL_GetTicks();\n"
+        "#endif\n"
+        "\tif (_blocksToDo)\n"
+        "\t{\n"
+        '\t\tthrow Exception("Map failed to fully generate.");\n'
+        "\t}\n"
+        "\n"
+        "\tloadNodes();\n"
+        "#ifdef __AMIGA__\n"
+        "\tBGP1_(\"gmap: loadNodes %u ms\", SDL_GetTicks() - gmT_); gmT_ = SDL_GetTicks();\n"
+        "#endif\n",
+        "newbattle probe script")))
+
+    results.append(("BattlescapeGenerator.cpp (newbattle probe tail)", edit(
+        os.path.join(src, "Battlescape", "BattlescapeGenerator.cpp"),
+        "\tattachNodeLinks();\n"
+        "}\n",
+        "#ifdef __AMIGA__\n"
+        "\tBGP1_(\"gmap: ufo+craft+floors %u ms\", SDL_GetTicks() - gmT_); gmT_ = SDL_GetTicks();\n"
+        "#endif\n"
+        "\tattachNodeLinks();\n"
+        "#ifdef __AMIGA__\n"
+        "\tBGP1_(\"gmap: attachNodeLinks %u ms\", SDL_GetTicks() - gmT_);\n"
+        "\tBGP1_(\"gmap: initMap+utils %u ms\", g_bgInit_);\n"
+        "\t{ char bgb2_[128]; snprintf(bgb2_, sizeof bgb2_, \"gmap: loadMAP %u ms in %u files, loadRMP %u ms in %u files\",\n"
+        "\t\tg_bgMap_, g_bgMapN_, g_bgRmp_, g_bgRmpN_); SDLmini_Log(bgb2_); }\n"
+        "#endif\n"
+        "}\n",
+        "newbattle probe tail")))
+
+    results.append(("BattlescapeGenerator.cpp (newbattle probe init)", edit(
+        os.path.join(src, "Battlescape", "BattlescapeGenerator.cpp"),
+        "\t_save->initMap(_mapsize_x, _mapsize_y, _mapsize_z);\n"
+        "\t_save->initUtilities(_mod);\n"
+        "}\n",
+        "#ifdef __AMIGA__\n"
+        "\tunsigned int inT_ = SDL_GetTicks();\n"
+        "#endif\n"
+        "\t_save->initMap(_mapsize_x, _mapsize_y, _mapsize_z);\n"
+        "\t_save->initUtilities(_mod);\n"
+        "#ifdef __AMIGA__\n"
+        "\tg_bgInit_ += SDL_GetTicks() - inT_;\n"
+        "#endif\n"
+        "}\n",
+        "newbattle probe init")))
+
+    results.append(("BattlescapeGenerator.cpp (newbattle probe loadMAP)", edit(
+        os.path.join(src, "Battlescape", "BattlescapeGenerator.cpp"),
+        "\tint sizex, sizey, sizez;\n"
+        "\tint x = xoff, y = yoff, z = 0;\n",
+        "#ifdef __AMIGA__\n"
+        "\tunsigned int lmT_ = SDL_GetTicks();\n"
+        "#endif\n"
+        "\tint sizex, sizey, sizez;\n"
+        "\tint x = xoff, y = yoff, z = 0;\n",
+        "newbattle probe loadMAP")))
+
+    results.append(("BattlescapeGenerator.cpp (newbattle probe loadMAP end)", edit(
+        os.path.join(src, "Battlescape", "BattlescapeGenerator.cpp"),
+        "\treturn sizez;\n"
+        "}\n",
+        "#ifdef __AMIGA__\n"
+        "\tg_bgMap_ += SDL_GetTicks() - lmT_; ++g_bgMapN_;\n"
+        "#endif\n"
+        "\treturn sizez;\n"
+        "}\n",
+        "newbattle probe loadMAP end")))
+
+    results.append(("BattlescapeGenerator.cpp (newbattle probe loadRMP)", edit(
+        os.path.join(src, "Battlescape", "BattlescapeGenerator.cpp"),
+        "\tunsigned char value[24];\n",
+        "#ifdef __AMIGA__\n"
+        "\tunsigned int lrT_ = SDL_GetTicks();\n"
+        "#endif\n"
+        "\tunsigned char value[24];\n",
+        "newbattle probe loadRMP")))
+
+    results.append(("BattlescapeGenerator.cpp (newbattle probe loadRMP end)", edit(
+        os.path.join(src, "Battlescape", "BattlescapeGenerator.cpp"),
+        "\tmapFile.close();\n"
+        "}\n",
+        "\tmapFile.close();\n"
+        "#ifdef __AMIGA__\n"
+        "\tg_bgRmp_ += SDL_GetTicks() - lrT_; ++g_bgRmpN_;\n"
+        "#endif\n"
+        "}\n",
+        "newbattle probe loadRMP end")))
+
+    results.append(("NewBattleState.cpp (newbattle probe total)", edit(
+        os.path.join(src, "Menu", "NewBattleState.cpp"),
+        "\tbgen.run();\n"
+        "\n"
+        "\t_game->popState();\n",
+        "#ifdef __AMIGA__\n"
+        "\tunsigned int nbT_ = SDL_GetTicks();\n"
+        "#endif\n"
+        "\tbgen.run();\n"
+        "#ifdef __AMIGA__\n"
+        "\t{ char nbb_[96]; snprintf(nbb_, sizeof nbb_, \"newbattle: bgen.run %u ms\", SDL_GetTicks() - nbT_); SDLmini_Log(nbb_); }\n"
+        "#endif\n"
+        "\n"
+        "\t_game->popState();\n",
+        "newbattle probe total")))
+
+    results.append(("NewBattleState.cpp (newbattle probe extern)", edit(
+        os.path.join(src, "Menu", "NewBattleState.cpp"),
+        '#include "NewBattleState.h"\n',
+        '#include "NewBattleState.h"\n'
+        '#ifdef __AMIGA__\n'
+        '#include <cstdio>\n'
+        'extern "C" void SDLmini_Log(const char *msg);\n'
+        'extern "C" unsigned int SDL_GetTicks(void);\n'
+        '#endif\n',
+        "newbattle probe extern")))
+
     results.append(("SavedGame.cpp (save probe log)", edit(
         os.path.join(src, "Savegame", "SavedGame.cpp"),
         "\tout << node;\n"
