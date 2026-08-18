@@ -30,7 +30,9 @@ from Work:run (old one kept as Work:run.autostart) - binaries are
 launched from Workbench icons, so oxc.log stays empty and the probes
 land in sdlmini.log instead.
 
-**0.6.0 (built, zip + notes ready in C:	empmiga_oxcomelease, NOT pushed
+**0.6.0 (released 2026-08-19)**: battlescape frame cache + options.cfg
+migration (`amigaCfgVersion`: forces battleFireSpeed 12 / battleScrollSpeed 16 /
+amigaAnimMs 100 once on old files). Idle 3.8 -> ~35 fps, cursor
 yet - user tests first)**: battlescape frame cache. Idle 3.8 -> ~35 fps, cursor
 ~9-13, shot ~9 (gameTimer-bound: 100 ms per bullet step), scroll 8-13, walking
 ~6 (FOV logic). Full story + numbers + the one known gap (dense map: dirty
