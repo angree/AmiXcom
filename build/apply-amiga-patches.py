@@ -1186,9 +1186,9 @@ def main():
         '#define OPENXCOM_VERSION_SHORT "1.0"\n'
         '#define OPENXCOM_VERSION_LONG "1.0.0.0"\n'
         '#define OPENXCOM_VERSION_NUMBER 1,0,0,0\n',
-        '#define OPENXCOM_VERSION_SHORT "0.5.5"\n'
-        '#define OPENXCOM_VERSION_LONG "0.5.5.0"\n'
-        '#define OPENXCOM_VERSION_NUMBER 0,5,5,0\n'
+        '#define OPENXCOM_VERSION_SHORT "0.5.6"\n'
+        '#define OPENXCOM_VERSION_LONG "0.5.6.0"\n'
+        '#define OPENXCOM_VERSION_NUMBER 0,5,6,0\n'
         '#define OPENXCOM_VERSION_GIT ""\n',
         "port version")))
     results.append(("MainMenuState.cpp (AmiXcom title)", edit(
@@ -3252,7 +3252,7 @@ def main():
         "\t\t}\n"
         "#ifdef __AMIGA__\n"
         "\t\t++AmigaSplashDone_;\n"
-        "\t\tAmigaSplash_Progress(3 + (int)((82L * AmigaSplashDone_) / AmigaSplashTotal_));\n"
+        "\t\tAmigaSplash_Progress(2 + (int)((68L * AmigaSplashDone_) / AmigaSplashTotal_));\n"
         "#endif\n"
         "\t}\n",
         "splash tick")))
@@ -3261,7 +3261,7 @@ def main():
         '\tLog(LOG_INFO) << "Loading fonts... " << _fontName;\n',
         '\tLog(LOG_INFO) << "Loading fonts... " << _fontName;\n'
         '#ifdef __AMIGA__\n'
-        '\tAmigaSplash_Progress(88);\n'
+        '\tAmigaSplash_Progress(71);\n'
         '#endif\n',
         "splash fonts mark")))
     results.append(("StartState.cpp (splash decls)", edit(
@@ -3277,7 +3277,7 @@ def main():
         os.path.join(src, "Menu", "StartState.cpp"),
         '\t\tLog(LOG_INFO) << "Loading language...";\n',
         '#ifdef __AMIGA__\n'
-        '\t\tAmigaSplash_Progress(94);\n'
+        '\t\tAmigaSplash_Progress(88);\n'
         '#endif\n'
         '\t\tLog(LOG_INFO) << "Loading language...";\n',
         "splash lang mark")))
@@ -3291,6 +3291,61 @@ def main():
         "#endif\n"
         "\t\t_game->setState(new GoToMainMenuState);\n",
         "splash finish")))
+
+    # 6q. Splash bar rebalance: measured phases on the 040/40 - rulesets
+    #     ~120 s, fonts ~7 s, extra sprites/sounds ~13 s, language ~18 s.
+    #     Rulesets 2..70, fonts 71, sprites 72..80 (per pack), sounds 80..86
+    #     (per pack), data-loaded 87, language 88 -> 98, done 100.
+    results.append(("Mod.cpp (splash sprites ticks)", edit(
+        os.path.join(src, "Mod", "Mod.cpp"),
+        "\tfor (std::vector< std::pair<std::string, ExtraSprites *> >::const_iterator i = _extraSprites.begin(); i != _extraSprites.end(); ++i)\n"
+        "\t{\n"
+        "\t\tstd::string sheetName = i->first;\n",
+        "#ifdef __AMIGA__\n"
+        "\tAmigaSplashDone_ = 0;\n"
+        "\tAmigaSplashTotal_ = (long)_extraSprites.size(); if (AmigaSplashTotal_ < 1) AmigaSplashTotal_ = 1;\n"
+        "#endif\n"
+        "\tfor (std::vector< std::pair<std::string, ExtraSprites *> >::const_iterator i = _extraSprites.begin(); i != _extraSprites.end(); ++i)\n"
+        "\t{\n"
+        "#ifdef __AMIGA__\n"
+        "\t\t++AmigaSplashDone_;\n"
+        "\t\tAmigaSplash_Progress(72 + (int)((8L * AmigaSplashDone_) / AmigaSplashTotal_));\n"
+        "#endif\n"
+        "\t\tstd::string sheetName = i->first;\n",
+        "splash sprites ticks")))
+    results.append(("Mod.cpp (splash sounds ticks)", edit(
+        os.path.join(src, "Mod", "Mod.cpp"),
+        "\tfor (std::vector< std::pair<std::string, ExtraSounds *> >::const_iterator i = _extraSounds.begin(); i != _extraSounds.end(); ++i)\n"
+        "\t{\n"
+        "\t\tstd::string setName = i->first;\n",
+        "#ifdef __AMIGA__\n"
+        "\tAmigaSplashDone_ = 0;\n"
+        "\tAmigaSplashTotal_ = (long)_extraSounds.size(); if (AmigaSplashTotal_ < 1) AmigaSplashTotal_ = 1;\n"
+        "#endif\n"
+        "\tfor (std::vector< std::pair<std::string, ExtraSounds *> >::const_iterator i = _extraSounds.begin(); i != _extraSounds.end(); ++i)\n"
+        "\t{\n"
+        "#ifdef __AMIGA__\n"
+        "\t\t++AmigaSplashDone_;\n"
+        "\t\tAmigaSplash_Progress(80 + (int)((6L * AmigaSplashDone_) / AmigaSplashTotal_));\n"
+        "#endif\n"
+        "\t\tstd::string setName = i->first;\n",
+        "splash sounds ticks")))
+    results.append(("StartState.cpp (splash data mark)", edit(
+        os.path.join(src, "Menu", "StartState.cpp"),
+        '\t\tLog(LOG_INFO) << "Data loaded successfully.";\n',
+        '#ifdef __AMIGA__\n'
+        '\t\tAmigaSplash_Progress(87);\n'
+        '#endif\n'
+        '\t\tLog(LOG_INFO) << "Data loaded successfully.";\n',
+        "splash data mark")))
+    results.append(("StartState.cpp (splash lang done)", edit(
+        os.path.join(src, "Menu", "StartState.cpp"),
+        "\t\tgame->defaultLanguage();\n",
+        "\t\tgame->defaultLanguage();\n"
+        "#ifdef __AMIGA__\n"
+        "\t\tAmigaSplash_Progress(98);\n"
+        "#endif\n",
+        "splash lang done")))
 
     # 5x. Globe blit diagnostics (temporary): the globe draws (first
     #     filledCircle/texturedPolygon are logged by sdlmini) but the screen
