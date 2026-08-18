@@ -2,6 +2,19 @@
 
 Newest first. Facts and measurements only; plans live in `PORT_RESEARCH.md`.
 
+## 2026-08-18 (rano): 0.5.5 - klawiatura naprawiona
+
+Pisanie tekstu wstawialo zawsze 'r' (czasem '6') niezaleznie od klawisza.
+Log sondy pokazal dowod:  - szukanie
+'h' ZWRACALO wpis 'r'. Petla porownujaca tablice klawiszy w
+sdlmini_events.c byla miskompilowana przez gcc 6.5 przy -O1 (ta sama
+rodzina co Mod.cpp). Fix: lookup jako bezposrednia mapa 128 wpisow,
+init z volatile, __attribute__((optimize(0))). Potwierdzone przez
+uzytkownika na prawdziwej klawiaturze. Wydane jako v0.5.5 (+ napis
+"PORT MADE BY GRZEGORZ KORYCKI" male czcionka na title screen; asset
+0.5.0 podmieniony z napisem i poprawka notek: SFX dzialaja od 0.1.0,
+brakuje MUZYKI, nie dzwieku).
+
 ## 2026-08-17/18 (wieczor+noc): 0.5.0 - zapis 8 s, odczyt ~20 s, glob 3D ~10x
 
 Pomiary na maszynie referencyjnej (68020, JIT OFF, cpu_throttle -70%,
