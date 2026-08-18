@@ -5,7 +5,7 @@ Newest first. Facts and measurements only; plans live in `PORT_RESEARCH.md`.
 ## 2026-08-18 (rano): 0.5.5 - klawiatura naprawiona
 
 Pisanie tekstu wstawialo zawsze 'r' (czasem '6') niezaleznie od klawisza.
-Log sondy pokazal dowod:  - szukanie
+Log sondy pokazal dowod: `key raw 0x25 idx 36 entry.raw 0x13` - szukanie
 'h' ZWRACALO wpis 'r'. Petla porownujaca tablice klawiszy w
 sdlmini_events.c byla miskompilowana przez gcc 6.5 przy -O1 (ta sama
 rodzina co Mod.cpp). Fix: lookup jako bezposrednia mapa 128 wpisow,
