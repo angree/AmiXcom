@@ -93,3 +93,15 @@ ZROBIONE 17/18.08 wieczor-noc (wydane jako 0.5.0):
   dogfight jednym skokiem, plaska woda cieniowana (amigaFlatGlobe)
 - boot przez Run <NIL: (CLI sie domyka, WB pokazuje RAM; ~50 MB potrzebne)
 - tryb autotestu: autotest.txt -> autoinput przy bootcie (run.normal = zwykly)
+
+ZROBIONE 18.08 (wydane jako 0.5.5 i 0.5.6):
+- klawiatura naprawiona (lookup rawkey miskompilowany przy -O1 - kazdy
+  klawisz pisal 'r'; mapa 128 wpisow na optimize(0)) + napis PORT MADE BY
+- loading splash: 6 tel z intro/ WPIECZONE w EXE (gen_splash.py ->
+  amiga_splash_data.c), logo -2px, fade paleta, pasek liniowy do czasu
+  (ticki w calym Mod loading + hak YamlTickHook w yaml Stream::get),
+  peny Intuition na indeksach 0/15/17/19, paleta czerniona od OpenScreen
+- POMIAR STARTU (040/40 -70%, ~180 s do menu): rulesety ~60 s,
+  vanilla+battlescape resources (SCR/PCK/CAT) ~110 s <- GLOWNY CEL
+  przyspieszenia startu; jezyk ~20 s; zagadka: ~5.5 s/region sanityzacji
+- sondy TEMP do sprzatniecia rozszerzone o "splash:"

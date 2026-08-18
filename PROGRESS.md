@@ -2,6 +2,38 @@
 
 Newest first. Facts and measurements only; plans live in `PORT_RESEARCH.md`.
 
+## 2026-08-18 (przedpoludnie): 0.5.6 - loading splash z paskiem postepu
+
+Wydane jako v0.5.6. Boot->menu trwa ~3 min na 040/40 -70%; teraz zamiast
+czarnego ekranu jest splash: losowe z 6 tel z intro/ (320x184, konwersja
+na PC przez build/gen_splash.py do 8-bit chunky+paleta, WPIECZONE w
+binarke jako amiga_splash_data.c ~360 KB), logo AmiXcom -2 px od krawedzi
+(przyciete alpha-bbox, clipping), fade-in paleta, pasek (stalowy niebieski
+253 na czarnym pasie), fade-out 0.5 s przy przejsciu do menu.
+
+Mechanika (native/amiga_splash.c + sdlmini): splash rysuje sie w
+SDL_SetVideoMode; SDL_Flip i paleta ekranu STLUMIONE na czas ladowania
+(gra rysuje swoj "Loading..." w prozni); pas paska odtwarzany z prywatnej
+kopii przed kazdym blitem (gra mazie po chunky); SDLmini_SplashFinish()
+(StartState) przywraca palete gry + pelny dirty. Paleta: peny Intuition
+zarezerwowane na ICH PRAWDZIWYCH indeksach z g_screen_pens (0 trim,
+15 tekst paska, 17 tlo paska = zolty jak w grze, 19 gadzet) - pasek
+tytulowy identyczny na kazdym tle; cala paleta CZERNIONA w amiga_gfx
+zaraz po OpenScreen (koniec szarego blysku Intuition).
+
+Pasek liniowy wzgledem czasu (odchylka 13 pkt, najwiekszy przestoj
+74 s -> 14.6 s) - tick per: plik rulesetu (5..37), region (39), ekran
+SCR/BDY/SPK (40..57), zestawy (58), CAT dzwiekow (59..70), PCK jednostek
+(71..76), sorty (77-79), fonty (80), sprite/dzwiek extra (81..88), jezyk
+88..98 TYKA W TRAKCIE PARSOWANIA (hak YamlTickHook w yaml-cpp
+Stream::get co 8 KB). Wszystko wymierzone sondami "splash: X% at T ms"
+(TEMP, do sprzatniecia).
+
+Pomiar przy okazji: loadVanillaResources+loadBattlescapeResources
+(ekrany, PCK, CAT-y) = ~110 s z ~180 s startu - GLOWNY kandydat na
+przyspieszenie ladowania gry. Dithering FS wyprobowany i COFNIETY
+(user: brzydkie ziarno w lores; zostaly gladkie przejscia).
+
 ## 2026-08-18 (rano): 0.5.5 - klawiatura naprawiona
 
 Pisanie tekstu wstawialo zawsze 'r' (czasem '6') niezaleznie od klawisza.

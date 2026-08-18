@@ -1,12 +1,21 @@
-# LEFTOFF — hand-off for the next session (written 2026-08-18, after v0.5.0)
+# LEFTOFF — hand-off for the next session (written 2026-08-18, after v0.5.6)
 
 Read this, then `CLAUDE.md` (rules), then the top entry of `PROGRESS.md` (proofs).
 
-## Where the port stands (2026-08-18, after 0.5.0)
+## Where the port stands (2026-08-18, after 0.5.6)
 
-**Released**: github.com/angree/AmiXcom - v0.1.0/0.2.0/0.3.0/0.5.0 (code without
+**Released**: github.com/angree/AmiXcom - v0.1.0..v0.5.6 (code without
 ROM/HDF/CGX-headers/game data; releases without X-COM data). Bar shows
-"AmiXcom 68K 0.5.0" (version.h patch in apply-amiga-patches.py is the ONE source).
+"AmiXcom 68K 0.5.6" (version.h patch in apply-amiga-patches.py is the ONE source).
+
+**New since 0.5.0**: 0.5.5 keyboard fix (raw-key lookup was MISCOMPILED at
+-O1 - every key typed 'r'; direct 128-entry map at optimize(0)) + title
+credit "PORT MADE BY GRZEGORZ KORYCKI". 0.5.6 loading splash: 6 intro/
+backgrounds baked into the EXE (gen_splash.py -> amiga_splash_data.c),
+progress bar linear vs real time (ticks all through Mod loading incl. a
+YamlTickHook inside yaml-cpp Stream::get for the language parse), palette
+blanked at OpenScreen, Intuition pens fixed at indices 0/15/17/19.
+Swap intro/*.png -> next build re-bakes automatically.
 
 **Performance today** (040/40-class = 68020, no JIT, -70% throttle; proofs in
 PROGRESS.md top entry):
@@ -24,12 +33,17 @@ PROGRESS.md top entry):
   Work:autoinput.txt` in run (boot drives menu->battle->autosave->F5->F9).
 
 **THE PLAN** - remaining (details LISTA-ROBOT.txt):
-1. Load parse ~11 s: hand parser for the battleGame section (our own writer
-   emits it, format is regular; keep yaml for geoscape + foreign saves).
-2. Cleanup TEMP probes (perf:/slow frame/step:/fov:/map:/globe:/load:/save:).
-3. Save-list dates show "????" (cosmetic); keyboard "6"; guard in-game F12.
-4. Sound (Paula/ADPCM), RTG test, 32 MB RAM reduction (now needs ~50 MB).
-5. Maybe: geoscape span fills, AMIGA_GLOBE_MIN_MS 1000->250, markers trig-out.
+1. GAME START ~3 min: loadVanillaResources+loadBattlescapeResources
+   (screens/PCK/CAT) = ~110 s of it (measured via splash probes) - speed up
+   loadPck/loadScr/loadCat; rulesets ~60 s; language parse ~20 s.
+2. Save-load: load parse ~11 s (hand parser for battleGame - our format);
+   dziwne 5.5 s/region w sanityzacji regionow (zmierzone, niewyjasnione).
+3. Cleanup TEMP probes (perf:/slow frame/step:/fov:/map:/globe:/load:/
+   save:/splash:).
+4. Save-list dates show "????" (cosmetic); guard in-game F12 screenshot.
+5. MUSIC (SFX work; Paula/ADPCM streaming from OpenTTD port not wired),
+   RTG test, 32 MB RAM reduction (now needs ~50 MB).
+6. Maybe: geoscape span fills, AMIGA_GLOBE_MIN_MS 1000->250, markers trig-out.
 
 **Rules** (user, unchanged): backup zip before each step (harness/backup.ps1
 -Label X -Note Y), one change per build, self-test via autoinput+log, revert
