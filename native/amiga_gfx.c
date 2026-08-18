@@ -1417,6 +1417,15 @@ int amigagfx_open(int w, int h, int show_bar, int backend)
 	}
 
 	{
+		/* AMIGA-PORT: blank the whole palette the instant the screen exists.
+		 * Intuition opens it with the default colours (grey background, red
+		 * bar pens), which flashed for a moment before the splash or the
+		 * game loaded a real palette. All black until someone says otherwise. */
+		{
+			static ULONG blank_[2 + 256 * 3];
+			blank_[0] = (256UL << 16);
+			LoadRGB32(&g_screen->ViewPort, blank_);
+		}
 		/* Report the mode Intuition ACTUALLY granted, not the one we asked for.
 		 * It substitutes silently when a mode is unavailable, and a lores-sized
 		 * screen running in a hires mode looks identical in a log that only

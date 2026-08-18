@@ -96,19 +96,22 @@ void AmigaSplash_Show(void)
 	memcpy(s_pal, bg + 8, 768);
 	memcpy(s_image, bg + 8 + 768, (long)w * h);
 
-	/* logo, bottom-right, 6 px off the right edge and 6 px above the band */
+	/* logo, bottom-right, 2 px off the right edge and 2 px above the band */
 	logo = AmigaSplashLogo;
 	if (logo != NULL && memcmp(logo, "SPLG", 4) == 0) {
 		const int lw = (logo[4] << 8) | logo[5];
 		const int lh = (logo[6] << 8) | logo[7];
 		if (lw <= SPLASH_W && lh <= BAND_Y) {
-			const int lx = SPLASH_W - lw - 6;
-			const int ly = BAND_Y - lh - 6;
+			const int lx = SPLASH_W - lw + 2;   /* -2: the logo has its own
+			                                     * transparent border */
+			const int ly = BAND_Y - lh + 2;
 			const unsigned char *lp = logo + 8;
 			int y, x;
 			for (y = 0; y < lh; y++)
 				for (x = 0; x < lw; x++, lp++)
-					if (*lp != 255)
+					if (*lp != 255 &&
+					    lx + x >= 0 && lx + x < SPLASH_W &&
+					    ly + y >= 0 && ly + y < SPLASH_H)
 						s_image[(long)(ly + y) * SPLASH_W + lx + x] = *lp;
 		}
 	}
@@ -123,6 +126,7 @@ void AmigaSplash_Show(void)
 	}
 	s_active = 1;
 	s_percent = -1;
+	AmigaSplash_Progress(1);   /* a first sliver, so the bar visibly starts */
 }
 
 /* percent 0..100; redraws and converts only the bar band */
@@ -134,6 +138,14 @@ void AmigaSplash_Progress(int percent)
 	if (percent > 100) percent = 100;
 	if (percent <= s_percent) return;
 	s_percent = percent;
+	{
+		/* TEMP probe: timeline of the bar, to balance segments to real time */
+		extern unsigned int SDL_GetTicks(void);
+		extern void SDLmini_Log(const char *msg);
+		char pb[48];
+		snprintf(pb, sizeof pb, "splash: %d%% at %u ms", percent, SDL_GetTicks());
+		SDLmini_Log(pb);
+	}
 
 	fillw = ((BAR_X1 - BAR_X0) * percent) / 100;
 	for (y = BAR_Y0; y < BAR_Y1; y++) {

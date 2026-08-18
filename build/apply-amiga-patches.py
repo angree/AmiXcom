@@ -1081,6 +1081,34 @@ GLOBE_XULINE_NEW = r'''	/* AMIGA-PORT: 16.16 fixed-point walk - the original ste
 '''
 
 
+def patch_yamlcpp_tick(yamldir):
+    """Progress hook for long single-file parses (the language file takes
+    ~22 s on the 040/40 with nothing moving on the loading bar). Stream::get
+    counts consumed characters and fires an optional callback every 8 KB."""
+    path = os.path.join(yamldir, "src", "stream.cpp")
+    if not os.path.isfile(path):
+        return "skipped (no yaml-cpp at %s)" % yamldir
+    with open(path, "r", encoding="utf-8", errors="surrogateescape") as f:
+        text = f.read()
+    if "YamlTickHook" in text:
+        return "already"
+    old = "char Stream::get() {\n  char ch = peek();\n"
+    new = ("/* AMIGA-PORT: parse-progress hook (loading splash) */\n"
+           "extern \"C\" {\n"
+           "void (*YamlTickHook)(unsigned long) = 0;\n"
+           "unsigned long YamlTickCount = 0;\n"
+           "}\n\n"
+           "char Stream::get() {\n  char ch = peek();\n"
+           "  if ((++YamlTickCount & 0x1FFF) == 0 && YamlTickHook)\n"
+           "    YamlTickHook(YamlTickCount);\n")
+    if old not in text:
+        raise SystemExit("PATCH FAILED: Stream::get not found in %s" % path)
+    text = text.replace(old, new, 1)
+    with open(path, "w", encoding="utf-8", errors="surrogateescape") as f:
+        f.write(text)
+    return "applied"
+
+
 def main():
     if len(sys.argv) not in (2, 3):
         raise SystemExit(__doc__)
@@ -1090,6 +1118,7 @@ def main():
         print("  %-24s %s" % ("yaml-cpp fast convert", patch_yamlcpp_convert(sys.argv[2])))
         print("  %-24s %s" % ("yaml-cpp pool merge", patch_yamlcpp_memory(sys.argv[2])))
         print("  %-24s %s" % ("yaml-cpp ICE dodge", patch_yamlcpp_ice(sys.argv[2])))
+        print("  %-24s %s" % ("yaml-cpp tick hook", patch_yamlcpp_tick(sys.argv[2])))
     if not os.path.isdir(os.path.join(src, "Engine")):
         raise SystemExit("not an OpenXcom src directory: %s" % src)
 
@@ -3252,7 +3281,7 @@ def main():
         "\t\t}\n"
         "#ifdef __AMIGA__\n"
         "\t\t++AmigaSplashDone_;\n"
-        "\t\tAmigaSplash_Progress(2 + (int)((68L * AmigaSplashDone_) / AmigaSplashTotal_));\n"
+        "\t\tAmigaSplash_Progress(5 + (int)((32L * AmigaSplashDone_) / AmigaSplashTotal_));\n"
         "#endif\n"
         "\t}\n",
         "splash tick")))
@@ -3261,7 +3290,7 @@ def main():
         '\tLog(LOG_INFO) << "Loading fonts... " << _fontName;\n',
         '\tLog(LOG_INFO) << "Loading fonts... " << _fontName;\n'
         '#ifdef __AMIGA__\n'
-        '\tAmigaSplash_Progress(71);\n'
+        '\tAmigaSplash_Progress(80);\n'
         '#endif\n',
         "splash fonts mark")))
     results.append(("StartState.cpp (splash decls)", edit(
@@ -3271,13 +3300,22 @@ def main():
         '#ifdef __AMIGA__\n'
         'extern "C" void AmigaSplash_Progress(int percent);\n'
         'extern "C" void SDLmini_SplashFinish(void);\n'
+        'extern "C" void (*YamlTickHook)(unsigned long);\n'
+        'extern "C" unsigned long YamlTickCount;\n'
+        'static unsigned long amigaLangBase_ = 0;\n'
+        'static void amigaLangTick_(unsigned long n)\n'
+        '{\n'
+        '\tint p = 89 + (int)((n - amigaLangBase_) / 40000UL);\n'
+        '\tif (p > 98) p = 98;\n'
+        '\tAmigaSplash_Progress(p);\n'
+        '}\n'
         '#endif\n',
         "start splash decls")))
     results.append(("StartState.cpp (splash lang mark)", edit(
         os.path.join(src, "Menu", "StartState.cpp"),
         '\t\tLog(LOG_INFO) << "Loading language...";\n',
         '#ifdef __AMIGA__\n'
-        '\t\tAmigaSplash_Progress(88);\n'
+        '\t\tAmigaSplash_Progress(89);\n'
         '#endif\n'
         '\t\tLog(LOG_INFO) << "Loading language...";\n',
         "splash lang mark")))
@@ -3309,7 +3347,7 @@ def main():
         "\t{\n"
         "#ifdef __AMIGA__\n"
         "\t\t++AmigaSplashDone_;\n"
-        "\t\tAmigaSplash_Progress(72 + (int)((8L * AmigaSplashDone_) / AmigaSplashTotal_));\n"
+        "\t\tAmigaSplash_Progress(81 + (int)((4L * AmigaSplashDone_) / AmigaSplashTotal_));\n"
         "#endif\n"
         "\t\tstd::string sheetName = i->first;\n",
         "splash sprites ticks")))
@@ -3326,7 +3364,7 @@ def main():
         "\t{\n"
         "#ifdef __AMIGA__\n"
         "\t\t++AmigaSplashDone_;\n"
-        "\t\tAmigaSplash_Progress(80 + (int)((6L * AmigaSplashDone_) / AmigaSplashTotal_));\n"
+        "\t\tAmigaSplash_Progress(85 + (int)((3L * AmigaSplashDone_) / AmigaSplashTotal_));\n"
         "#endif\n"
         "\t\tstd::string setName = i->first;\n",
         "splash sounds ticks")))
@@ -3334,18 +3372,228 @@ def main():
         os.path.join(src, "Menu", "StartState.cpp"),
         '\t\tLog(LOG_INFO) << "Data loaded successfully.";\n',
         '#ifdef __AMIGA__\n'
-        '\t\tAmigaSplash_Progress(87);\n'
+        '\t\tAmigaSplash_Progress(89);\n'
         '#endif\n'
         '\t\tLog(LOG_INFO) << "Data loaded successfully.";\n',
         "splash data mark")))
     results.append(("StartState.cpp (splash lang done)", edit(
         os.path.join(src, "Menu", "StartState.cpp"),
         "\t\tgame->defaultLanguage();\n",
+        "#ifdef __AMIGA__\n"
+        "\t\tamigaLangBase_ = YamlTickCount;\n"
+        "\t\tYamlTickHook = amigaLangTick_;\n"
+        "#endif\n"
         "\t\tgame->defaultLanguage();\n"
         "#ifdef __AMIGA__\n"
-        "\t\tAmigaSplash_Progress(98);\n"
+        "\t\tYamlTickHook = 0;\n"
+        "\t\tAmigaSplash_Progress(99);\n"
         "#endif\n",
         "splash lang done")))
+
+    # 6r. sortLists is the measured 80 s block (9 std::sorts comparing rules
+    #     through string-map lookups). One tick before each sort spreads the
+    #     37..79% span; validation gets its own mark at 38.
+    results.append(("Mod.cpp (splash sort ticks)", edit(
+        os.path.join(src, "Mod", "Mod.cpp"),
+        "void Mod::sortLists()\n{\n"
+        "\tstd::sort(_itemsIndex.begin(), _itemsIndex.end(), compareRule<RuleItem>(this, (compareRule<RuleItem>::RuleLookup)&Mod::getItem));\n"
+        "\tstd::sort(_craftsIndex.begin(), _craftsIndex.end(), compareRule<RuleCraft>(this, (compareRule<RuleCraft>::RuleLookup)&Mod::getCraft));\n"
+        "\tstd::sort(_facilitiesIndex.begin(), _facilitiesIndex.end(), compareRule<RuleBaseFacility>(this, (compareRule<RuleBaseFacility>::RuleLookup)&Mod::getBaseFacility));\n"
+        "\tstd::sort(_researchIndex.begin(), _researchIndex.end(), compareRule<RuleResearch>(this, (compareRule<RuleResearch>::RuleLookup)&Mod::getResearch));\n"
+        "\tstd::sort(_manufactureIndex.begin(), _manufactureIndex.end(), compareRule<RuleManufacture>(this, (compareRule<RuleManufacture>::RuleLookup)&Mod::getManufacture));\n"
+        "\tstd::sort(_invsIndex.begin(), _invsIndex.end(), compareRule<RuleInventory>(this, (compareRule<RuleInventory>::RuleLookup)&Mod::getInventory));\n"
+        "\t// special cases\n"
+        "\tstd::sort(_craftWeaponsIndex.begin(), _craftWeaponsIndex.end(), compareRule<RuleCraftWeapon>(this));\n"
+        "\tstd::sort(_armorsIndex.begin(), _armorsIndex.end(), compareRule<Armor>(this));\n"
+        "\tstd::sort(_ufopaediaIndex.begin(), _ufopaediaIndex.end(), compareRule<ArticleDefinition>(this));\n"
+        "}\n",
+        "void Mod::sortLists()\n{\n"
+        "#define AMIGA_SP(x) AmigaSplash_Progress(x);\n"
+        "\tAMIGA_SP(77)\n"
+        "\tstd::sort(_itemsIndex.begin(), _itemsIndex.end(), compareRule<RuleItem>(this, (compareRule<RuleItem>::RuleLookup)&Mod::getItem));\n"
+        "\tAMIGA_SP(77)\n"
+        "\tstd::sort(_craftsIndex.begin(), _craftsIndex.end(), compareRule<RuleCraft>(this, (compareRule<RuleCraft>::RuleLookup)&Mod::getCraft));\n"
+        "\tAMIGA_SP(77)\n"
+        "\tstd::sort(_facilitiesIndex.begin(), _facilitiesIndex.end(), compareRule<RuleBaseFacility>(this, (compareRule<RuleBaseFacility>::RuleLookup)&Mod::getBaseFacility));\n"
+        "\tAMIGA_SP(77)\n"
+        "\tstd::sort(_researchIndex.begin(), _researchIndex.end(), compareRule<RuleResearch>(this, (compareRule<RuleResearch>::RuleLookup)&Mod::getResearch));\n"
+        "\tAMIGA_SP(77)\n"
+        "\tstd::sort(_manufactureIndex.begin(), _manufactureIndex.end(), compareRule<RuleManufacture>(this, (compareRule<RuleManufacture>::RuleLookup)&Mod::getManufacture));\n"
+        "\tAMIGA_SP(77)\n"
+        "\tstd::sort(_invsIndex.begin(), _invsIndex.end(), compareRule<RuleInventory>(this, (compareRule<RuleInventory>::RuleLookup)&Mod::getInventory));\n"
+        "\t// special cases\n"
+        "\tAMIGA_SP(77)\n"
+        "\tstd::sort(_craftWeaponsIndex.begin(), _craftWeaponsIndex.end(), compareRule<RuleCraftWeapon>(this));\n"
+        "\tAMIGA_SP(78)\n"
+        "\tstd::sort(_armorsIndex.begin(), _armorsIndex.end(), compareRule<Armor>(this));\n"
+        "\tAMIGA_SP(79)\n"
+        "\tstd::sort(_ufopaediaIndex.begin(), _ufopaediaIndex.end(), compareRule<ArticleDefinition>(this));\n"
+        "#undef AMIGA_SP\n"
+        "}\n",
+        "splash sort ticks")))
+    results.append(("Mod.cpp (splash validation mark)", edit(
+        os.path.join(src, "Mod", "Mod.cpp"),
+        "\t// these need to be validated, otherwise we\'re gonna get into some serious trouble down the line.\n",
+        "#ifdef __AMIGA__\n"
+        "\tAmigaSplash_Progress(38);\n"
+        "#endif\n"
+        "\t// these need to be validated, otherwise we\'re gonna get into some serious trouble down the line.\n",
+        "splash validation mark")))
+
+    # 6s. TEMP: narrow the 74 s between mark 38 and sortLists.
+    results.append(("Mod.cpp (splash val fine 39)", edit(
+        os.path.join(src, "Mod", "Mod.cpp"),
+        "\t// instead of passing a pointer to the region load function",
+        "#ifdef __AMIGA__\n"
+        "\tAmigaSplash_Progress(39);\n"
+        "#endif\n"
+        "\t// instead of passing a pointer to the region load function",
+        "splash val fine 39")))
+    results.append(("Mod.cpp (splash val fine 41)", edit(
+        os.path.join(src, "Mod", "Mod.cpp"),
+        "\tsortLists();\n"
+        "\tloadExtraResources();\n",
+        "#ifdef __AMIGA__\n"
+        "\tAmigaSplash_Progress(41);\n"
+        "#endif\n"
+        "\tsortLists();\n"
+        "\tloadExtraResources();\n",
+        "splash val fine 41")))
+
+    # 6t. The measured 72 s block is the REGION sanitation loop in loadMod
+    #     (~5.5 s per region - why so slow is a separate question, noted in
+    #     LISTA-ROBOT). One tick per region spreads 39..76.
+    results.append(("Mod.cpp (splash region tick)", edit(
+        os.path.join(src, "Mod", "Mod.cpp"),
+        "\tfor (std::map<std::string, RuleRegion*>::iterator i = _regions.begin(); i != _regions.end(); ++i)\n"
+        "\t{\n"
+        "\t\t// bleh, make copies, const correctness kinda screwed me here.\n",
+        "#ifdef __AMIGA__\n"
+        "\tAmigaSplashDone_ = 0;\n"
+        "\tAmigaSplashTotal_ = (long)_regions.size(); if (AmigaSplashTotal_ < 1) AmigaSplashTotal_ = 1;\n"
+        "#endif\n"
+        "\tfor (std::map<std::string, RuleRegion*>::iterator i = _regions.begin(); i != _regions.end(); ++i)\n"
+        "\t{\n"
+        "#ifdef __AMIGA__\n"
+        "\t\t++AmigaSplashDone_;\n"
+        "\t\tAmigaSplash_Progress(39);\n"
+        "#endif\n"
+        "\t\t// bleh, make copies, const correctness kinda screwed me here.\n",
+        "splash region tick")))
+
+    # 6u. loadVanillaResources IS the measured 72 s (vanilla screens, PCK
+    #     sets and the TFTD sound CATs). Per-file ticks across 40..76.
+    results.append(("Mod.cpp (vanilla ticks scr)", edit(
+        os.path.join(src, "Mod", "Mod.cpp"),
+        '\tstd::set<std::string> scrs = FileMap::filterFiles(geographFiles, "SCR");\n'
+        "\tfor (std::set<std::string>::iterator i = scrs.begin(); i != scrs.end(); ++i)\n"
+        "\t{\n",
+        '\tstd::set<std::string> scrs = FileMap::filterFiles(geographFiles, "SCR");\n'
+        "#ifdef __AMIGA__\n"
+        "\tAmigaSplashDone_ = 0; AmigaSplashTotal_ = (long)scrs.size(); if (AmigaSplashTotal_ < 1) AmigaSplashTotal_ = 1;\n"
+        "#endif\n"
+        "\tfor (std::set<std::string>::iterator i = scrs.begin(); i != scrs.end(); ++i)\n"
+        "\t{\n"
+        "#ifdef __AMIGA__\n"
+        "\t\t++AmigaSplashDone_; AmigaSplash_Progress(40 + (int)((6L * AmigaSplashDone_) / AmigaSplashTotal_));\n"
+        "#endif\n",
+        "vanilla ticks scr")))
+    results.append(("Mod.cpp (vanilla ticks bdy)", edit(
+        os.path.join(src, "Mod", "Mod.cpp"),
+        '\tstd::set<std::string> bdys = FileMap::filterFiles(geographFiles, "BDY");\n'
+        "\tfor (std::set<std::string>::iterator i = bdys.begin(); i != bdys.end(); ++i)\n"
+        "\t{\n",
+        '\tstd::set<std::string> bdys = FileMap::filterFiles(geographFiles, "BDY");\n'
+        "#ifdef __AMIGA__\n"
+        "\tAmigaSplashDone_ = 0; AmigaSplashTotal_ = (long)bdys.size(); if (AmigaSplashTotal_ < 1) AmigaSplashTotal_ = 1;\n"
+        "#endif\n"
+        "\tfor (std::set<std::string>::iterator i = bdys.begin(); i != bdys.end(); ++i)\n"
+        "\t{\n"
+        "#ifdef __AMIGA__\n"
+        "\t\t++AmigaSplashDone_; AmigaSplash_Progress(46 + (int)((4L * AmigaSplashDone_) / AmigaSplashTotal_));\n"
+        "#endif\n",
+        "vanilla ticks bdy")))
+    results.append(("Mod.cpp (vanilla ticks spk)", edit(
+        os.path.join(src, "Mod", "Mod.cpp"),
+        '\tstd::set<std::string> spks = FileMap::filterFiles(geographFiles, "SPK");\n'
+        "\tfor (std::set<std::string>::iterator i = spks.begin(); i != spks.end(); ++i)\n"
+        "\t{\n",
+        '\tstd::set<std::string> spks = FileMap::filterFiles(geographFiles, "SPK");\n'
+        "#ifdef __AMIGA__\n"
+        "\tAmigaSplashDone_ = 0; AmigaSplashTotal_ = (long)spks.size(); if (AmigaSplashTotal_ < 1) AmigaSplashTotal_ = 1;\n"
+        "#endif\n"
+        "\tfor (std::set<std::string>::iterator i = spks.begin(); i != spks.end(); ++i)\n"
+        "\t{\n"
+        "#ifdef __AMIGA__\n"
+        "\t\t++AmigaSplashDone_; AmigaSplash_Progress(50 + (int)((7L * AmigaSplashDone_) / AmigaSplashTotal_));\n"
+        "#endif\n",
+        "vanilla ticks spk")))
+    results.append(("Mod.cpp (vanilla mark sets)", edit(
+        os.path.join(src, "Mod", "Mod.cpp"),
+        "\t// Load surface sets\n",
+        "#ifdef __AMIGA__\n"
+        "\tAmigaSplash_Progress(58);\n"
+        "#endif\n"
+        "\t// Load surface sets\n",
+        "vanilla mark sets")))
+    results.append(("Mod.cpp (vanilla ticks sounds)", edit(
+        os.path.join(src, "Mod", "Mod.cpp"),
+        "\t\t\tfor (std::map<std::string, SoundDefinition*>::const_iterator i = _soundDefs.begin(); i != _soundDefs.end(); ++i)\n"
+        "\t\t\t{\n"
+        "\t\t\t\tstd::string fname = i->second->getCATFile();\n",
+        "#ifdef __AMIGA__\n"
+        "\t\t\tAmigaSplashDone_ = 0; AmigaSplashTotal_ = (long)_soundDefs.size(); if (AmigaSplashTotal_ < 1) AmigaSplashTotal_ = 1;\n"
+        "#endif\n"
+        "\t\t\tfor (std::map<std::string, SoundDefinition*>::const_iterator i = _soundDefs.begin(); i != _soundDefs.end(); ++i)\n"
+        "\t\t\t{\n"
+        "#ifdef __AMIGA__\n"
+        "\t\t\t\t++AmigaSplashDone_; AmigaSplash_Progress(59 + (int)((11L * AmigaSplashDone_) / AmigaSplashTotal_));\n"
+        "#endif\n"
+        "\t\t\t\tstd::string fname = i->second->getCATFile();\n",
+        "vanilla ticks sounds")))
+
+    # 6v. loadBattlescapeResources (UNITS/TERRAIN PCKs) is the remaining
+    #     36 s block: mark at entry, per-file ticks over the units sets.
+    results.append(("Mod.cpp (battlescape res ticks)", edit(
+        os.path.join(src, "Mod", "Mod.cpp"),
+        '\t// Load Battlescape ICONS\n'
+        '\t_sets["SPICONS.DAT"] = new SurfaceSet(32, 24);\n',
+        '#ifdef __AMIGA__\n'
+        '\tAmigaSplash_Progress(71);\n'
+        '#endif\n'
+        '\t// Load Battlescape ICONS\n'
+        '\t_sets["SPICONS.DAT"] = new SurfaceSet(32, 24);\n',
+        "battlescape res ticks")))
+    results.append(("Mod.cpp (battlescape usets ticks)", edit(
+        os.path.join(src, "Mod", "Mod.cpp"),
+        '\tstd::set<std::string> usets = FileMap::filterFiles(unitsContents, "PCK");\n'
+        "\tfor (std::set<std::string>::iterator i = usets.begin(); i != usets.end(); ++i)\n"
+        "\t{\n",
+        '\tstd::set<std::string> usets = FileMap::filterFiles(unitsContents, "PCK");\n'
+        "#ifdef __AMIGA__\n"
+        "\tAmigaSplashDone_ = 0; AmigaSplashTotal_ = (long)usets.size(); if (AmigaSplashTotal_ < 1) AmigaSplashTotal_ = 1;\n"
+        "#endif\n"
+        "\tfor (std::set<std::string>::iterator i = usets.begin(); i != usets.end(); ++i)\n"
+        "\t{\n"
+        "#ifdef __AMIGA__\n"
+        "\t\t++AmigaSplashDone_; AmigaSplash_Progress(71 + (int)((5L * AmigaSplashDone_) / AmigaSplashTotal_));\n"
+        "#endif\n",
+        "battlescape usets ticks")))
+    results.append(("Mod.cpp (battlescape bdys ticks)", edit(
+        os.path.join(src, "Mod", "Mod.cpp"),
+        '\tstd::set<std::string> bdys = FileMap::filterFiles(ufographContents, "BDY");\n'
+        "\tfor (std::set<std::string>::iterator i = bdys.begin(); i != bdys.end(); ++i)\n"
+        "\t{\n",
+        '\tstd::set<std::string> bdys = FileMap::filterFiles(ufographContents, "BDY");\n'
+        "#ifdef __AMIGA__\n"
+        "\tAmigaSplashDone_ = 0; AmigaSplashTotal_ = (long)bdys.size(); if (AmigaSplashTotal_ < 1) AmigaSplashTotal_ = 1;\n"
+        "#endif\n"
+        "\tfor (std::set<std::string>::iterator i = bdys.begin(); i != bdys.end(); ++i)\n"
+        "\t{\n"
+        "#ifdef __AMIGA__\n"
+        "\t\t++AmigaSplashDone_; AmigaSplash_Progress(76 + (int)((1L * AmigaSplashDone_) / AmigaSplashTotal_));\n"
+        "#endif\n",
+        "battlescape bdys ticks")))
 
     # 5x. Globe blit diagnostics (temporary): the globe draws (first
     #     filledCircle/texturedPolygon are logged by sdlmini) but the screen
