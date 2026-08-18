@@ -3206,6 +3206,92 @@ def main():
         "\t}\n",
         "port credit")))
 
+    # 6p. Loading-splash progress (native/amiga_splash.c). The splash shows
+    #     itself when the screen opens (sdlmini); the game only feeds the bar:
+    #     one tick per ruleset file (3..85%), milestone marks for the later
+    #     phases, and the finish call (fade to black, hand back the display).
+    results.append(("Mod.cpp (splash decls)", edit(
+        os.path.join(src, "Mod", "Mod.cpp"),
+        '#include "Mod.h"\n',
+        '#include "Mod.h"\n'
+        '#ifdef __AMIGA__\n'
+        'extern "C" void AmigaSplash_Progress(int percent);\n'
+        'static long AmigaSplashDone_ = 0, AmigaSplashTotal_ = 0;\n'
+        '#endif\n',
+        "splash decls")))
+    results.append(("Mod.cpp (splash total)", edit(
+        os.path.join(src, "Mod", "Mod.cpp"),
+        "\tfor (size_t i = 0; mods.size() > i; ++i)\n"
+        "\t{\n"
+        "\t\ttry\n"
+        "\t\t{\n"
+        "\t\t\tloadMod(mods[i].second, i);\n",
+        "#ifdef __AMIGA__\n"
+        "\tAmigaSplashDone_ = 0;\n"
+        "\tAmigaSplashTotal_ = 0;\n"
+        "\tfor (size_t i = 0; mods.size() > i; ++i)\n"
+        "\t\tAmigaSplashTotal_ += (long)mods[i].second.size();\n"
+        "\tif (AmigaSplashTotal_ < 1) AmigaSplashTotal_ = 1;\n"
+        "#endif\n"
+        "\tfor (size_t i = 0; mods.size() > i; ++i)\n"
+        "\t{\n"
+        "\t\ttry\n"
+        "\t\t{\n"
+        "\t\t\tloadMod(mods[i].second, i);\n",
+        "splash total")))
+    results.append(("Mod.cpp (splash tick)", edit(
+        os.path.join(src, "Mod", "Mod.cpp"),
+        "\t\tcatch (YAML::Exception &e)\n"
+        "\t\t{\n"
+        "\t\t\tthrow Exception((*i) + \": \" + std::string(e.what()));\n"
+        "\t\t}\n"
+        "\t}\n",
+        "\t\tcatch (YAML::Exception &e)\n"
+        "\t\t{\n"
+        "\t\t\tthrow Exception((*i) + \": \" + std::string(e.what()));\n"
+        "\t\t}\n"
+        "#ifdef __AMIGA__\n"
+        "\t\t++AmigaSplashDone_;\n"
+        "\t\tAmigaSplash_Progress(3 + (int)((82L * AmigaSplashDone_) / AmigaSplashTotal_));\n"
+        "#endif\n"
+        "\t}\n",
+        "splash tick")))
+    results.append(("Mod.cpp (splash fonts mark)", edit(
+        os.path.join(src, "Mod", "Mod.cpp"),
+        '\tLog(LOG_INFO) << "Loading fonts... " << _fontName;\n',
+        '\tLog(LOG_INFO) << "Loading fonts... " << _fontName;\n'
+        '#ifdef __AMIGA__\n'
+        '\tAmigaSplash_Progress(88);\n'
+        '#endif\n',
+        "splash fonts mark")))
+    results.append(("StartState.cpp (splash decls)", edit(
+        os.path.join(src, "Menu", "StartState.cpp"),
+        '#include "StartState.h"\n',
+        '#include "StartState.h"\n'
+        '#ifdef __AMIGA__\n'
+        'extern "C" void AmigaSplash_Progress(int percent);\n'
+        'extern "C" void SDLmini_SplashFinish(void);\n'
+        '#endif\n',
+        "start splash decls")))
+    results.append(("StartState.cpp (splash lang mark)", edit(
+        os.path.join(src, "Menu", "StartState.cpp"),
+        '\t\tLog(LOG_INFO) << "Loading language...";\n',
+        '#ifdef __AMIGA__\n'
+        '\t\tAmigaSplash_Progress(94);\n'
+        '#endif\n'
+        '\t\tLog(LOG_INFO) << "Loading language...";\n',
+        "splash lang mark")))
+    results.append(("StartState.cpp (splash finish)", edit(
+        os.path.join(src, "Menu", "StartState.cpp"),
+        '\t\tLog(LOG_INFO) << "OpenXcom started successfully!";\n'
+        "\t\t_game->setState(new GoToMainMenuState);\n",
+        '\t\tLog(LOG_INFO) << "OpenXcom started successfully!";\n'
+        "#ifdef __AMIGA__\n"
+        "\t\tSDLmini_SplashFinish();\n"
+        "#endif\n"
+        "\t\t_game->setState(new GoToMainMenuState);\n",
+        "splash finish")))
+
     # 5x. Globe blit diagnostics (temporary): the globe draws (first
     #     filledCircle/texturedPolygon are logged by sdlmini) but the screen
     #     stays black where it should be. Count non-zero pixels in the globe

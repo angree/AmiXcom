@@ -21,6 +21,12 @@
 #include "amiga_gfx.h"
 
 static SDL_Surface *s_screen;
+
+/* loading splash (native/amiga_splash.c) */
+extern void AmigaSplash_Show(void);
+extern int  AmigaSplash_Active(void);
+extern void AmigaSplash_End(void);
+
 int SDLmini_diag_armed; /* TEMP: set by the game after the globe blit */
 unsigned long SDLmini_flips;  /* one per rendered frame (SDL_Flip) */
 static int          s_backend = 0;            /* AMIGAGFX_BACKEND_AGA */
@@ -395,13 +401,26 @@ int SDL_SetColors(SDL_Surface *surface, SDL_Color *colors, int firstcolor, int n
 	if (firstcolor < 0 || firstcolor + ncolors > pal->ncolors) return 0;
 
 	memcpy(&pal->colors[firstcolor], colors, (size_t)ncolors * sizeof(SDL_Color));
-	if (surface == s_screen) {
+	if (surface == s_screen && !AmigaSplash_Active()) {
 		push_palette_to_screen(colors, firstcolor, ncolors);
 		/* Truecolour RTG converts pixels through the palette at blit time,
 		 * so a palette change must reconvert everything on screen. */
 		dirty_add(0, 0, surface->w, surface->h);
 	}
 	return 1;
+}
+
+/* Called by the game (StartState) when loading is done: fade the splash to
+ * black, then hand the display back - push the palette the game set while it
+ * was suppressed and reconvert the whole frame. */
+void SDLmini_SplashFinish(void)
+{
+	AmigaSplash_End();
+	if (s_screen != NULL && s_screen->format->palette != NULL) {
+		SDL_SetColors(s_screen, s_screen->format->palette->colors, 0,
+		              s_screen->format->palette->ncolors);
+		dirty_add(0, 0, s_screen->w, s_screen->h);
+	}
 }
 
 int SDL_SetPalette(SDL_Surface *surface, int flags, SDL_Color *colors, int firstcolor, int ncolors)
@@ -794,6 +813,7 @@ SDL_Surface *SDL_SetVideoMode(int width, int height, int bpp, Uint32 flags)
 	}
 	s_screen->flags |= SDL_HWSURFACE | SDL_FULLSCREEN;
 	dirty_add(0, 0, s_screen->w, s_screen->h);   /* fresh screen: convert all */
+	AmigaSplash_Show();   /* loading splash, once, right after the screen opens */
 
 	snprintf(msg, sizeof(msg), "SDLmini: video %ldx%ld 8bpp, backend %ld, pitch %ld",
 	        (long)s_screen->w, (long)s_screen->h, (long)amigagfx_backend(), (long)s_screen->pitch);
@@ -806,6 +826,7 @@ int SDL_Flip(SDL_Surface *screen)
 	SDLMINI_FIRST("SDL_Flip");
 	if (screen == NULL) return -1;
 	if (screen != s_screen) return 0;
+	if (AmigaSplash_Active()) { SDLmini_flips++; return 0; }   /* splash owns the display */
 	{
 		/* TEMP diagnostic: what reaches the flip in the left 256 columns.
 		 * SDLmini_flips is exactly one per rendered frame, so anything that
