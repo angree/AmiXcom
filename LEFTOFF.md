@@ -24,12 +24,16 @@ jedna zmiana na build, backup przed krokiem):
  1B. [x] (0.6.1, niedokonczone - patrz 1B2) Scroll: osobne boxy (pas, stary kursor, nowy kursor) zamiast unii;
         kursor bez pelnej kolumny (= stary pkt 0a: sprite + 1-2 kafle nad nim).
         Zysk: krok scrolla 150-190 -> ~30-40 ms, kursor 58 -> ~15.
- 1B2.[ ] Kursor: box = DOKLADNY prostokat sprite'a kursora (32x40 na kafel,
+ 1B2.[x] (zbudowane 19.08 12:45, test usera w toku) Kursor: box = DOKLADNY prostokat sprite'a kursora (32x40 na kafel,
         stara+nowa pozycja, poziomy 0..vl), bez otoczki 3x3 i bez kolumny;
         scalanie boxow tylko gdy unia nie marnuje >25%. Powod: przy krawedzi
         kursor styka sie z pasem scrolla -> unia 73% ekranu = stan sprzed 1B.
  1F. [x] (0.6.1) Memo visible() - krok byl 2-3 s przy ukrytych obcych w stozku
         (canTargetUnit: do 37 promieni na kazdego niewidocznego, 3-4x na krok).
+ 1G. [ ] TURA AI za dlugo trwa (user 19.08): zmierzyc sondami co zjada czas
+        (podejrzani: pelne calculateFOV po kazdym kroku obcego, AI decyzje
+        z voxelowymi promieniami, brak memo miedzy krokami). Memo visible()
+        z 1F juz pomaga; reszta do zbadania OSOBNA sesja pomiarowa.
  1C. [ ] Logika per kafel: filtr Y 3 wysokosci -> 1 + 24 px; szybki continue
         dla pustych kafli (pietra!); Surface* cache w MapData zamiast
         SurfaceSet::getFrame (2x std::map); wskazniki CURSOR/SMOKE/FLOOROB

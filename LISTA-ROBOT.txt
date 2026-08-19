@@ -17,6 +17,22 @@ ZROBIONE 18.08 wieczor - 19.08 noc (0.6.0, zbudowane, wypchniecie po tescie):
    Work:autoinput.on (bez pliku nigdy nie czyta skryptu).
  - Ikony WB przepisane, autostart z Work:run usuniety (run.autostart), -80%.
 
+ZROBIONE 19.08 po poludniu (build 14:10, czeka na test):
+ - TRAPV NAPRAWIONY: canTargetUnit/canTargetTile dzielily unitRadius/sqrt(0)
+   gdy strzelec stoi DOKLADNIE nad/pod celem (ta sama kolumna mapy; oba
+   voxele maja te same offsety +7/+8). Na PC wychodzi NaN; u nas dzielenie
+   double idzie w mathieeedoubbas.library, ktorej div-by-zero WYKONUJE TRAPV
+   -> Guru -> exit w srodku tury AI ("tura sie zacina"). Guard: pion -> wektor
+   (radius,0). Dwa trafienia w logach, oba w turze AI, stos identyczny.
+ - Sondy tury AI (JEDEN przebieg wystarczy): "aisum:" co 10 s w trakcie tury
+   AI (wisząca jednostka = ostatnia linia nazywa unit id/typ) + "aiturn:
+   TOTAL" po zakonczeniu: aithink ms/N, fov ms/N, path ms/N, light ms,
+   ray N (calculateLine), vis hit/miss, draw ms. Zawsze wlaczone, tanie.
+ - Sprzatanie logu: cale gadulstwo (prof:/geo:/cache:/us:/us2:/map:/seed:/
+   sig:/frameprof/slow frame + pomiar per blit) za opcja amigaPerfLog
+   (options.cfg, domyslnie 0). fov:/step: tylko >=300 ms. Wlaczenie sond =
+   amigaPerfLog: 1 w options.cfg, bez rebuilda.
+
 PILNE (19.08): tura komputera nie dziala.
  1. [x] Ekran "next turn" (kto gra + klik) byl skipNextTurnScreen:true w
     przeniesionym options.cfg -> tura AI wpada od razu w hidden movement bez
@@ -25,6 +41,8 @@ PILNE (19.08): tura komputera nie dziala.
     przepelnienie soft-float) w UnitWalkBState::think -> calculateFOV -> visible
     -> canTargetUnit -> distanceSq(...,bool). Handler robi exit(20) => gra ginie
     w srodku tury AI. To osobny bug (kod upstreamu), do naprawy po tescie ekranu.
+
+NOWE 19.08: tura AI za wolna - zbadac sondami (LEFTOFF 1G).
 
 PLAN RYSOWANIA BITWY 19.08 (szczegoly + liczby: LEFTOFF.md gora) - kolejnosc:
  1A run-y sprite'ow w blitNShade (C) | 1B scroll osobne boxy + kursor bez

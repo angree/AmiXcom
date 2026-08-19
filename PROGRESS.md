@@ -2,6 +2,41 @@
 
 Newest first. Facts and measurements only; plans live in `PORT_RESEARCH.md`.
 
+## 2026-08-19 (popoludnie/wieczor): 0.7.1 - rysowanie dokonczone, tura AI 3.3x
+
+Wydane jako v0.7.1. Rysowanie (dokonczenie planu z LEFTOFF): 1B2 dokladny box
+kursora + scalanie boxow tylko bez marnotrawstwa (kursor ~15 fps); 1C logika
+per kafel (Surface* cache w MapData - Tile::getSprite bez 2x std::map, skip
+pustych kafli, wskazniki setow przed petla); 1D mapa bez colour-key (diff-copy
+na ekran); 1E scroll przesuwa tylko biezaca faze + animacja wstrzymana w
+trakcie (scroll 5-8 -> 11-12 fps; NAJWIEKSZY skok daly 1C+1D wg usera);
+krok 3 = pomysl usera: kafle POD naprawianym obszarem liczone tylko gdy ich
+zawartosc siega w gore (Tile::amigaReachUp: max yOffset czesci + jednostka 56
++ przedmioty 32 px, cache per kafel); asm wstawka petli blitu LUT
+(native/amiga_span_blit.s, vasm; poprawnie, zysk maly - gcc juz robil 2.5
+instr/px po 1A).
+
+Tura AI 280 -> ~84 s (mapa terror, 28 jednostek, 040-ekw.):
+1. pary bezcelowe: visible() pomijane gdy wynik i tak wyrzucany (cywil
+   patrzy, obcy-na-obcego) - 3 miejsca w calculateFOV;
+2. memo swiatla: calculateUnitLighting porownuje liste zrodel, krok
+   obcego/cywila nic nie zmienia -> return (33 s -> 0.1 s);
+3. cywil bez wlasnego FOV po kroku (te same warunki co pary);
+4. A* guess int isqrt(16d)==floor(4*sqrt(d)) - identyczne bit w bit;
+   NIE pomoglo istotnie (koszt w getTUCost, nie w sqrt);
+5. memo getTUCost per (kafel,kierunek) x (frakcja,ruch), generacja
+   uniewazniana w Tile::setUnit/setMapData, drzwiach,
+   calculateTerrainLighting (~700 KB/bitwe; trasa 558 -> 373 ms).
+TRAPV z tury AI NAPRAWIONY: canTargetUnit/Tile dzielily radius/sqrt(0) gdy
+strzelec dokladnie nad/pod celem; mathieeedoubbas div-by-zero WYKONUJE TRAPV
+-> Guru -> exit. Guard (radius,0). User nie umie juz wywolac dawnego zwisu.
+Sondy AI zostaja na stale (tanie): aisum: co 10 s w turze AI + aiturn: TOTAL
+(think/fov/path/light/ray/vis/draw + biezaca jednostka - zwis sie sam nazwie).
+Gadatliwe sondy za opcja amigaPerfLog (domyslnie 0); fov:/step: tylko >=300 ms.
+Ukryty ruch: keepWalking przy cache=false teleportuje (2 fazy zamiast 8-16),
+wiec "niewidoczni na max speed" juz dziala od zawsze - czas tury to obliczenia.
+NASTEPNY CEL: czasy ladowania (start gry, save/load, wejscie w bitwe).
+
 ## 2026-08-19 (dzien): 0.6.1 - tura obcych wrocila; run-y sprite'ow; boxy; memo visible()
 
 Wydane jako v0.6.1. **Blad zgloszony przez usera po 0.6.0: tura komputera

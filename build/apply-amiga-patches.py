@@ -1216,12 +1216,12 @@ def main():
         '#define OPENXCOM_VERSION_LONG "1.0.0.0"\n'
         '#define OPENXCOM_VERSION_NUMBER 1,0,0,0\n',
         '#ifdef AMIGA_FPU_BUILD\n'
-        '#define OPENXCOM_VERSION_SHORT "0.6.1 FPU"\n'
+        '#define OPENXCOM_VERSION_SHORT "0.7.1 FPU"\n'
         '#else\n'
-        '#define OPENXCOM_VERSION_SHORT "0.6.1"\n'
+        '#define OPENXCOM_VERSION_SHORT "0.7.1"\n'
         '#endif\n'
-        '#define OPENXCOM_VERSION_LONG "0.6.1.0"\n'
-        '#define OPENXCOM_VERSION_NUMBER 0,6,1,0\n'
+        '#define OPENXCOM_VERSION_LONG "0.7.1.0"\n'
+        '#define OPENXCOM_VERSION_NUMBER 0,7,1,0\n'
         '#define OPENXCOM_VERSION_GIT ""\n',
         "port version")))
     results.append(("MainMenuState.cpp (AmiXcom title)", edit(
@@ -2006,7 +2006,7 @@ def main():
         "\t\t\t\t\t/* AMIGA-PORT TEMP: name any frame that stalls (>=300 ms) and say\n"
         "\t\t\t\t\t * which phase ate it - the battlescape freezes after every unit\n"
         "\t\t\t\t\t * step and this pinpoints the eater. */\n"
-        "\t\t\t\t\tif (AmigaSlow_think + AmigaSlow_blit + tf_ >= 300)\n"
+        "\t\t\t\t\tif (Options::amigaPerfLog && AmigaSlow_think + AmigaSlow_blit + tf_ >= 300)\n"
         "\t\t\t\t\t{\n"
         "\t\t\t\t\t\tchar sb_[160];\n"
         "\t\t\t\t\t\tsnprintf(sb_, sizeof sb_, \"slow frame: think %lu blit %lu flip %lu ms in %s\",\n"
@@ -2054,7 +2054,7 @@ def main():
         "\t\t\t\t\t\t\t\t(long)w_ - (long)(agTh_ + agBl_ + agFl_ + AmigaEvMs),\n"
         "\t\t\t\t\t\t\t\tAmigaGeo5Ms, AmigaGeo5N, AmigaGeo10Ms, AmigaGeo10N,\n"
         "\t\t\t\t\t\t\t\ttypeid(*_states.back()).name());\n"
-        "\t\t\t\t\t\t\tSDLmini_Log(gb_);\n"
+        "\t\t\t\t\t\t\tif (Options::amigaPerfLog) SDLmini_Log(gb_);\n"
         "\t\t\t\t\t\t\tif (AmigaMapMs > 0 || AmigaCacheHitN() > 0) { char cb_[224]; AmigaCacheReport(cb_, sizeof cb_); SDLmini_Log(cb_); }\n"
         "\t\t\t\t\t\t\tagT_ = now_; agTh_ = agBl_ = agFl_ = 0; agN_ = 0;\n"
         "\t\t\t\t\t\t\tAmigaGeo5Ms = AmigaGeo5N = AmigaGeo10Ms = AmigaGeo10N = 0;\n"
@@ -2142,7 +2142,7 @@ def main():
         "\t\t\tunsigned long now_ = SDL_GetTicks();\n"
         "\t\t\tunsigned long total_ = now_ - AmigaFrTop;\n"
         "\t\t\tdl_ = now_ - dl_;\n"
-        "\t\t\tif (total_ >= 300)\n"
+        "\t\t\tif (total_ >= 300 && Options::amigaPerfLog)\n"
         "\t\t\t{\n"
         "\t\t\t\tchar fb_[256];\n"
         "\t\t\t\tsnprintf(fb_, sizeof fb_,\n"
@@ -2462,9 +2462,10 @@ def main():
         '#include "UnitWalkBState.h"\n'
         '#ifdef __AMIGA__\n'
         'extern "C" void SDLmini_Log(const char *msg);\n'
+        'extern "C" int AmigaPerfLog;\n'
         '#include <cstdio>\n'
         '#define AMIGA_STEP_T(name, call) do { Uint32 t_ = SDL_GetTicks(); call; t_ = SDL_GetTicks() - t_; \\\n'
-        '\tif (t_ >= 100) { char b_[96]; snprintf(b_, sizeof b_, "step: %s %lu ms", name, (unsigned long)t_); SDLmini_Log(b_); } } while (0)\n'
+        '\tif (t_ >= 300 || (AmigaPerfLog && t_ >= 100)) { char b_[96]; snprintf(b_, sizeof b_, "step: %s %lu ms", name, (unsigned long)t_); SDLmini_Log(b_); } } while (0)\n'
         '#else\n'
         '#define AMIGA_STEP_T(name, call) do { call; } while (0)\n'
         '#endif\n',
@@ -2884,7 +2885,7 @@ def main():
         "\t\t{\n"
         "\t\t\tchar b_[96];\n"
         "\t\t\tsnprintf(b_, sizeof b_, \"map: 20 renders, %lu ms avg\", (unsigned long)(sum_ / 20));\n"
-        "\t\t\tSDLmini_Log(b_);\n"
+        "\t\t\tif (AmigaPerfLog) SDLmini_Log(b_);\n"
         "\t\t\tsum_ = 0; n_ = 0;\n"
         "\t\t}\n"
         "#else\n"
@@ -3133,7 +3134,7 @@ def main():
         "\t\t\t\t\t * box. NOT only the dirty-grid tiles: a tall object 2-3 tiles behind on a\n"
         "\t\t\t\t\t * higher level hangs down into the box, and skipping it left holes that\n"
         "\t\t\t\t\t * flickered every frame (2026-08-18). The clip bounds the blits. */\n"
-        "\t\t\t\t\tif (AmigaDirtyGrid != 0 && (screenPosition.x >= AmigaClipX1 || screenPosition.x + _spriteWidth <= AmigaClipX0 || screenPosition.y + _spriteHeight <= AmigaClipY0 || screenPosition.y - _spriteHeight * 3 >= AmigaClipY1)) continue;\n"
+        "\t\t\t\t\tif (AmigaDirtyGrid != 0 && (screenPosition.x >= AmigaClipX1 || screenPosition.x + _spriteWidth <= AmigaClipX0 || screenPosition.y + _spriteHeight <= AmigaClipY0)) continue;\n"
         "\t\t\t\t\t++AmigaTileN;\n"
         "#endif\n"
         "\t\t\t\t\ttile = _save->getTile(mapPosition);\n",
@@ -3173,6 +3174,10 @@ def main():
         "void Map::animate(bool redraw)\n"
         "{\n"
         "#ifdef __AMIGA__\n"
+        "\t/* 1E: while the map is scrolling the cached phases other than the\n"
+        "\t * current one are stale - freeze the animation clock so they are not\n"
+        "\t * consulted. The screen is in motion; nobody sees the pause. */\n"
+        "\tif (_fcLastScrollMs != 0 && SDL_GetTicks() - _fcLastScrollMs < 250) return;\n"
         "\tUint32 anT_ = SDL_GetTicks();\n"
         "\tstruct AmAn_ { Uint32 t0; AmAn_(Uint32 t) : t0(t) {}\n"
         "\t\t~AmAn_() { AmigaAnimMs += SDL_GetTicks() - t0; ++AmigaAnimN; } } amAn_(anT_);\n"
@@ -3256,6 +3261,7 @@ def main():
         '#include "../Mod/MapData.h"\n'
         'extern "C" { void (*AmigaAnimListHook)(OpenXcom::Tile *) = 0; }\n'
         'static void AmigaAnimListPending(OpenXcom::Tile *t) { if (AmigaAnimListHook) AmigaAnimListHook(t); }\n'
+        'extern "C" void AmigaPathMemoBump(void);\n'
         '#endif\n',
         "anim list hook")))
     results.append(("Tile.cpp (anim list on particle)", edit(
@@ -3498,6 +3504,7 @@ def main():
         "\t * become one box of 82% of the screen, so a scroll step cost a full compose. */\n"
         "\tenum { AM_NBOX = 4 };\n"
         "\tint _fcBoxN[8];\n"
+        "\tUint32 _fcLastScrollMs;   /* 1E: freeze animation while scrolling */\n"
         "\tint _fcBx0[8][AM_NBOX], _fcBy0[8][AM_NBOX], _fcBx1[8][AM_NBOX], _fcBy1[8][AM_NBOX];\n"
         "\tvoid amigaBoxMerge(int ph);\n"
         "\tvoid amigaDirtyTile(int x, int y);       /* mark tile + 8 neighbours in all 8 phases */\n"
@@ -3532,6 +3539,7 @@ def main():
         "\t_scrollMouseTimer = new Timer(SCROLL_INTERVAL);\n",
         "#ifdef __AMIGA__\n"
         "\tfor (int fc_ = 0; fc_ < 8; ++fc_) { _fcPix[fc_] = 0; _fcValid[fc_] = 0; _fcGrid[fc_] = 0; _fcDirtyN[fc_] = 0; _fcBoxN[fc_] = 0; }\n"
+        "\t_fcLastScrollMs = 0;\n"
         "\t_fcGridW = _fcGridH = 0;\n"
         "\t_fcCamX = _fcCamY = -100000;\n"
         "\t_fcScrollStrip = false; _fcStripX0 = _fcStripY0 = 0; _fcStripX1 = _fcStripY1 = 0;\n"
@@ -3623,7 +3631,7 @@ def main():
         "\t\tif (diff_)\n"
         "\t\t{\n"
         "\t\t\tstatic unsigned long sgLog_ = 0;\n"
-        "\t\t\tif ((sgLog_++ % 50) == 0)\n"
+        "\t\t\tif (AmigaPerfLog && (sgLog_++ % 50) == 0)\n"
         "\t\t\t{\n"
         "\t\t\t\tchar sb_[160];\n"
         "\t\t\t\tsnprintf(sb_, sizeof sb_, \"sig: changed mask 0x%lx (bit0 cam,1 level,2 wp,3 preview,4 flags,5 selUnit,6 nUnits,7 reveal/shade,8 nExpl) cam %lu->%lu\", mask_, AmSg_[0], c_[0]);\n"
@@ -3673,6 +3681,16 @@ def main():
         "\t{\n"
         "\t\tif (x0 <= _fcBx1[ph][b_] + M_ && x1 >= _fcBx0[ph][b_] - M_ && y0 <= _fcBy1[ph][b_] + M_ && y1 >= _fcBy0[ph][b_] - M_)\n"
         "\t\t{\n"
+        "\t\t\t/* 1B2: merge only when the union is not wasteful - the strip (320x16)\n"
+        "\t\t\t * and the cursor (32x120) touch at the screen edge, and their union\n"
+        "\t\t\t * (320x146) was 73%% of the screen = a scroll step cost a full compose. */\n"
+        "\t\t\t{\n"
+        "\t\t\t\tint ux0 = x0 < _fcBx0[ph][b_] ? x0 : _fcBx0[ph][b_], uy0 = y0 < _fcBy0[ph][b_] ? y0 : _fcBy0[ph][b_];\n"
+        "\t\t\t\tint ux1 = x1 > _fcBx1[ph][b_] ? x1 : _fcBx1[ph][b_], uy1 = y1 > _fcBy1[ph][b_] ? y1 : _fcBy1[ph][b_];\n"
+        "\t\t\t\tlong un_ = (long)(ux1 - ux0) * (uy1 - uy0);\n"
+        "\t\t\t\tlong sum_ = (long)(x1 - x0) * (y1 - y0) + (long)(_fcBx1[ph][b_] - _fcBx0[ph][b_]) * (_fcBy1[ph][b_] - _fcBy0[ph][b_]);\n"
+        "\t\t\t\tif (un_ * 3 > sum_ * 4 && _fcBoxN[ph] < AM_NBOX) continue;   /* wasteful: keep separate if there is room */\n"
+        "\t\t\t}\n"
         "\t\t\tif (x0 < _fcBx0[ph][b_]) _fcBx0[ph][b_] = x0;\n"
         "\t\t\tif (y0 < _fcBy0[ph][b_]) _fcBy0[ph][b_] = y0;\n"
         "\t\t\tif (x1 > _fcBx1[ph][b_]) _fcBx1[ph][b_] = x1;\n"
@@ -3716,6 +3734,17 @@ def main():
         "\t\t\t{\n"
         "\t\t\t\tif (_fcBx0[ph][b_] <= _fcBx1[ph][a_] + M_ && _fcBx1[ph][b_] >= _fcBx0[ph][a_] - M_ && _fcBy0[ph][b_] <= _fcBy1[ph][a_] + M_ && _fcBy1[ph][b_] >= _fcBy0[ph][a_] - M_)\n"
         "\t\t\t\t{\n"
+        "\t\t\t\t\t/* 1B2: same waste rule as amigaGrowBox */\n"
+        "\t\t\t\t\t{\n"
+        "\t\t\t\t\t\tint ux0 = _fcBx0[ph][a_] < _fcBx0[ph][b_] ? _fcBx0[ph][a_] : _fcBx0[ph][b_];\n"
+        "\t\t\t\t\t\tint uy0 = _fcBy0[ph][a_] < _fcBy0[ph][b_] ? _fcBy0[ph][a_] : _fcBy0[ph][b_];\n"
+        "\t\t\t\t\t\tint ux1 = _fcBx1[ph][a_] > _fcBx1[ph][b_] ? _fcBx1[ph][a_] : _fcBx1[ph][b_];\n"
+        "\t\t\t\t\t\tint uy1 = _fcBy1[ph][a_] > _fcBy1[ph][b_] ? _fcBy1[ph][a_] : _fcBy1[ph][b_];\n"
+        "\t\t\t\t\t\tlong un_ = (long)(ux1 - ux0) * (uy1 - uy0);\n"
+        "\t\t\t\t\t\tlong sum_ = (long)(_fcBx1[ph][a_] - _fcBx0[ph][a_]) * (_fcBy1[ph][a_] - _fcBy0[ph][a_])\n"
+        "\t\t\t\t\t\t          + (long)(_fcBx1[ph][b_] - _fcBx0[ph][b_]) * (_fcBy1[ph][b_] - _fcBy0[ph][b_]);\n"
+        "\t\t\t\t\t\tif (un_ * 3 > sum_ * 4) continue;\n"
+        "\t\t\t\t\t}\n"
         "\t\t\t\t\tif (_fcBx0[ph][b_] < _fcBx0[ph][a_]) _fcBx0[ph][a_] = _fcBx0[ph][b_];\n"
         "\t\t\t\t\tif (_fcBy0[ph][b_] < _fcBy0[ph][a_]) _fcBy0[ph][a_] = _fcBy0[ph][b_];\n"
         "\t\t\t\t\tif (_fcBx1[ph][b_] > _fcBx1[ph][a_]) _fcBx1[ph][a_] = _fcBx1[ph][b_];\n"
@@ -3816,7 +3845,7 @@ def main():
         "\t\t\t}\n"
         "\t{\n"
         "\t\tstatic unsigned long sp_n_ = 0;\n"
-        "\t\tif ((sp_n_++ % 10) == 0) { char sb_[96]; snprintf(sb_, sizeof sb_, \"seed: %d animated tiles in view\", nAnim_); SDLmini_Log(sb_); }\n"
+        "\t\tif (AmigaPerfLog && (sp_n_++ % 10) == 0) { char sb_[96]; snprintf(sb_, sizeof sb_, \"seed: %d animated tiles in view\", nAnim_); SDLmini_Log(sb_); }\n"
         "\t}\n"
         "}\n"
         "\n"
@@ -3952,10 +3981,15 @@ def main():
         "\t\t\t\t\telse\n"
         "\t\t\t\t\t{\n"
         "\t\t\t\t\t\t++AmCp_whyScroll;\n"
-        "\t\t\t\t\t\t/* shift every valid buffer; the dirty grids are in MAP tiles and\n"
-        "\t\t\t\t\t\t * stay valid as they are (their screen boxes are recomputed below) */\n"
+        "\t\t\t\t\t\t/* 1E (2026-08-19): shift ONLY the current phase - shifting all 8\n"
+        "\t\t\t\t\t\t * was 512 KB of memmove per scroll step, plus propagating every\n"
+        "\t\t\t\t\t\t * repair 7x. The others are dropped; animation is frozen while\n"
+        "\t\t\t\t\t\t * scrolling (Map::animate), so they are not consulted; when the\n"
+        "\t\t\t\t\t\t * scroll stops the next phase change is one full compose + seed. */\n"
+        "\t\t\t\t\t\t_fcLastScrollMs = SDL_GetTicks();\n"
         "\t\t\t\t\t\tfor (int i_ = 0; i_ < 8; ++i_)\n"
         "\t\t\t\t\t\t{\n"
+        "\t\t\t\t\t\t\tif (i_ != (_animFrame & 7)) { _fcValid[i_] = 0; if (_fcGrid[i_]) memset(_fcGrid[i_], 0, (size_t)_fcGridW * _fcGridH); _fcDirtyN[i_] = 0; _fcBoxN[i_] = 0; continue; }\n"
         "\t\t\t\t\t\t\tif (!_fcValid[i_] || _fcPix[i_] == 0) continue;\n"
         "\t\t\t\t\t\t\tUint8 *b_ = _fcPix[i_];\n"
         "\t\t\t\t\t\t\tif (dy_ > 0)      { for (int y_ = h_ - 1; y_ >= dy_; --y_) memmove(b_ + (size_t)y_ * w_, b_ + (size_t)(y_ - dy_) * w_, w_); }\n"
@@ -4052,12 +4086,32 @@ def main():
         "\t\t\t\t|| (int)_cursorType != _fcCurType || _cursorSize != _fcCurSize)\n"
         "\t\t\t{\n"
         "\t\t\t\t++AmCp_whyCur;\n"
+        "\t\t\t\t/* 1B2 (2026-08-19): the cursor box is the EXACT union of its 32x40\n"
+        "\t\t\t\t * sprites (each level 0..viewLevel) - no 3x3 halo, no content column.\n"
+        "\t\t\t\t * The repair repaints every sprite reaching the box, so the changed\n"
+        "\t\t\t\t * pixels are all the box needs. Old and new position get SEPARATE\n"
+        "\t\t\t\t * boxes - after a long mouse jump their union was most of the screen. */\n"
         "\t\t\t\tint cs_ = _cursorSize > 0 ? _cursorSize : 1;\n"
         "\t\t\t\tint ocs_ = _fcCurSize > 0 ? _fcCurSize : 1;\n"
-        "\t\t\t\tAmigaDirtyFullColumn = 1;\n"
-        "\t\t\t\tif (_fcSelX > -9000) for (int a_ = 0; a_ < ocs_; ++a_) for (int b_ = 0; b_ < ocs_; ++b_) amigaDirtyTile(_fcSelX - a_, _fcSelY - b_);\n"
-        "\t\t\t\tAmigaDirtyFullColumn = 0;\n"
-        "\t\t\t\tfor (int a_ = 0; a_ < cs_; ++a_) for (int b_ = 0; b_ < cs_; ++b_) amigaDirtyTile(_selectorX - a_, _selectorY - b_);\n"
+        "\t\t\t\tint vlc_ = _camera->getViewLevel();\n"
+        "\t\t\t\tint phc_ = _animFrame & 7;\n"
+        "\t\t\t\tfor (int ph2_ = 0; ph2_ < 8; ++ph2_)\n"
+        "\t\t\t\t{\n"
+        "\t\t\t\t\tif (_fcScrollStrip && ph2_ != phc_) continue;\n"
+        "\t\t\t\t\tif (_fcSelX > -9000)\n"
+        "\t\t\t\t\t{\n"
+        "\t\t\t\t\t\tint x0_ = 1 << 14, y0_ = 1 << 14, x1_ = -(1 << 14), y1_ = -(1 << 14);\n"
+        "\t\t\t\t\t\tamigaCursorRect_(_camera, _fcSelX, _fcSelY, ocs_, vlc_, _spriteWidth, _spriteHeight, x0_, y0_, x1_, y1_);\n"
+        "\t\t\t\t\t\tamigaGrowBox(ph2_, x0_, y0_, x1_, y1_);\n"
+        "\t\t\t\t\t\tfor (int a_ = 0; a_ < ocs_; ++a_) for (int b_ = 0; b_ < ocs_; ++b_) amigaMarkTileNoBox(ph2_, _fcSelX - a_, _fcSelY - b_);\n"
+        "\t\t\t\t\t}\n"
+        "\t\t\t\t\t{\n"
+        "\t\t\t\t\t\tint x0_ = 1 << 14, y0_ = 1 << 14, x1_ = -(1 << 14), y1_ = -(1 << 14);\n"
+        "\t\t\t\t\t\tamigaCursorRect_(_camera, _selectorX, _selectorY, cs_, vlc_, _spriteWidth, _spriteHeight, x0_, y0_, x1_, y1_);\n"
+        "\t\t\t\t\t\tamigaGrowBox(ph2_, x0_, y0_, x1_, y1_);\n"
+        "\t\t\t\t\t\tfor (int a_ = 0; a_ < cs_; ++a_) for (int b_ = 0; b_ < cs_; ++b_) amigaMarkTileNoBox(ph2_, _selectorX - a_, _selectorY - b_);\n"
+        "\t\t\t\t\t}\n"
+        "\t\t\t\t}\n"
         "\t\t\t\t_fcSelX = _selectorX; _fcSelY = _selectorY;\n"
         "\t\t\t\t_fcCurType = (int)_cursorType; _fcCurSize = _cursorSize;\n"
         "\t\t\t}\n"
@@ -4310,6 +4364,7 @@ def main():
         "\t\t\t\t * movement with no click. Force it on once. */\n"
         "\t\t\t\tskipNextTurnScreen = false;\n"
         "\t\t\t}\n"
+        "\t\t\tAmigaPerfLog = amigaPerfLog;\n"
         "\t\t\tif (amigaCfgVersion < AMIGA_CFG_VERSION)\n"
         "\t\t\t{\n"
         "\t\t\t\tamigaCfgVersion = AMIGA_CFG_VERSION;\n"
@@ -4330,7 +4385,8 @@ def main():
         "OPT int amigaAnimMs;     /* battle animation tick, ms */\n"
         "OPT int amigaFlatGlobe;  /* 1 = flat sun-shaded land polygons */\n"
         "OPT int amigaAutoBattle; /* 1 = boot straight into a New Battle */\n"
-        "OPT int amigaCfgVersion; /* config migration: bumped by the port when it forces new defaults */\n",
+        "OPT int amigaCfgVersion; /* config migration: bumped by the port when it forces new defaults */\n"
+        "OPT int amigaPerfLog; /* 1 = verbose perf probes in sdlmini.log */\n",
         "amigaAnimMs var")))
     results.append(("Options.cpp (amigaAnimMs)", edit(
         os.path.join(src, "Engine", "Options.cpp"),
@@ -4339,7 +4395,8 @@ def main():
         "\t_info.push_back(OptionInfo(\"amigaAnimMs\", &amigaAnimMs, 100));\n"
         "\t_info.push_back(OptionInfo(\"amigaFlatGlobe\", &amigaFlatGlobe, 1)); /* test: default on; 0 = textured land */\n"
         "\t_info.push_back(OptionInfo(\"amigaAutoBattle\", &amigaAutoBattle, 0)); /* 1 = skip the menus, generate a battle at boot */\n"
-        "\t_info.push_back(OptionInfo(\"amigaCfgVersion\", &amigaCfgVersion, 0));\n",
+        "\t_info.push_back(OptionInfo(\"amigaCfgVersion\", &amigaCfgVersion, 0));\n"
+        "\t_info.push_back(OptionInfo(\"amigaPerfLog\", &amigaPerfLog, 0));\n",
         "amigaAnimMs info")))
     results.append(("BattlescapeState.cpp (anim timer option)", edit(
         os.path.join(src, "Battlescape", "BattlescapeState.cpp"),
@@ -5949,7 +6006,7 @@ def main():
         "#endif\n",
         "#ifdef __AMIGA__\n"
         "\t++AmigaShadeThruN;\n"
-        "\tunsigned long ut0_ = amiga_uclock_us(); AmigaBlitPx += (unsigned long)cw * (unsigned long)ch; AmigaBlitRows += ch;\n"
+        "\tunsigned long ut0_ = 0; if (AmigaPerfLog) { ut0_ = amiga_uclock_us(); AmigaBlitPx += (unsigned long)cw * (unsigned long)ch; AmigaBlitRows += ch; }\n"
         "#endif\n",
         "us probe start")))
     results.append(("Engine/Surface.cpp (us probe end)", edit(
@@ -5965,7 +6022,7 @@ def main():
         "\t}\n"
         "\t}\n"
         "#ifdef __AMIGA__\n"
-        "\tAmigaBlitUs += amiga_uclock_us() - ut0_;\n"
+        "\tif (AmigaPerfLog) AmigaBlitUs += amiga_uclock_us() - ut0_;\n"
         "#endif\n"
         "}\n"
         "\n"
@@ -6006,6 +6063,7 @@ def main():
         'extern "C" unsigned long AmigaShadeThruN;\n'
         '#include "amiga_uclock.h"\n'
         'extern "C" unsigned long AmigaBlitUs, AmigaBlitPx, AmigaBlitRows, AmigaGetFrameN;\n'
+        'extern "C" int AmigaPerfLog;\n'
         'extern "C" { unsigned long AmigaTerrUs = 0, AmigaMapDrawUs = 0; }\n'
         'static unsigned long AmUs_fullN = 0, AmUs_fullTerr = 0, AmUs_fullBlit = 0, AmUs_fullPx = 0, AmUs_fullGf = 0, AmUs_fullRows = 0, AmUs_fullTiles = 0, AmUs_fullBl = 0;\n'
         'static unsigned long AmUs_partN = 0, AmUs_partTerr = 0, AmUs_partBlit = 0, AmUs_partPx = 0, AmUs_partGf = 0, AmUs_partRows = 0, AmUs_partTiles = 0, AmUs_partBl = 0;\n'
@@ -6083,7 +6141,7 @@ def main():
     results.append(("Engine/Game.cpp (us probe report)", edit(
         os.path.join(src, "Engine", "Game.cpp"),
         "\t\t\t\t\t\t\tif (AmigaMapMs > 0 || AmigaCacheHitN() > 0) { char cb_[224]; AmigaCacheReport(cb_, sizeof cb_); SDLmini_Log(cb_); }\n",
-        "\t\t\t\t\t\t\tif (AmigaMapMs > 0 || AmigaCacheHitN() > 0) { char cb_[224]; AmigaCacheReport(cb_, sizeof cb_); SDLmini_Log(cb_);\n"
+        "\t\t\t\t\t\t\tif (Options::amigaPerfLog && (AmigaMapMs > 0 || AmigaCacheHitN() > 0)) { char cb_[224]; AmigaCacheReport(cb_, sizeof cb_); SDLmini_Log(cb_);\n"
         "\t\t\t\t\t\t\t\tchar ub_[400]; AmigaUsReport(ub_, sizeof ub_); SDLmini_Log(ub_);\n"
         "\t\t\t\t\t\t\t\tsnprintf(ub_, sizeof ub_, \"us2: 100 fr: think %lu | blit %lu = terr %lu + scrblit big %lu/%lu small %lu/%lu classify %lu fill %lu + rest | flip %lu (us)\",\n"
         "\t\t\t\t\t\t\t\t\tAmUs_think, AmUs_blit, AmigaTerrUs, SDLmini_ProfBlitBigUs, SDLmini_ProfBlitBigN, SDLmini_ProfBlitSmallUs, SDLmini_ProfBlitSmallN, SDLmini_ProfClassifyUs, SDLmini_ProfFillUs, AmUs_flip);\n"
@@ -6312,6 +6370,10 @@ def main():
         "\t\t\t\t\tslutOk_[off] = 1;\n"
         "\t\t\t\t}\n"
         "\t\t\t\tconst Uint8 *L_ = slut_[off];\n"
+        "\t\t\t\tif (!xclip)\n"
+        "\t\t\t\t\t/* step 2: hand asm, 2 instructions per pixel (native/amiga_span_blit.s) */\n"
+        "\t\t\t\t\tamiga_span_blit_lut(row, drow, spans, rowoff, ry0, ry1, spitch, dpitch, L_);\n"
+        "\t\t\t\telse\n"
         "\t\t\t\tAM_SPAN_LOOP(while (len >= 4) { d[0] = L_[s[0]]; d[1] = L_[s[1]]; d[2] = L_[s[2]]; d[3] = L_[s[3]]; s += 4; d += 4; len -= 4; } while (len-- > 0) *d++ = L_[*s++];)\n"
         "\t\t\t}\n"
         "\t\t\telse\n"
@@ -6329,7 +6391,9 @@ def main():
     results.append(("Engine/Surface.cpp (span blit counter)", edit(
         os.path.join(src, "Engine", "Surface.cpp"),
         'extern "C" { unsigned long AmigaBlitUs = 0, AmigaBlitPx = 0, AmigaBlitRows = 0; }\n',
-        'extern "C" { unsigned long AmigaBlitUs = 0, AmigaBlitPx = 0, AmigaBlitRows = 0, AmigaBlitOpPx = 0; }\n',
+        'extern "C" { unsigned long AmigaBlitUs = 0, AmigaBlitPx = 0, AmigaBlitRows = 0, AmigaBlitOpPx = 0; }\n'
+        'extern "C" { int AmigaPerfLog = 0; }   /* mirror of Options::amigaPerfLog for C files */\n'
+        'extern "C" void amiga_span_blit_lut(const Uint8 *row, Uint8 *drow, const Uint8 *spans, const Uint16 *rowoff, long ry0, long ry1, long spitch, long dpitch, const Uint8 *lut);\n',
         "span blit counter")))
 
     # 6ac. 1F (2026-08-19): visible() memo. A step costs 3-4 calculateFOV
@@ -6430,10 +6494,728 @@ def main():
         os.path.join(src, "Battlescape", "TileEngine.cpp"),
         "\t\tsnprintf(fb_, sizeof fb_, \"fov: %lu ms, rays %lu, traj tiles %lu, incr %d\",\n"
         "\t\t\t(unsigned long)(SDL_GetTicks() - fovT0_), AmigaFovRays_, AmigaFovSteps_, incr_ ? 1 : 0);\n",
+        "\t\tunsigned long fd_ = (unsigned long)(SDL_GetTicks() - fovT0_); AmigaAiFovMs += fd_; ++AmigaAiFovN;\n"
+        "\t\tAmigaAiVisHitT += AmigaVisHit; AmigaAiVisMissT += AmigaVisMiss;\n"
         "\t\tsnprintf(fb_, sizeof fb_, \"fov: %lu ms, rays %lu, traj tiles %lu, incr %d, vis hit %lu miss %lu\",\n"
-        "\t\t\t(unsigned long)(SDL_GetTicks() - fovT0_), AmigaFovRays_, AmigaFovSteps_, incr_ ? 1 : 0, AmigaVisHit, AmigaVisMiss);\n"
-        "\t\tAmigaVisHit = AmigaVisMiss = 0;\n",
+        "\t\t\tfd_, AmigaFovRays_, AmigaFovSteps_, incr_ ? 1 : 0, AmigaVisHit, AmigaVisMiss);\n"
+        "\t\tAmigaVisHit = AmigaVisMiss = 0;\n"
+        "\t\tif (fd_ < 300 && !AmigaPerfLog) fb_[0] = 0;   /* quiet: only slow ones */\n"
+        "\t\tif (fb_[0])\n",
         "vis memo probe")))
+
+    # 6ad. 1C (2026-08-19): per-tile logic cost. Three parts:
+    #      (a) MapData caches the 8 frame Surface* - Tile::getSprite went
+    #          through TWO std::map lookups per sprite per tile per compose
+    #          (SurfaceSet::getFrame does find + operator[]).
+    #      (b) drawTerrain skips tiles that draw nothing (upper levels are
+    #          mostly air; matters as soon as the view level goes up).
+    #      (c) surface-set pointers (CURSOR/SMOKE/FLOOROB...) hoisted out of
+    #          the tile loop - each was a std::map<string> lookup per use.
+    results.append(("Mod/MapData.h (sprite surface cache)", edit(
+        os.path.join(src, "Mod", "MapData.h"),
+        "\tbool amigaIsAnimated() const\n",
+        "\tmutable void *_amSurf[8];\n"
+        "\tmutable signed char _amSurfOk;\n"
+        "\tclass Surface *amigaSurfaceSlow(int frame) const;\n"
+        "public:\n"
+        "\t/* 1C: the Surface* for animation frame `frame`, cached (setSprite drops it) */\n"
+        "\tinline class Surface *amigaSurface(int frame) const\n"
+        "\t{\n"
+        "\t\tif (_amSurfOk) return (class Surface *)_amSurf[frame];\n"
+        "\t\treturn amigaSurfaceSlow(frame);\n"
+        "\t}\n"
+        "\tbool amigaIsAnimated() const\n",
+        "sprite surface cache decl")))
+    results.append(("Mod/MapData.cpp (sprite surface cache)", edit(
+        os.path.join(src, "Mod", "MapData.cpp"),
+        "void MapData::setSprite(int frameID, int value)\n"
+        "{\n"
+        "\t_sprite[frameID] = value;\n"
+        "}\n",
+        "void MapData::setSprite(int frameID, int value)\n"
+        "{\n"
+        "\t_sprite[frameID] = value;\n"
+        "#ifdef __AMIGA__\n"
+        "\t_amSurfOk = 0;   /* MCD patches change sprites after load */\n"
+        "#endif\n"
+        "}\n"
+        "\n"
+        "#ifdef __AMIGA__\n"
+        "Surface *MapData::amigaSurfaceSlow(int frame) const\n"
+        "{\n"
+        "\tfor (int i_ = 0; i_ < 8; ++i_) _amSurf[i_] = _dataset->getSurfaceset()->getFrame(_sprite[i_]);\n"
+        "\t_amSurfOk = 1;\n"
+        "\treturn (Surface *)_amSurf[frame];\n"
+        "}\n"
+        "#endif\n",
+        "sprite surface cache impl")))
+    results.append(("Mod/MapData.cpp (surface include)", edit(
+        os.path.join(src, "Mod", "MapData.cpp"),
+        '#include "MapData.h"\n',
+        '#include "MapData.h"\n'
+        '#ifdef __AMIGA__\n'
+        '#include "MapDataSet.h"\n'
+        '#include "../Engine/SurfaceSet.h"\n'
+        '#endif\n',
+        "surface include")))
+    results.append(("Mod/MapData.cpp (cache init)", edit(
+        os.path.join(src, "Mod", "MapData.cpp"),
+        "#ifdef __AMIGA__\n"
+        "\t_amigaAnim(-1),\n"
+        "#endif\n",
+        "#ifdef __AMIGA__\n"
+        "\t_amigaAnim(-1), _amSurfOk(0),\n"
+        "#endif\n",
+        "cache init")))
+    results.append(("Savegame/Tile.cpp (getSprite via cache)", edit(
+        os.path.join(src, "Savegame", "Tile.cpp"),
+        "\treturn _objects[part]->getDataset()->getSurfaceset()->getFrame(_objects[part]->getSprite(_currentFrame[part]));\n",
+        "#ifdef __AMIGA__\n"
+        "\treturn _objects[part]->amigaSurface(_currentFrame[part]);\n"
+        "#else\n"
+        "\treturn _objects[part]->getDataset()->getSurfaceset()->getFrame(_objects[part]->getSprite(_currentFrame[part]));\n"
+        "#endif\n",
+        "getSprite via cache")))
+    # (b) empty-tile fast skip
+    results.append(("Battlescape/Map.cpp (empty tile skip)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "\t\t\t\t\ttile = _save->getTile(mapPosition);\n"
+        "\n"
+        "\t\t\t\t\tif (!tile) continue;\n",
+        "\t\t\t\t\ttile = _save->getTile(mapPosition);\n"
+        "\n"
+        "\t\t\t\t\tif (!tile) continue;\n"
+        "#ifdef __AMIGA__\n"
+        "\t\t\t\t\t/* 1C: a tile with nothing to draw costs a few compares, not the\n"
+        "\t\t\t\t\t * whole body. Every guard matches a draw path below: void covers\n"
+        "\t\t\t\t\t * the 4 parts + smoke + items; then unit, particles, path preview,\n"
+        "\t\t\t\t\t * waypoints, the cursor, the bullet window, a walking unit to the\n"
+        "\t\t\t\t\t * north (phases I-VI draw at THIS tile), a unit below open floor. */\n"
+        "\t\t\t\t\tif (tile->isVoid() && !tile->getUnit()\n"
+        "\t\t\t\t\t\t&& tile->getParticleCloud()->empty() && tile->getPreview() == -1\n"
+        "\t\t\t\t\t\t&& _waypoints.empty()\n"
+        "\t\t\t\t\t\t&& !(_cursorType != CT_NONE && _selectorX > itX - _cursorSize && _selectorY > itY - _cursorSize && _selectorX < itX+1 && _selectorY < itY+1)\n"
+        "\t\t\t\t\t\t&& (!(_projectile && _projectileInFOV) || (_explosions.empty() && !(itX >= bulletLowX - 1 && itX <= bulletHighX + 1 && itY >= bulletLowY - 1 && itY <= bulletHighY + 1))))\n"
+        "\t\t\t\t\t{\n"
+        "\t\t\t\t\t\tbool amSkip_ = true;\n"
+        "\t\t\t\t\t\tif (mapPosition.y > 0)\n"
+        "\t\t\t\t\t\t{\n"
+        "\t\t\t\t\t\t\tTile *tn_ = _save->getTile(mapPosition - Position(0,1,0));\n"
+        "\t\t\t\t\t\t\tBattleUnit *bn_ = tn_ ? tn_->getUnit() : 0;\n"
+        "\t\t\t\t\t\t\tif (bn_ && bn_->getVisible() && bn_->getStatus() == STATUS_WALKING) amSkip_ = false;\n"
+        "\t\t\t\t\t\t}\n"
+        "\t\t\t\t\t\tif (amSkip_ && itZ > 0)\n"
+        "\t\t\t\t\t\t{\n"
+        "\t\t\t\t\t\t\tTile *tb_ = _save->getTile(mapPosition + Position(0,0,-1));\n"
+        "\t\t\t\t\t\t\tif (tb_ && tb_->getUnit()) amSkip_ = false;\n"
+        "\t\t\t\t\t\t}\n"
+        "\t\t\t\t\t\tif (amSkip_) continue;\n"
+        "\t\t\t\t\t}\n"
+        "#endif\n",
+        "empty tile skip")))
+    # (c) hoist the surface-set lookups (same string many times: plain replace)
+    _p1c = os.path.join(src, "Battlescape", "Map.cpp")
+    _t1c = open(_p1c, encoding="utf-8", errors="surrogateescape").read()
+    if "amCursorSet_" not in _t1c:
+        _old1c = "\tNumberText *_numWaypid = 0;\n"
+        if _old1c not in _t1c:
+            raise SystemExit("PATCH FAILED (1C set hoist): anchor missing")
+        _t1c = _t1c.replace(_old1c,
+            "\tNumberText *_numWaypid = 0;\n"
+            "#ifdef __AMIGA__\n"
+            "\t/* 1C: each getSurfaceSet(name) is a std::map<string> lookup - hoist */\n"
+            "\tSurfaceSet *amCursorSet_ = _game->getMod()->getSurfaceSet(\"CURSOR.PCK\");\n"
+            "\tSurfaceSet *amSmokeSet_ = _game->getMod()->getSurfaceSet(\"SMOKE.PCK\");\n"
+            "\tSurfaceSet *amFloorobSet_ = _game->getMod()->getSurfaceSet(\"FLOOROB.PCK\");\n"
+            "\tSurfaceSet *amPathSet_ = _game->getMod()->getSurfaceSet(\"Pathfinding\");\n"
+            "\t/* step 3: one flag instead of a per-tile neighbour probe */\n"
+            "\tbool amAnyWalk_ = false;\n"
+            "\tfor (std::vector<BattleUnit*>::iterator wu_ = _save->getUnits()->begin(); wu_ != _save->getUnits()->end(); ++wu_)\n"
+            "\t\tif ((*wu_)->getStatus() == STATUS_WALKING && (*wu_)->getVisible()) { amAnyWalk_ = true; break; }\n"
+            "#endif\n", 1)
+        for _n, _v in (("CURSOR.PCK", "amCursorSet_"), ("SMOKE.PCK", "amSmokeSet_"),
+                       ("FLOOROB.PCK", "amFloorobSet_"), ("Pathfinding", "amPathSet_")):
+            _t1c = _t1c.replace('_game->getMod()->getSurfaceSet("%s")' % _n, _v)
+        # the hoist itself must keep the real call
+        _t1c = _t1c.replace('SurfaceSet *amCursorSet_ = amCursorSet_;', 'SurfaceSet *amCursorSet_ = _game->getMod()->getSurfaceSet("CURSOR.PCK");')
+        _t1c = _t1c.replace('SurfaceSet *amSmokeSet_ = amSmokeSet_;', 'SurfaceSet *amSmokeSet_ = _game->getMod()->getSurfaceSet("SMOKE.PCK");')
+        _t1c = _t1c.replace('SurfaceSet *amFloorobSet_ = amFloorobSet_;', 'SurfaceSet *amFloorobSet_ = _game->getMod()->getSurfaceSet("FLOOROB.PCK");')
+        _t1c = _t1c.replace('SurfaceSet *amPathSet_ = amPathSet_;', 'SurfaceSet *amPathSet_ = _game->getMod()->getSurfaceSet("Pathfinding");')
+        open(_p1c, "w", encoding="utf-8", errors="surrogateescape").write(_t1c)
+    results.append(("Battlescape/Map.cpp (1C set hoist)", "applied"))
+
+    # 1D (2026-08-19): the composed map has no colour-0 pixels (background is
+    #     pen 15), but the Surface ctor set SRCCOLORKEY=0, so the per-frame
+    #     map->screen blit took the per-pixel colour-key path. Without the key
+    #     it takes the diff-copy path: changed 32-byte cells only, and the
+    #     dirty rectangle handed to c2p shrinks to what really changed.
+    results.append(("Battlescape/Map.cpp (1D no colour key)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "void Map::init()\n"
+        "{\n",
+        "void Map::init()\n"
+        "{\n"
+        "#ifdef __AMIGA__\n"
+        "\tSDL_SetColorKey(getSurface(), 0, 0);   /* 1D - see the patch script */\n"
+        "#endif\n",
+        "1D no colour key")))
+
+    # 6ae. Step 3 (2026-08-19, the user's plan): EXACT strip repair. A dirty
+    #      box used to pull in every tile up to 120 px BELOW it ("a tall
+    #      object might reach up") - for a 16 px scroll strip that meant a
+    #      ~176 px band, 110-260 tiles at ~110 us each. Now a tile below the
+    #      box is walked only if its content actually reaches up that far:
+    #      max yOffset of its parts (cached per tile), a unit (56 px), items
+    #      (24 px), a walking unit anywhere in view or the bullet window
+    #      disable the cut. Floor-only rows below the box drop out at once.
+    results.append(("Savegame/Tile.h (reach cache)", edit(
+        os.path.join(src, "Savegame", "Tile.h"),
+        "\tbool _amigaAnimListed;   /* already on SavedBattleGame's animated-tile list */\n",
+        "\tbool _amigaAnimListed;   /* already on SavedBattleGame's animated-tile list */\n"
+        "\tmutable short _amigaMaxYOff;   /* max yOffset of the 4 parts; -1 = stale */\n"
+        "\t/// step 3: how far (px) this tile's content can paint ABOVE its screen y\n"
+        "\tint amigaReachUp() const;\n",
+        "reach cache decl")))
+    results.append(("Savegame/Tile.cpp (reach cache init)", edit(
+        os.path.join(src, "Savegame", "Tile.cpp"),
+        "\t_amigaAnimListed = false;\n",
+        "\t_amigaAnimListed = false;\n"
+        "\t_amigaMaxYOff = -1;\n",
+        "reach cache init")))
+    results.append(("Savegame/Tile.cpp (reach cache invalidate)", edit(
+        os.path.join(src, "Savegame", "Tile.cpp"),
+        "\t_objects[part] = dat;\n"
+        "\t_mapDataID[part] = mapDataID;\n"
+        "\t_mapDataSetID[part] = mapDataSetID;\n",
+        "\t_objects[part] = dat;\n"
+        "\t_mapDataID[part] = mapDataID;\n"
+        "\t_mapDataSetID[part] = mapDataSetID;\n"
+        "#ifdef __AMIGA__\n"
+        "\t_amigaMaxYOff = -1;\n"
+        "#endif\n",
+        "reach cache invalidate")))
+    results.append(("Savegame/Tile.cpp (reach impl)", edit(
+        os.path.join(src, "Savegame", "Tile.cpp"),
+        "#ifdef __AMIGA__\n"
+        "\tif (dat && !_amigaAnimListed && (dat->amigaIsAnimated() || dat->isUFODoor())) AmigaAnimListPending(this);\n"
+        "#endif\n"
+        "}\n",
+        "#ifdef __AMIGA__\n"
+        "\tif (dat && !_amigaAnimListed && (dat->amigaIsAnimated() || dat->isUFODoor())) AmigaAnimListPending(this);\n"
+        "#endif\n"
+        "}\n"
+        "\n"
+        "#ifdef __AMIGA__\n"
+        "/* step 3: highest reach (px above screen y) of anything this tile draws */\n"
+        "int Tile::amigaReachUp() const\n"
+        "{\n"
+        "\tif (_amigaMaxYOff < 0)\n"
+        "\t{\n"
+        "\t\tint m_ = 0;\n"
+        "\t\tfor (int i_ = 0; i_ < 4; ++i_)\n"
+        "\t\t\tif (_objects[i_] && _objects[i_]->getYOffset() > m_) m_ = _objects[i_]->getYOffset();\n"
+        "\t\t_amigaMaxYOff = (short)m_;\n"
+        "\t}\n"
+        "\tint r_ = _amigaMaxYOff + 8;   /* +8: rounding slack (terrain level) */\n"
+        "\tif (_unit) { if (r_ < 56) r_ = 56; }\n"
+        "\telse if (!_inventory.empty()) { if (r_ < 32) r_ = 32; }\n"
+        "\treturn r_;\n"
+        "}\n"
+        "#endif\n",
+        "reach impl")))
+    # the exact below-box cut, after the 1C empty-tile skip
+    results.append(("Battlescape/Map.cpp (exact below-box cut)", edit(
+        os.path.join(src, "Battlescape", "Map.cpp"),
+        "\t\t\t\t\t\tif (amSkip_) continue;\n"
+        "\t\t\t\t\t}\n"
+        "#endif\n",
+        "\t\t\t\t\t\tif (amSkip_) continue;\n"
+        "\t\t\t\t\t}\n"
+        "\t\t\t\t\t/* step 3: a tile BELOW the dirty box is walked only if its content\n"
+        "\t\t\t\t\t * reaches up into it (see the patch script, 6ae) */\n"
+        "\t\t\t\t\tif (AmigaDirtyGrid != 0 && screenPosition.y >= AmigaClipY1)\n"
+        "\t\t\t\t\t{\n"
+        "\t\t\t\t\t\tint rch_ = tile->amigaReachUp();\n"
+        "\t\t\t\t\t\tif (amAnyWalk_) rch_ += 48;   /* a walking unit spills onto neighbours */\n"
+        "\t\t\t\t\t\tif (_projectile && _projectileInFOV && itX >= bulletLowX - 1 && itX <= bulletHighX + 1 && itY >= bulletLowY - 1 && itY <= bulletHighY + 1) rch_ = _spriteHeight * 4;\n"
+        "\t\t\t\t\t\tif (screenPosition.y - rch_ >= AmigaClipY1) continue;\n"
+        "\t\t\t\t\t}\n"
+        "#endif\n",
+        "exact below-box cut")))
+
+    # amigaPerfLog mirror must be visible at file scope in Options.cpp
+    results.append(("Engine/Options.cpp (perf log extern)", edit(
+        os.path.join(src, "Engine", "Options.cpp"),
+        '#include "Options.h"\n',
+        '#include "Options.h"\n'
+        '#ifdef __AMIGA__\n'
+        'extern "C" int AmigaPerfLog;\n'
+        '#endif\n',
+        "perf log extern")))
+
+    # 6af. TRAPV fix (2026-08-19, twice in the wild, both in the AI turn):
+    #      canTargetUnit/canTargetTile compute unitRadius/sqrt(relX^2+relY^2).
+    #      When the shooter stands EXACTLY above/below the target (same map
+    #      column - both voxels get the same +7/+8 offsets) that is a divide
+    #      by zero. On PC it makes a NaN and limps on; here double division
+    #      goes to mathieeedoubbas.library, whose divide-by-zero handler
+    #      executes TRAPV -> Guru -> our handler exits the game mid-AI-turn
+    #      ("the alien turn hangs/dies"). Any perpendicular works for a
+    #      vertical view, so use (radius, 0).
+    results.append(("Battlescape/TileEngine.cpp (TRAPV fix canTargetUnit)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        "\tPosition relPos = targetVoxel - *originVoxel;\n"
+        "\tfloat normal = unitRadius/sqrt((float)(relPos.x*relPos.x + relPos.y*relPos.y));\n"
+        "\tint relX = floor(((float)relPos.y)*normal+0.5);\n"
+        "\tint relY = floor(((float)-relPos.x)*normal+0.5);\n"
+        "\n"
+        "\tint sliceTargets[] = {0,0, relX,relY, -relX,-relY, relY,-relX, -relY,relX};\n",
+        "\tPosition relPos = targetVoxel - *originVoxel;\n"
+        "\tint relX, relY;\n"
+        "\tif (relPos.x == 0 && relPos.y == 0)\n"
+        "\t{\n"
+        "\t\trelX = unitRadius; relY = 0;   /* AMIGA-PORT: sqrt(0) division = TRAPV Guru */\n"
+        "\t}\n"
+        "\telse\n"
+        "\t{\n"
+        "\t\tfloat normal = unitRadius/sqrt((float)(relPos.x*relPos.x + relPos.y*relPos.y));\n"
+        "\t\trelX = floor(((float)relPos.y)*normal+0.5);\n"
+        "\t\trelY = floor(((float)-relPos.x)*normal+0.5);\n"
+        "\t}\n"
+        "\n"
+        "\tint sliceTargets[] = {0,0, relX,relY, -relX,-relY, relY,-relX, -relY,relX};\n",
+        "TRAPV fix canTargetUnit")))
+    results.append(("Battlescape/TileEngine.cpp (TRAPV fix canTargetTile)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        "\tfloat normal = unitRadius/sqrt((float)(relPos.x*relPos.x + relPos.y*relPos.y));\n"
+        "\tint relX = floor(((float)relPos.y)*normal+0.5);\n"
+        "\tint relY = floor(((float)-relPos.x)*normal+0.5);\n"
+        "\n"
+        "\tint sliceTargets[] = {0,0, relX,relY, -relX,-relY};\n",
+        "\tint relX, relY;\n"
+        "\tif (relPos.x == 0 && relPos.y == 0)\n"
+        "\t{\n"
+        "\t\trelX = unitRadius; relY = 0;   /* AMIGA-PORT: sqrt(0) division = TRAPV Guru */\n"
+        "\t}\n"
+        "\telse\n"
+        "\t{\n"
+        "\t\tfloat normal = unitRadius/sqrt((float)(relPos.x*relPos.x + relPos.y*relPos.y));\n"
+        "\t\trelX = floor(((float)relPos.y)*normal+0.5);\n"
+        "\t\trelY = floor(((float)-relPos.x)*normal+0.5);\n"
+        "\t}\n"
+        "\n"
+        "\tint sliceTargets[] = {0,0, relX,relY, -relX,-relY};\n",
+        "TRAPV fix canTargetTile")))
+
+    # 6ag. AI-turn probes (2026-08-19), designed for ONE run: a summary line
+    #      per alien turn (aiturn: TOTAL) plus a heartbeat every 10 s while
+    #      the turn runs (aisum: ... unit N TYPE) - so a HANG also names its
+    #      unit. Counters are cheap increments, always on; the lines only
+    #      appear during AI turns.
+    results.append(("Battlescape/TileEngine.cpp (ai counters)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        'extern "C" { unsigned long AmigaVisHit = 0, AmigaVisMiss = 0; }\n',
+        'extern "C" { unsigned long AmigaVisHit = 0, AmigaVisMiss = 0; }\n'
+        'extern "C" { unsigned long AmigaAiFovMs = 0, AmigaAiFovN = 0, AmigaAiLineN = 0, AmigaAiLightMs = 0; }\n'
+        'extern "C" { unsigned long AmigaAiVisHitT = 0, AmigaAiVisMissT = 0; }\n'
+        'extern "C" int AmigaPerfLog;\n'
+        'extern "C" void AmigaPathMemoBump(void);\n'
+        'extern "C" unsigned int SDL_GetTicks(void);\n'
+        'struct AmLightT_ { unsigned long t0; AmLightT_() { t0 = SDL_GetTicks(); } ~AmLightT_() { AmigaAiLightMs += SDL_GetTicks() - t0; } };\n',
+        "ai counters")))
+    results.append(("Battlescape/TileEngine.cpp (ray counter)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        "int TileEngine::calculateLine(const Position& origin, const Position& target, bool storeTrajectory, std::vector<Position> *trajectory, BattleUnit *excludeUnit, bool doVoxelCheck, bool onlyVisible, BattleUnit *excludeAllBut)\n"
+        "{\n",
+        "int TileEngine::calculateLine(const Position& origin, const Position& target, bool storeTrajectory, std::vector<Position> *trajectory, BattleUnit *excludeUnit, bool doVoxelCheck, bool onlyVisible, BattleUnit *excludeAllBut)\n"
+        "{\n"
+        "\t++AmigaAiLineN;\n",
+        "ray counter")))
+    results.append(("Battlescape/TileEngine.cpp (light timer 1)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        "void TileEngine::calculateUnitLighting()\n"
+        "{\n",
+        "void TileEngine::calculateUnitLighting()\n"
+        "{\n"
+        "\tAmLightT_ lt_;\n",
+        "light timer 1")))
+    results.append(("Battlescape/TileEngine.cpp (light timer 2)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        "void TileEngine::calculateTerrainLighting()\n"
+        "{\n",
+        "void TileEngine::calculateTerrainLighting()\n"
+        "{\n"
+        "\tAmLightT_ lt2_;\n",
+        "light timer 2")))
+    results.append(("Battlescape/Pathfinding.cpp (path timer)", edit(
+        os.path.join(src, "Battlescape", "Pathfinding.cpp"),
+        "void Pathfinding::calculate(BattleUnit *unit, Position endPosition, BattleUnit *target, int maxTUCost)\n"
+        "{\n",
+        "#ifdef __AMIGA__\n"
+        'extern "C" { unsigned long AmigaAiPathMs = 0, AmigaAiPathN = 0; }\n'
+        'extern "C" unsigned int SDL_GetTicks(void);\n'
+        "struct AmPfT_ { unsigned long t0; AmPfT_() { t0 = SDL_GetTicks(); } ~AmPfT_() { AmigaAiPathMs += SDL_GetTicks() - t0; ++AmigaAiPathN; } };\n"
+        "#endif\n"
+        "void Pathfinding::calculate(BattleUnit *unit, Position endPosition, BattleUnit *target, int maxTUCost)\n"
+        "{\n"
+        "#ifdef __AMIGA__\n"
+        "\tAmPfT_ pf_;\n"
+        "#endif\n",
+        "path timer")))
+    results.append(("Battlescape/AIModule.cpp (think timer)", edit(
+        os.path.join(src, "Battlescape", "AIModule.cpp"),
+        "void AIModule::think(BattleAction *action)\n"
+        "{\n",
+        "#ifdef __AMIGA__\n"
+        '#include <stdio.h>\n'
+        'extern "C" { unsigned long AmigaAiThinkMs = 0, AmigaAiThinkN = 0; }\n'
+        'extern "C" unsigned int SDL_GetTicks(void);\n'
+        'extern "C" void SDLmini_Log(const char *msg);\n'
+        "#endif\n"
+        "void AIModule::think(BattleAction *action)\n"
+        "{\n"
+        "#ifdef __AMIGA__\n"
+        "\tstruct AmAiT_ { unsigned long t0; int id;\n"
+        "\t\tAmAiT_(int i) : t0(SDL_GetTicks()), id(i) {}\n"
+        "\t\t~AmAiT_() { unsigned long d_ = SDL_GetTicks() - t0; AmigaAiThinkMs += d_; ++AmigaAiThinkN;\n"
+        "\t\t\tif (d_ >= 500) { char b_[96]; snprintf(b_, sizeof b_, \"ai think: unit %d %lu ms\", id, d_); SDLmini_Log(b_); } }\n"
+        "\t} amAi_(_unit ? _unit->getId() : -1);\n"
+        "#endif\n",
+        "think timer")))
+    results.append(("Battlescape/BattlescapeGame.cpp (ai turn summary)", edit(
+        os.path.join(src, "Battlescape", "BattlescapeGame.cpp"),
+        '#include "BattlescapeGame.h"\n',
+        '#include "BattlescapeGame.h"\n'
+        '#ifdef __AMIGA__\n'
+        '#include <stdio.h>\n'
+        'extern "C" { extern unsigned long AmigaAiFovMs, AmigaAiFovN, AmigaAiLineN, AmigaAiLightMs, AmigaAiVisHitT, AmigaAiVisMissT; }\n'
+        'extern "C" { extern unsigned long AmigaAiPathMs, AmigaAiPathN, AmigaAiThinkMs, AmigaAiThinkN, AmigaMapDrawUs; }\n'
+        'extern "C" unsigned int SDL_GetTicks(void);\n'
+        'extern "C" void SDLmini_Log(const char *msg);\n'
+        '#endif\n',
+        "ai turn summary decls")))
+    results.append(("Battlescape/BattlescapeGame.cpp (ai turn summary body)", edit(
+        os.path.join(src, "Battlescape", "BattlescapeGame.cpp"),
+        "void BattlescapeGame::think()\n"
+        "{\n",
+        "void BattlescapeGame::think()\n"
+        "{\n"
+        "#ifdef __AMIGA__\n"
+        "\t/* AI-turn probe - see the patch script (6ag) */\n"
+        "\t{\n"
+        "\t\tstatic int aiOn_ = 0; static unsigned long aiT0_ = 0, aiHb_ = 0;\n"
+        "\t\tstatic unsigned long sTh_, sThN_, sFv_, sFvN_, sPa_, sPaN_, sLn_, sLi_, sVh_, sVm_, sDr_;\n"
+        "\t\tbool ai_ = (_save->getSide() != FACTION_PLAYER);\n"
+        "\t\tunsigned long now_ = SDL_GetTicks();\n"
+        "\t\tif (ai_ && !aiOn_)\n"
+        "\t\t{\n"
+        "\t\t\taiOn_ = 1; aiT0_ = now_; aiHb_ = now_;\n"
+        "\t\t\tsTh_ = AmigaAiThinkMs; sThN_ = AmigaAiThinkN; sFv_ = AmigaAiFovMs; sFvN_ = AmigaAiFovN;\n"
+        "\t\t\tsPa_ = AmigaAiPathMs; sPaN_ = AmigaAiPathN; sLn_ = AmigaAiLineN; sLi_ = AmigaAiLightMs;\n"
+        "\t\t\tsVh_ = AmigaAiVisHitT; sVm_ = AmigaAiVisMissT; sDr_ = AmigaMapDrawUs;\n"
+        "\t\t}\n"
+        "\t\telse if ((ai_ && now_ - aiHb_ >= 10000) || (!ai_ && aiOn_))\n"
+        "\t\t{\n"
+        "\t\t\tchar b_[256];\n"
+        "\t\t\tBattleUnit *cu_ = _save->getSelectedUnit();\n"
+        "\t\t\tsnprintf(b_, sizeof b_, \"%s %lu ms | aithink %lu/%lu | fov %lu ms/%lu | path %lu ms/%lu | light %lu | ray %lu | vis %lu/%lu | draw %lu ms | unit %d %s\",\n"
+        "\t\t\t\tai_ ? \"aisum:\" : \"aiturn: TOTAL\", now_ - aiT0_,\n"
+        "\t\t\t\tAmigaAiThinkMs - sTh_, AmigaAiThinkN - sThN_, AmigaAiFovMs - sFv_, AmigaAiFovN - sFvN_,\n"
+        "\t\t\t\tAmigaAiPathMs - sPa_, AmigaAiPathN - sPaN_, AmigaAiLightMs - sLi_, AmigaAiLineN - sLn_,\n"
+        "\t\t\t\tAmigaAiVisHitT - sVh_, AmigaAiVisMissT - sVm_, (AmigaMapDrawUs - sDr_) / 1000UL,\n"
+        "\t\t\t\tcu_ ? cu_->getId() : -1, cu_ ? cu_->getType().c_str() : \"-\");\n"
+        "\t\t\tSDLmini_Log(b_);\n"
+        "\t\t\taiHb_ = now_;\n"
+        "\t\t\tif (!ai_) aiOn_ = 0;\n"
+        "\t\t}\n"
+        "\t}\n"
+        "#endif\n",
+        "ai turn summary body")))
+
+    # 6ah. 1G step 1 (2026-08-19): skip visible() for pairs whose result is
+    #      DISCARDED. The spotting code only ever acts on: viewer PLAYER
+    #      (display + spotting hostiles) and viewer HOSTILE vs non-hostile
+    #      target. A civilian viewer, or hostile-vs-hostile, falls through
+    #      every branch - yet each such pair cost a canTargetUnit (up to 37
+    #      voxel rays) after every step. Terror maps carry ~10 civilians, so
+    #      this was most of the 96 s of FOV in a 4.5-minute alien turn.
+    #      Exactly equivalent to upstream: the calls whose results were used
+    #      are untouched.
+    results.append(("Battlescape/TileEngine.cpp (pointless pair skip: spotting branch)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        "\t\t\tif (visible(unit, visibleUnit->getTile()))\n"
+        "\t\t\t{\n"
+        "\t\t\t\tif (unit->getFaction() == FACTION_PLAYER)\n"
+        "\t\t\t\t\tvisibleUnit->setVisible(true);\n",
+        "\t\t\t/* AMIGA-PORT 1G: pointless pair - the branches below would all fall\n"
+        "\t\t\t * through, so do not pay for the sight rays (see the patch script) */\n"
+        "\t\t\tif (unit->getFaction() == FACTION_NEUTRAL\n"
+        "\t\t\t\t|| (unit->getFaction() == FACTION_HOSTILE && visibleUnit->getFaction() == FACTION_HOSTILE)) continue;\n"
+        "\t\t\tif (visible(unit, visibleUnit->getTile()))\n"
+        "\t\t\t{\n"
+        "\t\t\t\tif (unit->getFaction() == FACTION_PLAYER)\n"
+        "\t\t\t\t\tvisibleUnit->setVisible(true);\n",
+        "pointless pair skip 1")))
+    results.append(("Battlescape/TileEngine.cpp (pointless pair skip: tile sweep)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        "\t\t\t\t\t\tBattleUnit *visibleUnit = _save->getTile(test)->getUnit();\n"
+        "\t\t\t\t\t\tif (visibleUnit && !visibleUnit->isOut() && visible(unit, _save->getTile(test)))\n",
+        "\t\t\t\t\t\tBattleUnit *visibleUnit = _save->getTile(test)->getUnit();\n"
+        "\t\t\t\t\t\t/* AMIGA-PORT 1G: pointless pair - see the patch script */\n"
+        "\t\t\t\t\t\tif (visibleUnit && (unit->getFaction() == FACTION_NEUTRAL\n"
+        "\t\t\t\t\t\t\t|| (unit->getFaction() == FACTION_HOSTILE && visibleUnit->getFaction() == FACTION_HOSTILE))) visibleUnit = 0;\n"
+        "\t\t\t\t\t\tif (visibleUnit && !visibleUnit->isOut() && visible(unit, _save->getTile(test)))\n",
+        "pointless pair skip 2")))
+    results.append(("Battlescape/TileEngine.cpp (pointless pair skip: re-check)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        "\t\t\t\tif (visible(w_, mover_->getTile()))\n"
+        "\t\t\t\t{\n"
+        "\t\t\t\t\tif (w_->getFaction() == FACTION_PLAYER)\n"
+        "\t\t\t\t\t\tmover_->setVisible(true);\n",
+        "\t\t\t\t/* AMIGA-PORT 1G: pointless pair - see the patch script */\n"
+        "\t\t\t\tif (w_->getFaction() == FACTION_NEUTRAL\n"
+        "\t\t\t\t\t|| (w_->getFaction() == FACTION_HOSTILE && mover_->getFaction() == FACTION_HOSTILE)) continue;\n"
+        "\t\t\t\tif (visible(w_, mover_->getTile()))\n"
+        "\t\t\t\t{\n"
+        "\t\t\t\t\tif (w_->getFaction() == FACTION_PLAYER)\n"
+        "\t\t\t\t\t\tmover_->setVisible(true);\n",
+        "pointless pair skip 3")))
+
+    # 6ai. 1G step 2 (2026-08-19): calculateUnitLighting runs after EVERY step
+    #      of every unit (33 s of the measured alien turn) - but its result
+    #      only depends on the light SOURCES: player units (personal light)
+    #      and burning units. An alien or civilian walking changes neither,
+    #      so the full reset-14k-tiles + addLight pass recomputed an
+    #      identical layer. Memo: the source list (position, power); if it
+    #      matches the previous call on the same battle, skip. addLight has
+    #      no occlusion, so sources are the WHOLE input - this is exact, not
+    #      an approximation.
+    results.append(("Battlescape/TileEngine.cpp (light memo)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        "void TileEngine::calculateUnitLighting()\n"
+        "{\n"
+        "\tAmLightT_ lt_;\n"
+        "\tconst int layer = 2; // Dynamic lighting layer.\n"
+        "\tconst int personalLightPower = 15; // amount of light a unit generates\n"
+        "\tconst int fireLightPower = 15; // amount of light a fire generates\n"
+        "\n",
+        "void TileEngine::calculateUnitLighting()\n"
+        "{\n"
+        "\tAmLightT_ lt_;\n"
+        "\tconst int layer = 2; // Dynamic lighting layer.\n"
+        "\tconst int personalLightPower = 15; // amount of light a unit generates\n"
+        "\tconst int fireLightPower = 15; // amount of light a fire generates\n"
+        "\n"
+        "\t/* AMIGA-PORT 1G: light memo - see the patch script (6ai) */\n"
+        "\t{\n"
+        "\t\tstatic std::vector<Position> srcPos_;\n"
+        "\t\tstatic std::vector<int> srcPow_;\n"
+        "\t\tstatic SavedBattleGame *owner_ = 0;\n"
+        "\t\tstd::vector<Position> np_;\n"
+        "\t\tstd::vector<int> nw_;\n"
+        "\t\tfor (std::vector<BattleUnit*>::iterator i = _save->getUnits()->begin(); i != _save->getUnits()->end(); ++i)\n"
+        "\t\t{\n"
+        "\t\t\tif (_personalLighting && (*i)->getFaction() == FACTION_PLAYER && !(*i)->isOut())\n"
+        "\t\t\t{ np_.push_back((*i)->getPosition()); nw_.push_back(personalLightPower); }\n"
+        "\t\t\tif ((*i)->getFire())\n"
+        "\t\t\t{ np_.push_back((*i)->getPosition()); nw_.push_back(fireLightPower); }\n"
+        "\t\t}\n"
+        "\t\tif (owner_ == _save && np_ == srcPos_ && nw_ == srcPow_) return;\n"
+        "\t\towner_ = _save; srcPos_.swap(np_); srcPow_.swap(nw_);\n"
+        "\t}\n"
+        "\n",
+        "light memo")))
+
+    # 6aj. 1G step 3 (2026-08-19): a civilian's own FOV is dead weight. After
+    #      every step the mover runs a full cone sweep (~65 ms); for a NEUTRAL
+    #      unit every branch inside is a no-op (it spots nothing, discovers no
+    #      tiles - only players discover, only player/hostile pairs matter),
+    #      so return right after the clears - bit-for-bit the same outcome.
+    results.append(("Battlescape/TileEngine.cpp (civilian own FOV skip)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        "\tunit->clearVisibleUnits();\n"
+        "\tif (tiles)\n"
+        "\t\tunit->clearVisibleTiles();\n"
+        "\n"
+        "\tif (unit->isOut())\n"
+        "\t\treturn false;\n",
+        "\tunit->clearVisibleUnits();\n"
+        "\tif (tiles)\n"
+        "\t\tunit->clearVisibleTiles();\n"
+        "\n"
+        "\tif (unit->isOut())\n"
+        "\t\treturn false;\n"
+        "#ifdef __AMIGA__\n"
+        "\t/* 1G: civilian own FOV - see the patch script (6aj) */\n"
+        "\tif (unit->getFaction() == FACTION_NEUTRAL)\n"
+        "\t\treturn false;\n"
+        "#endif\n",
+        "civilian own FOV skip")))
+
+    # 6ak. 1G step 4 (2026-08-19): the A* guess cost was 4*sqrt((double)d) per
+    #      node pushed into the open set - a soft-float double sqrt, thousands
+    #      of times per path, ~590 ms per path on the 040. Integer sqrt of
+    #      16*d gives floor(4*sqrt(d)) EXACTLY (d < 2^26 here), so the guess,
+    #      the visit order and the found paths are bit-for-bit unchanged.
+    results.append(("Battlescape/PathfindingNode.cpp (integer guess)", edit(
+        os.path.join(src, "Battlescape", "PathfindingNode.cpp"),
+        "\tif (!inOpenSet()) // Otherwise we have this already.\n"
+        "\t{\n"
+        "\t\tPosition d = target - _pos;\n"
+        "\t\td *= d;\n"
+        "\t\t_tuGuess = 4 * sqrt((double)d.x + d.y + d.z);\n"
+        "\t}\n",
+        "\tif (!inOpenSet()) // Otherwise we have this already.\n"
+        "\t{\n"
+        "\t\tPosition d = target - _pos;\n"
+        "\t\td *= d;\n"
+        "#ifdef __AMIGA__\n"
+        "\t\t/* AMIGA-PORT: integer floor(4*sqrt(d)) == isqrt(16*d) - no soft-float\n"
+        "\t\t * (see the patch script, 6ak) */\n"
+        "\t\t{\n"
+        "\t\t\tunsigned long n_ = 16UL * (unsigned long)(d.x + d.y + d.z);\n"
+        "\t\t\tunsigned long r_ = 0, bit_ = 1UL << 30;\n"
+        "\t\t\twhile (bit_ > n_) bit_ >>= 2;\n"
+        "\t\t\twhile (bit_)\n"
+        "\t\t\t{\n"
+        "\t\t\t\tif (n_ >= r_ + bit_) { n_ -= r_ + bit_; r_ = (r_ >> 1) + bit_; }\n"
+        "\t\t\t\telse r_ >>= 1;\n"
+        "\t\t\t\tbit_ >>= 2;\n"
+        "\t\t\t}\n"
+        "\t\t\t_tuGuess = (int)r_;\n"
+        "\t\t}\n"
+        "#else\n"
+        "\t\t_tuGuess = 4 * sqrt((double)d.x + d.y + d.z);\n"
+        "#endif\n"
+        "\t}\n",
+        "integer path guess")))
+
+    # 6al. 1G step 5 (2026-08-19): getTUCost memo. A* asks the step cost for
+    #      every (tile, direction) it visits; an UNREACHABLE target makes it
+    #      sweep the whole accessible map, and AI patrol tries several
+    #      targets in a row - the same (tile,dir) costs recomputed each time
+    #      (~560 ms per path, half the alien turn). The answer depends on
+    #      terrain (walls/floors/doors/fire) and on unit occupancy, so the
+    #      memo generation is bumped whenever either can change: any
+    #      Tile::setUnit (units enter/leave tiles), any Tile::setMapData
+    #      (destruction, MCD swaps), a door opened, and
+    #      calculateTerrainLighting (fires started, explosions, new turn).
+    #      Only the common exact case is cached: 1x1 unit, no missile
+    #      target, horizontal directions; faction and movement type are part
+    #      of the entry. ~700 KB for a 60x60x4 map, allocated per battle.
+    results.append(("Battlescape/Pathfinding.h (uncached decl)", edit(
+        os.path.join(src, "Battlescape", "Pathfinding.h"),
+        "\tint getTUCost(const Position &startPosition, int direction, Position *endPosition, BattleUnit *unit, BattleUnit *target, bool missile);\n",
+        "\tint getTUCost(const Position &startPosition, int direction, Position *endPosition, BattleUnit *unit, BattleUnit *target, bool missile);\n"
+        "\tint getTUCostUncached(const Position &startPosition, int direction, Position *endPosition, BattleUnit *unit, BattleUnit *target, bool missile);\n",
+        "uncached decl")))
+    results.append(("Battlescape/Pathfinding.cpp (memo wrapper)", edit(
+        os.path.join(src, "Battlescape", "Pathfinding.cpp"),
+        "int Pathfinding::getTUCost(const Position &startPosition, int direction, Position *endPosition, BattleUnit *unit, BattleUnit *target, bool missile)\n"
+        "{\n"
+        "\t_unit = unit;\n",
+        "/* AMIGA-PORT 1G: getTUCost memo - see the patch script (6al) */\n"
+        "static Uint8 *amTcCost_ = 0;\n"
+        "static signed char *amTcDz_ = 0;\n"
+        "static Uint8 *amTcFl_ = 0;\n"
+        "static Uint16 *amTcGen_ = 0;\n"
+        "static int amTcN_ = 0;\n"
+        "static Uint16 amTcCur_ = 1;\n"
+        "extern \"C\" void AmigaPathMemoBump(void)\n"
+        "{\n"
+        "\tif (++amTcCur_ == 0) { amTcCur_ = 1; if (amTcGen_) memset(amTcGen_, 0, (size_t)amTcN_ * 8 * sizeof(Uint16)); }\n"
+        "}\n"
+        "\n"
+        "int Pathfinding::getTUCost(const Position &startPosition, int direction, Position *endPosition, BattleUnit *unit, BattleUnit *target, bool missile)\n"
+        "{\n"
+        "\tconst bool memoOk_ = (direction < DIR_UP && target == 0 && !missile\n"
+        "\t\t&& unit->getArmor()->getSize() == 1 && !(_strafeMove));\n"
+        "\tlong mi_ = -1;\n"
+        "\tif (memoOk_)\n"
+        "\t{\n"
+        "\t\tconst int n_ = _save->getMapSizeXYZ();\n"
+        "\t\tif (amTcN_ != n_)\n"
+        "\t\t{\n"
+        "\t\t\tdelete[] amTcCost_; delete[] amTcDz_; delete[] amTcFl_; delete[] amTcGen_;\n"
+        "\t\t\tamTcCost_ = new Uint8[(size_t)n_ * 8];\n"
+        "\t\t\tamTcDz_ = new signed char[(size_t)n_ * 8];\n"
+        "\t\t\tamTcFl_ = new Uint8[(size_t)n_ * 8];\n"
+        "\t\t\tamTcGen_ = new Uint16[(size_t)n_ * 8];\n"
+        "\t\t\tmemset(amTcGen_, 0, (size_t)n_ * 8 * sizeof(Uint16));\n"
+        "\t\t\tamTcN_ = n_;\n"
+        "\t\t}\n"
+        "\t\tmi_ = (long)_save->getTileIndex(startPosition) * 8 + direction;\n"
+        "\t\tconst Uint8 fl_ = (Uint8)(0x80 | ((int)unit->getFaction() << 4) | (int)unit->getMovementType());\n"
+        "\t\tif (amTcGen_[mi_] == amTcCur_ && amTcFl_[mi_] == fl_)\n"
+        "\t\t{\n"
+        "\t\t\tdirectionToVector(direction, endPosition);\n"
+        "\t\t\t*endPosition += startPosition;\n"
+        "\t\t\tendPosition->z += amTcDz_[mi_];\n"
+        "\t\t\t_unit = unit;\n"
+        "\t\t\treturn amTcCost_[mi_];\n"
+        "\t\t}\n"
+        "\t}\n"
+        "\tPosition sp_ = startPosition;\n"
+        "\tint c_ = getTUCostUncached(startPosition, direction, endPosition, unit, target, missile);\n"
+        "\tif (mi_ >= 0)\n"
+        "\t{\n"
+        "\t\tint dz_ = endPosition->z - sp_.z;\n"
+        "\t\tif (c_ >= 0 && c_ <= 255 && dz_ >= -1 && dz_ <= 1)\n"
+        "\t\t{\n"
+        "\t\t\tamTcCost_[mi_] = (Uint8)c_;\n"
+        "\t\t\tamTcDz_[mi_] = (signed char)dz_;\n"
+        "\t\t\tamTcFl_[mi_] = (Uint8)(0x80 | ((int)unit->getFaction() << 4) | (int)unit->getMovementType());\n"
+        "\t\t\tamTcGen_[mi_] = amTcCur_;\n"
+        "\t\t}\n"
+        "\t}\n"
+        "\treturn c_;\n"
+        "}\n"
+        "\n"
+        "int Pathfinding::getTUCostUncached(const Position &startPosition, int direction, Position *endPosition, BattleUnit *unit, BattleUnit *target, bool missile)\n"
+        "{\n"
+        "\t_unit = unit;\n",
+        "memo wrapper")))
+    # invalidation points
+    results.append(("Savegame/Tile.cpp (path memo bump: setUnit)", edit(
+        os.path.join(src, "Savegame", "Tile.cpp"),
+        "void Tile::setUnit(BattleUnit *unit, Tile *tileBelow)\n"
+        "{\n",
+        "void Tile::setUnit(BattleUnit *unit, Tile *tileBelow)\n"
+        "{\n"
+        "#ifdef __AMIGA__\n"
+        "\tAmigaPathMemoBump();\n"
+        "#endif\n",
+        "path memo bump setUnit")))
+    results.append(("Savegame/Tile.cpp (path memo bump: setMapData)", edit(
+        os.path.join(src, "Savegame", "Tile.cpp"),
+        "#ifdef __AMIGA__\n"
+        "\t_amigaMaxYOff = -1;\n"
+        "#endif\n",
+        "#ifdef __AMIGA__\n"
+        "\t_amigaMaxYOff = -1;\n"
+        "\tAmigaPathMemoBump();\n"
+        "#endif\n",
+        "path memo bump setMapData")))
+    results.append(("Battlescape/TileEngine.cpp (path memo bump: lighting)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        "#ifdef __AMIGA__\n"
+        "\t++amVisGen_;   /* terrain / smoke / fire changed */\n"
+        "#endif\n",
+        "#ifdef __AMIGA__\n"
+        "\t++amVisGen_;   /* terrain / smoke / fire changed */\n"
+        "\tAmigaPathMemoBump();\n"
+        "#endif\n",
+        "path memo bump lighting")))
+    results.append(("Battlescape/TileEngine.cpp (path memo bump: door)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        "#ifdef __AMIGA__\n"
+        "\t\t\t\t++amVisGen_;   /* a door opened */\n"
+        "#endif\n",
+        "#ifdef __AMIGA__\n"
+        "\t\t\t\t++amVisGen_;   /* a door opened */\n"
+        "\t\t\t\tAmigaPathMemoBump();\n"
+        "#endif\n",
+        "path memo bump door")))
 
     # 6. File streams. bebbo's libstdc++ hangs forever in
     #    std::ifstream::close() on a file that exists (see native/amiga_fstream.h

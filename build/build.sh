@@ -215,6 +215,10 @@ vasmm68k_mot -Fhunk -m68020 -no-opt \
 	-I/opt/amiga/m68k-amigaos/ndk-include \
 	-o "$OBJ/c2p_glue.o" "$NATIVE/c2p_glue.s"
 NATIVE_OBJS="$NATIVE_OBJS $OBJ/c2p_glue.o"
+# hand-written LUT span blit (step 2 of the drawing plan, 2026-08-19)
+vasmm68k_mot -Fhunk -m68020 -no-opt \
+	-o "$OBJ/amiga_span_blit.o" "$NATIVE/amiga_span_blit.s"
+NATIVE_OBJS="$NATIVE_OBJS $OBJ/amiga_span_blit.o"
 
 # yaml-cpp is compiled as ONE translation unit, on purpose.
 #
