@@ -10,7 +10,15 @@ for **real classic hardware**: 68020+ without FPU, AGA chipset. Not PiStorm-, Va
 or Emu68-only. No SDL: the SDL 1.2 API the game expects is a small shim
 (`native/sdlmini/`) on top of a bare-metal Amiga graphics/audio layer.
 
-## Status: 0.5.0 — alpha
+## Status: 0.7.2 — alpha
+
+New in 0.7.2: **game startup ~2.7× faster** (040/40-class: ~6 min → ~2 min; 030/50:
+~15 min → ~5.5 min) — graphics loaders no longer read byte-by-byte, yaml rulesets get
+a binary cache (`.ybc`), transparency tables and fonts fixed; the system mouse pointer
+stays visible during loading. Earlier 0.6-0.7.1 (see releases): battlescape drawing
+reworked (idle ~35 fps on 040/40), alien turn 280 → ~84 s, mid-turn TRAPV crash fixed.
+
+## Older status (0.5.0)
 
 The whole game compiles and runs on the Amiga: main menu → new game → Geoscape → base
 → battle briefing → inventory → Battlescape. Both rulesets (UFO and TFTD) load.

@@ -153,6 +153,10 @@ int amigagfx_wb_colours(int *granted);
 int amigagfx_game_width(void);
 int amigagfx_game_height(void);
 
+/* Loading splash: 1 = keep the system pointer visible regardless of the
+ * hide-pointer setting, 0 = back to the setting. */
+void amigagfx_pointer_suspend(int on);
+
 void amigagfx_close(void);
 
 /* Hide (1) or restore (0) the Intuition pointer over our window. Safe to call

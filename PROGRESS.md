@@ -2,6 +2,50 @@
 
 Newest first. Facts and measurements only; plans live in `PORT_RESEARCH.md`.
 
+## 2026-08-19 (noc): ladowanie 2.7x - start 344 -> 128 s (040/40), 030/50: 15 min -> 5.3 min
+
+Pomiar: timeline splashu (splash: N% at X ms, w binarce na stale). Baseline
+zmierzony runem usera na 040/40 (-80%, noJIT): 344 s. Po dniu: 127.9 s.
+Test koncowy usera na 030/50: 317 s (5.3 min; wczesniej ~15 min).
+
+Kroki (kazdy osobny build + test; sekcje w apply-amiga-patches.py):
+1. A/6am - PCK/DAT/SPK/BDY czytaly plik PO BAJCIE przez istream::read
+   (sentry + wirtualne cale ~10 KB/s na 68k). Slurp stdio + dekod z bufora:
+   BDY geo 57->10 s, PCK battlescape 68->46 s, SPK 0.6->0.1 s.
+2. A2/6am2 - `_frames[frame]->setPixelIterative` = lookup std::map NA KAZDY
+   PIKSEL; wskaznik ramki hoistniety przed petle: PCK 22.5->7.6 s.
+3. B/ybc - binarny cache drzew yaml (<plik>.ybc obok zrodla, tylko
+   standard/+common/, naglowek size+mtime, fallback na parse). Pierwszy
+   start pisze cache (+6 s raz), kolejne omijaja scanner: rulesety
+   119->53 s, jezyk 25->15 s, metadata 19->8 s. Razem start 267->173 s.
+   Gotcha: Node::operator= w yaml_all.cpp = ICE gcc 6.5 (segfault);
+   out.reset(root) omija.
+4. A3/6am3 - loadBdy: dekod serii RLE memset/memcpy wprost do pixeli
+   (setPixelIterative ~200 cykli/px): BDY geo 11.5->5.2 s.
+5. A4/6am4 - okno 76-77% (24 s) to createTransparencyLUT: 4 palety
+   battlescape TFTD x ~1.5M porownan x 3 wywolania getColors() (cross-TU).
+   Lokalna kopia palety: -9 s. Dwie obalone hipotezy po drodze: to NIE
+   battleHairBleach (test opcja: bez zmian) i NIE BDY ufograph (38 malych
+   plikow, 238 KB). loadLOFTEMPS (2 bajty na read) slurpniety.
+   Razem 177->152 s.
+6. C/nodealloc - yaml-cpp: 7 alokacji na wezel (node+cb, node_ref+cb,
+   node_data+cb, insert do std::set puli). make_shared (3 miejsca) +
+   pula set->vector (wezly unikalne z konstrukcji, scalanie calych pul):
+   rulesety 50->42 s, jezyk -6 s. Razem 152->138 s.
+7. D/6am5 - Font::load dekodowal WSZYSTKIE arkusze czcionek, w tym
+   _jp/_ko.png (189 KB PNG z tysiacami glifow CJK; lodepng inflate +
+   insert do mapy na glif). Pomijane gdy jezyk != ja/ko: fonty+muzyka
+   17 -> 0.8 s. Razem 138->128 s. Jedyna zmiana zachowania dnia (ja/ko
+   nadal pelne).
+Plus: kursor systemowy widoczny przez caly splash (amigagfx_pointer_suspend;
+zyczenie usera - mozna uzywac WB podczas ladowania), amigaAutoBattle wracal
+z RAM gry po wyjsciu (2x zerowany).
+
+Stan po dniu (040/40, 128 s): rulesety 43 (konsumpcja wezlow w Rule::load),
+extra+jezyk 26, PCK+okno 21, vanilla+CATy 19, start 9, sorty 3 (sortLists
+z dawnych pomiarow uniewinniony - to byl LUT+resources). Na 030/50
+grafika+dzwiek 123 s > yaml 94 s. NIEWYDANE - kod lokalny + backupy.
+
 ## 2026-08-19 (popoludnie/wieczor): 0.7.1 - rysowanie dokonczone, tura AI 3.3x
 
 Wydane jako v0.7.1. Rysowanie (dokonczenie planu z LEFTOFF): 1B2 dokladny box

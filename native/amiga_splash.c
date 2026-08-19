@@ -126,6 +126,8 @@ void AmigaSplash_Show(void)
 	}
 	s_active = 1;
 	s_percent = -1;
+	/* keep the system pointer usable while the game loads */
+	amigagfx_pointer_suspend(1);
 	AmigaSplash_Progress(1);   /* a first sliver, so the bar visibly starts */
 }
 
@@ -170,4 +172,6 @@ void AmigaSplash_End(void)
 	}
 	s_active = 0;
 	if (s_image != NULL) { free(s_image); s_image = NULL; }
+	/* the game takes the display now - apply its pointer setting */
+	amigagfx_pointer_suspend(0);
 }

@@ -1,6 +1,64 @@
-# LEFTOFF — hand-off for the next session (updated 2026-08-19 evening, after v0.7.1 release)
+# LEFTOFF — hand-off for the next session (updated 2026-08-19 noc, po dniu LADOWANIA)
 
 Read this, then `CLAUDE.md` (rules), then the top entry of `PROGRESS.md` (proofs).
+
+## STAN 2026-08-19 noc: LADOWANIE 2.7x SZYBSZE - start 344 -> 128 s (040/40), na 030/50 15 min -> 5.3 min
+
+NIEWYDANE (kod lokalnie + backupy; user zdecyduje o 0.7.2). Pomiar = timeline
+splashu (`splash: N% at X ms` w sdlmini.log, jest w binarce na stale).
+Mapa procentow: 1-6 start+metadata, 6-37 parse .rul (tick/plik), 40-57
+SCR/BDY/SPK geo, 58-70 sound CATy, 71-76 PCK UNITS, 76-77 okno battlescape
+(LBM palety + transparency LUT + TAC00.SCR + ufograph), 77-79 sorty, 80
+fonty+muzyka, 81-88 extra sprites/sounds, 89-98 jezyk.
+
+Kroki dnia (kazdy = sekcja w apply-amiga-patches.py, wszystkie bit-exact
+procz D):
+- **A (6am)**: PCK/DAT/SPK/BDY slurp + dekod z pamieci (czytaly PLIK PO
+  BAJCIE przez istream::read ~10 KB/s; BDY geo 57->10 s, PCK 68->46 s).
+- **A2 (6am2)**: hoist `_frames[frame]` przed petle pikseli (lookup w
+  std::map NA KAZDY PIKSEL; PCK 22.5->7.6 s).
+- **B (ybc)**: binarny cache drzew yaml `<plik>.ybc` obok zrodla, tylko
+  standard/ i common/; naglowek = size+mtime zrodla; 1. start pisze, kolejne
+  omijaja caly scanner (rulesety 119->53 s, jezyk 25->15 s). Implementacja
+  w patch_yamlcpp (parse.cpp, YBC_BLOCK). `out.reset(root)` NIE operator= -
+  gcc 6.5 ICE (segfault) na Node::operator= w yaml_all.cpp. NIE wydawac
+  .ybc w releasach.
+- **A3 (6am/6am3)**: loadBdy dekoduje serie RLE memset/memcpy wprost do
+  pixeli zamiast setPixelIterative (~200 cykli/px; geo BDY 11.5->5.2 s).
+- **A4 (6am4)**: createTransparencyLUT z lokalna kopia palety (3x
+  getColors() cross-TU NA KAZDE porownanie, 4 palety = 24 s -> ~5 s);
+  loadLOFTEMPS slurp. UWAGA: okno 76-77 to NIE byl bleach ani BDY ufograph
+  (obie hipotezy obalone testami) - to byl LUT.
+- **C (nodealloc)**: yaml-cpp 7 alokacji/wezel -> 4: make_shared w
+  memory::create_node, node(), node_ref(); pula std::set->std::vector
+  (wezly unikalne z konstrukcji). patch_yamlcpp_nodealloc. Rulesety
+  50->42 s, jezyk -6 s.
+- **D (6am5)**: Font::load pomija arkusze _jp/_ko.png (189+67+52+52+35+18 KB
+  PNG, tysiace glifow CJK) gdy jezyk != ja/ko. Fonty 17 -> 0.8 s. JEDYNA
+  zmiana zachowania (ja/ko dalej dziala - warunek na Options::language).
+- **Kursor**: systemowy wskaznik WIDOCZNY przez caly splash
+  (amigagfx_pointer_suspend w amiga_gfx.c/h + wywolania w amiga_splash.c);
+  gra chowa go dopiero po przejeciu ekranu. Zyczenie usera.
+
+Stan po dniu (040/40): total 128 s: rulesety 43 (konsumpcja wezlow przez
+Rule::load - trudne), extra+jezyk 26, PCK+okno76-77 21 (LBM/LUT/TAC00.SCR),
+vanilla+CATy 19 (audio konwersje - kandydat cache/lazy), start+meta 9,
+sorty 3 (sortLists uniewinniony: 3 s, nie 80). Na 030/50 grafika+dzwiek
+(123 s) wazy juz wiecej niz yaml (94 s).
+
+**Pulapki 19.08 wieczor**: (1) restore przed KAZDYM buildem - takze gdy
+zmiana tylko w yaml-cpp ("StartState load markers" pada na wlasnym outputcie
+skryptu; nie ma buildu bez restore); pelna lista w memory
+restore-list-full + doszly Mod/MapDataSet.cpp i Engine/Font.cpp;
+(2) yaml-cpp: patch_yamlcpp ma marker amiga_ybc - przy zmianie tej funkcji
+przywrocic parse.cpp z ~/build/yaml-cpp-0.6.3.tar.gz; nodealloc/memory/ice
+maja wlasne markery i sa naprawde idempotentne; (3) tarball gry ma CRLF -
+generatory patchy MUSZA normalizowac (edit() czyta w trybie tekstowym);
+(4) gra przy wyjsciu ZAPISUJE options.cfg z RAM - wyzerowany na dysku
+amigaAutoBattle wraca, zerowac po zamknieciu emulatora.
+
+Sondy loadingu: splash timeline zawsze w logu; skrypt awk do rozbicia faz
+w historii sesji. Test 2x przy zmianach ybc (1. run pisze cache).
 
 ## STAN 2026-08-19 wieczor: v0.7.1 WYDANE - bitwa zamknieta, nastepny cel: LADOWANIE
 

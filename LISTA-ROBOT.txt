@@ -1,4 +1,18 @@
-AMIXCOM - LISTA POZOSTALYCH ROBOT (stan 2026-08-17 po wydaniu 0.3.0)
+AMIXCOM - LISTA POZOSTALYCH ROBOT
+
+ZROBIONE 19.08 noc (dzien LADOWANIA; niewydane, czeka na decyzje o 0.7.2):
+ - Start 344 -> 128 s na 040/40 (2.7x); 030/50: 15 min -> 5.3 min.
+   Kroki A-D + B + C w PROGRESS.md (slurp loaderow, hoist mapy klatek,
+   cache .ybc drzew yaml, BDY row-decode, transparency-LUT lokalna paleta,
+   LOFTEMPS slurp, yaml make_shared+vector, skip fontow CJK).
+ - Kursor systemowy widoczny podczas splashu (mozna uzywac WB w trakcie).
+POZOSTALO w ladowaniu (040/40): rulesety 43 s (konsumpcja wezlow),
+ extra sounds ~13 + CATy ~12 (konwersje audio - kandydat cache/lazy),
+ okno 76-77 ~14 (LBM palety + reszta LUT + TAC00.SCR), jezyk ~13, start 9.
+ New Battle/bgen/load save - nadal niezmierzone po dzisiejszych zmianach
+ (czesc zyska automatycznie: PCK terenu, battle.cfg NIE jest w cache ybc).
+
+--- (stan 2026-08-17 po wydaniu 0.3.0) ---
 Zasady: przed kazdym punktem pelny backup zip, jedna zmiana na build,
 Claude testuje sam; pomiary czytane z oxc.log (sondy perf:/fov:/map:/step:).
 UWAGA POMIAROWA: uzytkownik przelacza JIT/throttle recznie w F12 - przy

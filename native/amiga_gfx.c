@@ -316,8 +316,15 @@ static int wb_pointer_have_sprite(void)
 	return g_blank_pointer != NULL;
 }
 
+/* While the loading splash is up the system pointer stays VISIBLE, so the
+ * user sees the machine is alive and can flip to the Workbench and use it.
+ * The game's blanking request is remembered and applied when the splash
+ * hands the display back (amiga_splash.c drives this). */
+static int g_pointer_suspended;
+
 static void wb_pointer_blank(int on)
 {
+	if (g_pointer_suspended) on = 0;
 	if (g_window == NULL || on == g_pointer_blanked) return;
 
 	if (on) {
@@ -357,6 +364,19 @@ static void wb_pointer_apply(void)
 	/* Applied without knowing where the mouse is - assume inside, the next
 	 * mouse move corrects it. */
 	wb_pointer_blank(g_hide_sys_pointer);
+}
+
+/* on=1: force the system pointer visible (loading splash); on=0: go back to
+ * whatever the setting asks for. */
+void amigagfx_pointer_suspend(int on)
+{
+	g_pointer_suspended = on;
+	if (g_window == NULL) return;
+	if (on) {
+		if (g_pointer_blanked) { ClearPointer(g_window); g_pointer_blanked = 0; }
+	} else {
+		wb_pointer_apply();
+	}
 }
 
 void amigagfx_set_hide_system_pointer(int on)

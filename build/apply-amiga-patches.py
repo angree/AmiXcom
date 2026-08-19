@@ -43,6 +43,192 @@ def replace_file(src_root, relative):
     return "copied"
 
 
+YBC_BLOCK = """
+/* AMIGA-PORT ybc: binary pre-parsed node cache. yaml-cpp's scanner walks the
+ * text CHARACTER BY CHARACTER through RegEx objects - the ruleset parse alone
+ * was ~120 s of a 267 s start on the 040/40 (plus ~24 s for the language
+ * file). The first parse of a static file - anything under standard/ or
+ * common/: rulesets, languages, mod metadata - serializes the finished node
+ * tree to <file>.ybc next to the source; later starts replay it straight into
+ * NodeBuilder events: no scanner, no parser, no regex. Validity = source size
+ * + mtime in the header; any mismatch, truncation or malformed byte falls
+ * back to a normal parse which rewrites the cache. Machine-local format
+ * (big-endian, expands anchors); never ship .ybc files in releases. */
+static bool amiga_ybc_wanted(const std::string& fn) {
+  return fn.find("standard/") != std::string::npos ||
+         fn.find("common/") != std::string::npos;
+}
+
+struct AmigaYbcOut {
+  std::string buf;
+  void u8(unsigned v) { buf += (char)(v & 0xffu); }
+  void u16(unsigned v) { u8(v >> 8); u8(v); }
+  void u32(unsigned long v) {
+    u8((unsigned)(v >> 24)); u8((unsigned)(v >> 16));
+    u8((unsigned)(v >> 8)); u8((unsigned)v);
+  }
+  void str16(const std::string& s) { u16((unsigned)s.size()); buf.append(s); }
+  void str32(const std::string& s) { u32((unsigned long)s.size()); buf.append(s); }
+};
+
+static bool amiga_ybc_write_node(AmigaYbcOut& o, const Node& n, int depth) {
+  if (depth > 64) return false; /* anchor cycles: not in rulesets, refuse */
+  switch (n.Type()) {
+    case NodeType::Null:
+      o.u8(0);
+      return true;
+    case NodeType::Scalar: {
+      o.u8(1);
+      std::string tag = n.Tag();
+      if (tag.size() > 0xffffu) return false;
+      o.str16(tag);
+      o.str32(n.Scalar());
+      return true;
+    }
+    case NodeType::Sequence: {
+      o.u8(2);
+      std::string tag = n.Tag();
+      if (tag.size() > 0xffffu) return false;
+      o.str16(tag);
+      o.u32((unsigned long)n.size());
+      for (Node::const_iterator it = n.begin(); it != n.end(); ++it) {
+        if (!amiga_ybc_write_node(o, *it, depth + 1)) return false;
+      }
+      return true;
+    }
+    case NodeType::Map: {
+      o.u8(3);
+      std::string tag = n.Tag();
+      if (tag.size() > 0xffffu) return false;
+      o.str16(tag);
+      o.u32((unsigned long)n.size());
+      for (Node::const_iterator it = n.begin(); it != n.end(); ++it) {
+        if (!amiga_ybc_write_node(o, it->first, depth + 1)) return false;
+        if (!amiga_ybc_write_node(o, it->second, depth + 1)) return false;
+      }
+      return true;
+    }
+    default:
+      return false; /* undefined: not cacheable */
+  }
+}
+
+struct AmigaYbcIn {
+  const unsigned char* p;
+  const unsigned char* end;
+  bool ok;
+  unsigned u8() {
+    if (p >= end) { ok = false; return 0; }
+    return (unsigned)*p++;
+  }
+  unsigned u16() { unsigned a = u8(); unsigned b = u8(); return (a << 8) | b; }
+  unsigned long u32() {
+    unsigned long a = u16(); unsigned long b = u16();
+    return (a << 16) | b;
+  }
+  bool str16(std::string& s) {
+    unsigned n = u16();
+    if (!ok || (unsigned long)(end - p) < (unsigned long)n) { ok = false; return false; }
+    s.assign((const char*)p, n); p += n; return true;
+  }
+  bool str32(std::string& s) {
+    unsigned long n = u32();
+    if (!ok || (unsigned long)(end - p) < n) { ok = false; return false; }
+    s.assign((const char*)p, (size_t)n); p += n; return true;
+  }
+};
+
+static bool amiga_ybc_read_node(AmigaYbcIn& in, EventHandler& eb, int depth) {
+  if (depth > 64) return false;
+  unsigned t = in.u8();
+  if (!in.ok) return false;
+  const Mark m = Mark::null_mark();
+  switch (t) {
+    case 0:
+      eb.OnNull(m, NullAnchor);
+      return true;
+    case 1: {
+      std::string tag, val;
+      if (!in.str16(tag) || !in.str32(val)) return false;
+      eb.OnScalar(m, tag, NullAnchor, val);
+      return true;
+    }
+    case 2: {
+      std::string tag;
+      if (!in.str16(tag)) return false;
+      unsigned long n = in.u32();
+      if (!in.ok || n > (unsigned long)(in.end - in.p)) return false;
+      eb.OnSequenceStart(m, tag, NullAnchor, EmitterStyle::Block);
+      for (unsigned long i = 0; i < n; ++i) {
+        if (!amiga_ybc_read_node(in, eb, depth + 1)) return false;
+      }
+      eb.OnSequenceEnd();
+      return true;
+    }
+    case 3: {
+      std::string tag;
+      if (!in.str16(tag)) return false;
+      unsigned long n = in.u32();
+      if (!in.ok || n > (unsigned long)(in.end - in.p)) return false;
+      eb.OnMapStart(m, tag, NullAnchor, EmitterStyle::Block);
+      for (unsigned long i = 0; i < n; ++i) {
+        if (!amiga_ybc_read_node(in, eb, depth + 1)) return false;
+        if (!amiga_ybc_read_node(in, eb, depth + 1)) return false;
+      }
+      eb.OnMapEnd();
+      return true;
+    }
+    default:
+      return false;
+  }
+}
+
+static bool amiga_ybc_try_load(const std::string& fn, unsigned long srcSize,
+                               unsigned long srcMtime, Node& out) {
+  std::string data;
+  if (!amiga_slurp(fn + ".ybc", data)) return false;
+  if (data.size() < 12) return false;
+  const unsigned char* q = (const unsigned char*)data.data();
+  if (q[0] != 'Y' || q[1] != 'B' || q[2] != 'C' || q[3] != '1') return false;
+  AmigaYbcIn in;
+  in.p = q + 4;
+  in.end = q + data.size();
+  in.ok = true;
+  if (in.u32() != srcSize) return false;
+  if (in.u32() != srcMtime) return false;
+  NodeBuilder builder;
+  builder.OnDocumentStart(Mark::null_mark());
+  if (!amiga_ybc_read_node(in, builder, 0)) return false;
+  if (in.p != in.end) return false;
+  builder.OnDocumentEnd();
+  /* Node::reset, NOT operator= - gcc 6.5 ICEs (segfault) instantiating
+   * Node::operator= inside the yaml single TU at -O1 */
+  out.reset(builder.Root());
+  return true;
+}
+
+static void amiga_ybc_save(const std::string& fn, unsigned long srcSize,
+                           unsigned long srcMtime, const Node& root) {
+  AmigaYbcOut o;
+  o.buf.reserve(96 * 1024);
+  o.buf.append("YBC1");
+  o.u32(srcSize);
+  o.u32(srcMtime);
+  if (!amiga_ybc_write_node(o, root, 0)) return;
+  std::string tmp = fn + ".ybt";
+  FILE* f = fopen(tmp.c_str(), "wb");
+  if (!f) return;
+  bool wok = fwrite(o.buf.data(), 1, o.buf.size(), f) == o.buf.size();
+  fclose(f);
+  if (!wok) { remove(tmp.c_str()); return; }
+  std::string cf = fn + ".ybc";
+  remove(cf.c_str());
+  rename(tmp.c_str(), cf.c_str());
+}
+/* --- end AMIGA-PORT ybc --------------------------------------------------*/
+"""
+
+
 def patch_yamlcpp(yamldir):
     """yaml-cpp reads files through std::ifstream, which hangs on close with
     this toolchain (see native/amiga_fstream.h). Both LoadFile entry points are
@@ -53,13 +239,16 @@ def patch_yamlcpp(yamldir):
 
     with open(path, "r", encoding="utf-8", errors="surrogateescape") as f:
         text = f.read()
-    if "amiga_slurp" in text:
+    if "amiga_ybc" in text:
         return "already"
 
     helper = """
 // AMIGA-PORT: std::ifstream::close() never returns on m68k-amigaos libstdc++,
 // so the file is read with stdio and parsed from memory instead.
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <sys/stat.h>
 static bool amiga_slurp(const std::string& filename, std::string& out) {
   FILE* f = fopen(filename.c_str(), "rb");
   if (!f) return false;
@@ -71,6 +260,7 @@ static bool amiga_slurp(const std::string& filename, std::string& out) {
 }
 """
     text = text.replace("namespace YAML {", helper + "\nnamespace YAML {", 1)
+    text = text.replace("namespace YAML {", "namespace YAML {\n" + YBC_BLOCK, 1)
     text = text.replace(
         "  std::ifstream fin(filename.c_str());\n"
         "  if (!fin) {\n"
@@ -78,10 +268,29 @@ static bool amiga_slurp(const std::string& filename, std::string& out) {
         "  }\n"
         "  return Load(fin);",
         "  std::string text;\n"
+        "  unsigned long srcSize_ = 0, srcMtime_ = 0;\n"
+        "  bool cache_ = amiga_ybc_wanted(filename);\n"
+        "  if (cache_) {\n"
+        "    struct stat st_;\n"
+        "    if (stat(filename.c_str(), &st_) == 0) {\n"
+        "      srcSize_ = (unsigned long)st_.st_size;\n"
+        "      srcMtime_ = (unsigned long)st_.st_mtime;\n"
+        "      Node cached_;\n"
+        "      if (amiga_ybc_try_load(filename, srcSize_, srcMtime_, cached_)) {\n"
+        "        return cached_;\n"
+        "      }\n"
+        "    } else {\n"
+        "      cache_ = false;\n"
+        "    }\n"
+        "  }\n"
         "  if (!amiga_slurp(filename, text)) {\n"
         "    throw BadFile();\n"
         "  }\n"
-        "  return Load(text);")
+        "  Node root_ = Load(text);\n"
+        "  if (cache_) {\n"
+        "    amiga_ybc_save(filename, srcSize_, srcMtime_, root_);\n"
+        "  }\n"
+        "  return root_;")
     text = text.replace(
         "  std::ifstream fin(filename.c_str());\n"
         "  if (!fin) {\n"
@@ -297,6 +506,93 @@ def patch_yamlcpp_memory(yamldir):
         h = h.replace(oldh, newh, 1)
         with open(hpath, "w", encoding="utf-8", errors="surrogateescape") as f:
             f.write(h)
+    return "applied"
+
+
+def patch_yamlcpp_nodealloc(yamldir):
+    """yaml-cpp 0.6.3 pays SEVEN heap allocations per node: node + its
+    shared_ptr control block, node_ref + cb, node_data + cb, plus a std::set
+    RB-tree insert holding the node alive in the pool. With ~50k nodes in the
+    TFTD rulesets that is ~350k mallocs - measured as the bulk of the 50 s
+    ruleset band left after the .ybc cache. make_shared fuses object and
+    control block (3 allocations saved), and the pool set becomes a vector:
+    create_node always makes a fresh pointer and pools only ever merge whole,
+    so entries are unique by construction and the ordering was never used.
+    Same trees, same lifetimes."""
+    path = os.path.join(yamldir, "src", "memory.cpp")
+    hpath = os.path.join(yamldir, "include", "yaml-cpp", "node", "detail", "memory.h")
+    npath = os.path.join(yamldir, "include", "yaml-cpp", "node", "detail", "node.h")
+    rpath = os.path.join(yamldir, "include", "yaml-cpp", "node", "detail", "node_ref.h")
+    for p in (path, hpath, npath, rpath):
+        if not os.path.isfile(p):
+            return "skipped (no yaml-cpp at %s)" % yamldir
+
+    with open(path, "r", encoding="utf-8", errors="surrogateescape") as f:
+        text = f.read()
+    if "make_shared<node>" in text:
+        return "already"
+
+    old = ("node& memory::create_node() {\n"
+           "  shared_node pNode(new node);\n"
+           "  m_nodes.insert(pNode);\n"
+           "  return *pNode;\n"
+           "}\n")
+    new = ("node& memory::create_node() {\n"
+           "  /* AMIGA-PORT nodealloc: make_shared (one allocation, not two) and\n"
+           "   * push_back (no RB-tree insert) */\n"
+           "  shared_node pNode = std::make_shared<node>();\n"
+           "  m_nodes.push_back(pNode);\n"
+           "  return *pNode;\n"
+           "}\n")
+    if old not in text:
+        raise SystemExit("PATCH FAILED: memory::create_node not found in %s" % path)
+    text = text.replace(old, new, 1)
+    old = ("void memory::merge(const memory& rhs) {\n"
+           "  m_nodes.insert(rhs.m_nodes.begin(), rhs.m_nodes.end());\n"
+           "}\n")
+    new = ("void memory::merge(const memory& rhs) {\n"
+           "  m_nodes.insert(m_nodes.end(), rhs.m_nodes.begin(), rhs.m_nodes.end());\n"
+           "}\n")
+    if old not in text:
+        raise SystemExit("PATCH FAILED: memory::merge not found in %s" % path)
+    text = text.replace(old, new, 1)
+    text = text.replace('#include "yaml-cpp/node/detail/memory.h"\n',
+                        '#include <memory>  /* AMIGA-PORT nodealloc */\n'
+                        '#include "yaml-cpp/node/detail/memory.h"\n', 1)
+    with open(path, "w", encoding="utf-8", errors="surrogateescape") as f:
+        f.write(text)
+
+    with open(hpath, "r", encoding="utf-8", errors="surrogateescape") as f:
+        h = f.read()
+    old = "  typedef std::set<shared_node> Nodes;\n"
+    new = ("  /* AMIGA-PORT nodealloc: vector, not set - see memory.cpp */\n"
+           "  typedef std::vector<shared_node> Nodes;\n")
+    if old not in h:
+        raise SystemExit("PATCH FAILED: Nodes typedef not found in %s" % hpath)
+    h = h.replace(old, new, 1)
+    h = h.replace("#include <set>\n", "#include <set>\n#include <vector>\n", 1)
+    with open(hpath, "w", encoding="utf-8", errors="surrogateescape") as f:
+        f.write(h)
+
+    with open(npath, "r", encoding="utf-8", errors="surrogateescape") as f:
+        n = f.read()
+    old = "  node() : m_pRef(new node_ref), m_dependencies{} {}\n"
+    new = "  node() : m_pRef(std::make_shared<node_ref>()), m_dependencies{} {}  /* AMIGA-PORT nodealloc */\n"
+    if old not in n:
+        raise SystemExit("PATCH FAILED: node ctor not found in %s" % npath)
+    n = n.replace(old, new, 1)
+    with open(npath, "w", encoding="utf-8", errors="surrogateescape") as f:
+        f.write(n)
+
+    with open(rpath, "r", encoding="utf-8", errors="surrogateescape") as f:
+        r = f.read()
+    old = "  node_ref() : m_pData(new node_data) {}\n"
+    new = "  node_ref() : m_pData(std::make_shared<node_data>()) {}  /* AMIGA-PORT nodealloc */\n"
+    if old not in r:
+        raise SystemExit("PATCH FAILED: node_ref ctor not found in %s" % rpath)
+    r = r.replace(old, new, 1)
+    with open(rpath, "w", encoding="utf-8", errors="surrogateescape") as f:
+        f.write(r)
     return "applied"
 
 
@@ -1119,6 +1415,7 @@ def main():
         print("  %-24s %s" % ("yaml-cpp pool merge", patch_yamlcpp_memory(sys.argv[2])))
         print("  %-24s %s" % ("yaml-cpp ICE dodge", patch_yamlcpp_ice(sys.argv[2])))
         print("  %-24s %s" % ("yaml-cpp tick hook", patch_yamlcpp_tick(sys.argv[2])))
+        print("  %-24s %s" % ("yaml-cpp nodealloc", patch_yamlcpp_nodealloc(sys.argv[2])))
     if not os.path.isdir(os.path.join(src, "Engine")):
         raise SystemExit("not an OpenXcom src directory: %s" % src)
 
@@ -1216,11 +1513,11 @@ def main():
         '#define OPENXCOM_VERSION_LONG "1.0.0.0"\n'
         '#define OPENXCOM_VERSION_NUMBER 1,0,0,0\n',
         '#ifdef AMIGA_FPU_BUILD\n'
-        '#define OPENXCOM_VERSION_SHORT "0.7.1 FPU"\n'
+        '#define OPENXCOM_VERSION_SHORT "0.7.2 FPU"\n'
         '#else\n'
-        '#define OPENXCOM_VERSION_SHORT "0.7.1"\n'
+        '#define OPENXCOM_VERSION_SHORT "0.7.2"\n'
         '#endif\n'
-        '#define OPENXCOM_VERSION_LONG "0.7.1.0"\n'
+        '#define OPENXCOM_VERSION_LONG "0.7.2.0"\n'
         '#define OPENXCOM_VERSION_NUMBER 0,7,1,0\n'
         '#define OPENXCOM_VERSION_GIT ""\n',
         "port version")))
@@ -7216,6 +7513,107 @@ def main():
         "\t\t\t\tAmigaPathMemoBump();\n"
         "#endif\n",
         "path memo bump door")))
+
+    # 6am. Load step A (2026-08-19): PCK/DAT/SPK/BDY pixel loaders read
+    #      their files ONE BYTE AT A TIME through istream::read - a sentry
+    #      object plus virtual calls per byte, ~10 KB/s on the 68k. Measured
+    #      on the 040/40 (splash timeline): BDY geoscape screens 57 s,
+    #      battlescape PCK sets 67 s of a 344 s start. Each loader now
+    #      slurps the file with stdio and decodes from memory - identical
+    #      bytes, identical decode loops, plus explicit end-of-buffer
+    #      guards where the originals relied on istream EOF semantics.
+    #      Also speeds up battle generation (terrain PCKs load per battle).
+    results.append(("Engine/Surface.cpp (slurp includes)", edit(
+        os.path.join(src, "Engine", "Surface.cpp"),
+        '#include <SDL_endian.h>\n',
+        '#include <SDL_endian.h>\n#include <cstdio>\n#include <cstdlib>\n',
+        "slurp includes")))
+    results.append(("Engine/Surface.cpp (loadSpk slurp)", edit(
+        os.path.join(src, "Engine", "Surface.cpp"),
+        'void Surface::loadSpk(const std::string &filename)\n{\n\t// Load file and put pixels in surface\n\tstd::ifstream imgFile (filename.c_str(), std::ios::in | std::ios::binary);\n\tif (!imgFile)\n\t{\n\t\tthrow Exception(filename + " not found");\n\t}\n\n\t// Lock the surface\n\tlock();\n\n\tUint16 flag;\n\tUint8 value;\n\tint x = 0, y = 0;\n\n\twhile (imgFile.read((char*)&flag, sizeof(flag)))\n\t{\n\t\tflag = SDL_SwapLE16(flag);\n\n\t\tif (flag == 65535)\n\t\t{\n\t\t\timgFile.read((char*)&flag, sizeof(flag));\n\t\t\tflag = SDL_SwapLE16(flag);\n\n\t\t\tfor (int i = 0; i < flag * 2; ++i)\n\t\t\t{\n\t\t\t\tsetPixelIterative(&x, &y, 0);\n\t\t\t}\n\t\t}\n\t\telse if (flag == 65534)\n\t\t{\n\t\t\timgFile.read((char*)&flag, sizeof(flag));\n\t\t\tflag = SDL_SwapLE16(flag);\n\n\t\t\tfor (int i = 0; i < flag * 2; ++i)\n\t\t\t{\n\t\t\t\timgFile.read((char*)&value, 1);\n\t\t\t\tsetPixelIterative(&x, &y, value);\n\t\t\t}\n\t\t}\n\t}\n\n\t// Unlock the surface\n\tunlock();\n\n\timgFile.close();\n}\n',
+        '/* AMIGA-PORT 6am: read a whole file into memory with stdio. The pixel\n * loaders below read their files BYTE BY BYTE through istream::read - one\n * sentry construction and several virtual calls per byte, ~10 KB/s on the\n * 68k (measured: BDY screens 57 s, battlescape PCKs 67 s on the 040/40).\n * Slurp once, decode from the buffer - same bytes, same decode loops. */\nstatic unsigned char *amigaSlurpFile_(const std::string &filename, long *outLen)\n{\n\tFILE *f = fopen(filename.c_str(), "rb");\n\tlong n;\n\tunsigned char *buf;\n\tif (!f) return 0;\n\tif (fseek(f, 0, SEEK_END) != 0) { fclose(f); return 0; }\n\tn = ftell(f);\n\tif (n < 0) { fclose(f); return 0; }\n\tif (fseek(f, 0, SEEK_SET) != 0) { fclose(f); return 0; }\n\tbuf = (unsigned char *)malloc((size_t)n + 1);\n\tif (!buf) { fclose(f); return 0; }\n\tif (n > 0 && fread(buf, 1, (size_t)n, f) != (size_t)n) { free(buf); fclose(f); return 0; }\n\tfclose(f);\n\t*outLen = n;\n\treturn buf;\n}\n\nvoid Surface::loadSpk(const std::string &filename)\n{\n\t/* AMIGA-PORT 6am: slurp + decode from memory */\n\tlong spkLen_ = 0;\n\tunsigned char *spkBuf_ = amigaSlurpFile_(filename, &spkLen_);\n\tif (!spkBuf_)\n\t{\n\t\tthrow Exception(filename + " not found");\n\t}\n\n\t// Lock the surface\n\tlock();\n\n\tUint16 flag;\n\tUint8 value;\n\tint x = 0, y = 0;\n\tconst unsigned char *p_ = spkBuf_, *pEnd_ = spkBuf_ + spkLen_;\n\n\twhile (p_ + 2 <= pEnd_)\n\t{\n\t\tflag = (Uint16)(p_[0] | (p_[1] << 8)); p_ += 2;\n\n\t\tif (flag == 65535)\n\t\t{\n\t\t\tif (p_ + 2 > pEnd_) break;\n\t\t\tflag = (Uint16)(p_[0] | (p_[1] << 8)); p_ += 2;\n\n\t\t\tfor (int i = 0; i < flag * 2; ++i)\n\t\t\t{\n\t\t\t\tsetPixelIterative(&x, &y, 0);\n\t\t\t}\n\t\t}\n\t\telse if (flag == 65534)\n\t\t{\n\t\t\tif (p_ + 2 > pEnd_) break;\n\t\t\tflag = (Uint16)(p_[0] | (p_[1] << 8)); p_ += 2;\n\n\t\t\tfor (int i = 0; i < flag * 2; ++i)\n\t\t\t{\n\t\t\t\tif (p_ >= pEnd_) break;\n\t\t\t\tvalue = *p_++;\n\t\t\t\tsetPixelIterative(&x, &y, value);\n\t\t\t}\n\t\t}\n\t}\n\n\t// Unlock the surface\n\tunlock();\n\n\tfree(spkBuf_);\n}\n',
+        "loadSpk slurp")))
+    results.append(("Engine/Surface.cpp (loadBdy slurp)", edit(
+        os.path.join(src, "Engine", "Surface.cpp"),
+        'void Surface::loadBdy(const std::string &filename)\n{\n\t// Load file and put pixels in surface\n\tstd::ifstream imgFile (filename.c_str(), std::ios::in | std::ios::binary);\n\tif (!imgFile)\n\t{\n\t\tthrow Exception(filename + " not found");\n\t}\n\n\t// Lock the surface\n\tlock();\n\n\tUint8 dataByte;\n\tint pixelCnt;\n\tint x = 0, y = 0;\n\tint currentRow = 0;\n\n\twhile (imgFile.read((char*)&dataByte, sizeof(dataByte)))\n\t{\n\t\tif (dataByte >= 129)\n\t\t{\n\t\t\tpixelCnt = 257 - (int)dataByte;\n\t\t\timgFile.read((char*)&dataByte, sizeof(dataByte));\n\t\t\tcurrentRow = y;\n\t\t\tfor (int i = 0; i < pixelCnt; ++i)\n\t\t\t{\n\t\t\t\tif (currentRow == y) // avoid overscan into next row\n\t\t\t\t\tsetPixelIterative(&x, &y, dataByte);\n\t\t\t}\n\t\t}\n\t\telse\n\t\t{\n\t\t\tpixelCnt = 1 + (int)dataByte;\n\t\t\tcurrentRow = y;\n\t\t\tfor (int i = 0; i < pixelCnt; ++i)\n\t\t\t{\n\t\t\t\timgFile.read((char*)&dataByte, sizeof(dataByte));\n\t\t\t\tif (currentRow == y) // avoid overscan into next row\n\t\t\t\t\tsetPixelIterative(&x, &y, dataByte);\n\t\t\t}\n\t\t}\n\t}\n\n\t// Unlock the surface\n\tunlock();\n\n\timgFile.close();\n}\n',
+        'void Surface::loadBdy(const std::string &filename)\n{\n\t/* AMIGA-PORT 6am/6am3: slurp + row-run decode straight into the pixel\n\t * buffer. setPixelIterative costs ~200 cycles per pixel (call + bounds\n\t * + row multiply); the 76 UFOGRAPH BDYs alone were 24 s of the 040/40\n\t * start. Semantics identical to the original per-pixel loop: a run is\n\t * clipped at the end of the row (the stream is still consumed), and the\n\t * cursor continues at the start of the next row. */\n\tlong bdyLen_ = 0;\n\tunsigned char *bdyBuf_ = amigaSlurpFile_(filename, &bdyLen_);\n\tif (!bdyBuf_)\n\t{\n\t\tthrow Exception(filename + " not found");\n\t}\n\n\t// Lock the surface\n\tlock();\n\n\tconst unsigned char *p_ = bdyBuf_, *pEnd_ = bdyBuf_ + bdyLen_;\n\tUint8 *pix_ = (Uint8 *)_surface->pixels;\n\tconst int w_ = getWidth(), h_ = getHeight(), pitch_ = _surface->pitch;\n\tint x = 0, y = 0;\n\n\twhile (p_ < pEnd_)\n\t{\n\t\tUint8 dataByte = *p_++;\n\t\tif (dataByte >= 129)\n\t\t{\n\t\t\t/* run of one value */\n\t\t\tint cnt = 257 - (int)dataByte;\n\t\t\tif (p_ >= pEnd_) break;\n\t\t\t{\n\t\t\t\tUint8 v_ = *p_++;\n\t\t\t\tint n_ = w_ - x;\n\t\t\t\tif (cnt < n_) n_ = cnt;\n\t\t\t\tif (y < h_ && n_ > 0) memset(pix_ + (long)y * pitch_ + x, v_, (size_t)n_);\n\t\t\t\tx += n_;\n\t\t\t\tif (x >= w_) { x = 0; ++y; }\n\t\t\t}\n\t\t}\n\t\telse\n\t\t{\n\t\t\t/* literal run; consumed from the stream even past the row end */\n\t\t\tint cnt = 1 + (int)dataByte;\n\t\t\t{\n\t\t\t\tlong avail_ = (long)(pEnd_ - p_);\n\t\t\t\tif ((long)cnt > avail_) cnt = (int)avail_;\n\t\t\t\tint n_ = w_ - x;\n\t\t\t\tif (cnt < n_) n_ = cnt;\n\t\t\t\tif (y < h_ && n_ > 0) memcpy(pix_ + (long)y * pitch_ + x, p_, (size_t)n_);\n\t\t\t\tp_ += cnt;\n\t\t\t\tx += n_;\n\t\t\t\tif (x >= w_) { x = 0; ++y; }\n\t\t\t}\n\t\t}\n\t}\n\n\t// Unlock the surface\n\tunlock();\n\n\tfree(bdyBuf_);\n}\n',
+        "loadBdy slurp")))
+    results.append(("Engine/SurfaceSet.cpp (slurp includes)", edit(
+        os.path.join(src, "Engine", "SurfaceSet.cpp"),
+        '#include <fstream>\n',
+        '#include <fstream>\n#include <cstdio>\n#include <cstdlib>\n',
+        "slurp includes")))
+    results.append(("Engine/SurfaceSet.cpp (slurp helper)", edit(
+        os.path.join(src, "Engine", "SurfaceSet.cpp"),
+        'void SurfaceSet::loadPck(const std::string &pck, const std::string &tab)\n{\n',
+        '/* AMIGA-PORT 6am: read a whole file into memory with stdio. The pixel\n * loaders below read their files BYTE BY BYTE through istream::read - one\n * sentry construction and several virtual calls per byte, ~10 KB/s on the\n * 68k (measured: BDY screens 57 s, battlescape PCKs 67 s on the 040/40).\n * Slurp once, decode from the buffer - same bytes, same decode loops. */\nstatic unsigned char *amigaSlurpFile_(const std::string &filename, long *outLen)\n{\n\tFILE *f = fopen(filename.c_str(), "rb");\n\tlong n;\n\tunsigned char *buf;\n\tif (!f) return 0;\n\tif (fseek(f, 0, SEEK_END) != 0) { fclose(f); return 0; }\n\tn = ftell(f);\n\tif (n < 0) { fclose(f); return 0; }\n\tif (fseek(f, 0, SEEK_SET) != 0) { fclose(f); return 0; }\n\tbuf = (unsigned char *)malloc((size_t)n + 1);\n\tif (!buf) { fclose(f); return 0; }\n\tif (n > 0 && fread(buf, 1, (size_t)n, f) != (size_t)n) { free(buf); fclose(f); return 0; }\n\tfclose(f);\n\t*outLen = n;\n\treturn buf;\n}\n\nvoid SurfaceSet::loadPck(const std::string &pck, const std::string &tab)\n{\n',
+        "slurp helper")))
+    results.append(("Engine/SurfaceSet.cpp (loadPck slurp)", edit(
+        os.path.join(src, "Engine", "SurfaceSet.cpp"),
+        '\t// Load PCK and put pixels in surfaces\n\tstd::ifstream imgFile (pck.c_str(), std::ios::in | std::ios::binary);\n\tif (!imgFile)\n\t{\n\t\tthrow Exception(pck + " not found");\n\t}\n\n\tUint8 value;\n\n\tfor (int frame = 0; frame < nframes; ++frame)\n\t{\n\t\tint x = 0, y = 0;\n\n\t\t// Lock the surface\n\t\t_frames[frame]->lock();\n\n\t\timgFile.read((char*)&value, 1);\n\t\tfor (int i = 0; i < value; ++i)\n\t\t{\n\t\t\tfor (int j = 0; j < _width; ++j)\n\t\t\t{\n\t\t\t\t_frames[frame]->setPixelIterative(&x, &y, 0);\n\t\t\t}\n\t\t}\n\n\t\twhile (imgFile.read((char*)&value, 1) && value != 255)\n\t\t{\n\t\t\tif (value == 254)\n\t\t\t{\n\t\t\t\timgFile.read((char*)&value, 1);\n\t\t\t\tfor (int i = 0; i < value; ++i)\n\t\t\t\t{\n\t\t\t\t\t_frames[frame]->setPixelIterative(&x, &y, 0);\n\t\t\t\t}\n\t\t\t}\n\t\t\telse\n\t\t\t{\n\t\t\t\t_frames[frame]->setPixelIterative(&x, &y, value);\n\t\t\t}\n\t\t}\n\n\t\t// Unlock the surface\n\t\t_frames[frame]->unlock();\n\t}\n\n\timgFile.close();\n}\n',
+        '\t// Load PCK and put pixels in surfaces\n\t/* AMIGA-PORT 6am: slurp + decode from memory */\n\tlong pckLen_ = 0;\n\tunsigned char *pckBuf_ = amigaSlurpFile_(pck, &pckLen_);\n\tif (!pckBuf_)\n\t{\n\t\tthrow Exception(pck + " not found");\n\t}\n\tconst unsigned char *p_ = pckBuf_, *pEnd_ = pckBuf_ + pckLen_;\n\n\tUint8 value;\n\n\tfor (int frame = 0; frame < nframes && p_ < pEnd_; ++frame)\n\t{\n\t\tint x = 0, y = 0;\n\t\tSurface *fr_ = _frames[frame]; /* AMIGA-PORT 6am2: one map lookup per frame, not per pixel */\n\n\t\t// Lock the surface\n\t\tfr_->lock();\n\n\t\tvalue = *p_++;\n\t\tfor (int i = 0; i < value; ++i)\n\t\t{\n\t\t\tfor (int j = 0; j < _width; ++j)\n\t\t\t{\n\t\t\t\tfr_->setPixelIterative(&x, &y, 0);\n\t\t\t}\n\t\t}\n\n\t\twhile (p_ < pEnd_ && (value = *p_++) != 255)\n\t\t{\n\t\t\tif (value == 254)\n\t\t\t{\n\t\t\t\tif (p_ >= pEnd_) break;\n\t\t\t\tvalue = *p_++;\n\t\t\t\tfor (int i = 0; i < value; ++i)\n\t\t\t\t{\n\t\t\t\t\tfr_->setPixelIterative(&x, &y, 0);\n\t\t\t\t}\n\t\t\t}\n\t\t\telse\n\t\t\t{\n\t\t\t\tfr_->setPixelIterative(&x, &y, value);\n\t\t\t}\n\t\t}\n\n\t\t// Unlock the surface\n\t\tfr_->unlock();\n\t}\n\n\tfree(pckBuf_);\n}\n',
+        "loadPck slurp")))
+    results.append(("Engine/SurfaceSet.cpp (loadDat slurp)", edit(
+        os.path.join(src, "Engine", "SurfaceSet.cpp"),
+        'void SurfaceSet::loadDat(const std::string &filename)\n{\n\tint nframes = 0;\n\n\t// Load file and put pixels in surface\n\tstd::ifstream imgFile (filename.c_str(), std::ios::in | std::ios::binary);\n\tif (!imgFile)\n\t{\n\t\tthrow Exception(filename + " not found");\n\t}\n\n\timgFile.seekg(0, std::ios::end);\n\tstd::streamoff size = imgFile.tellg();\n\timgFile.seekg(0, std::ios::beg);\n\n\tnframes = (int)size / (_width * _height);\n\n\tfor (int i = 0; i < nframes; ++i)\n\t{\n\t\tSurface *surface = new Surface(_width, _height);\n\t\t_frames[i] = surface;\n\t}\n\n\tUint8 value;\n\tint x = 0, y = 0, frame = 0;\n\n\t// Lock the surface\n\t_frames[frame]->lock();\n\n\twhile (imgFile.read((char*)&value, 1))\n\t{\n\t\t_frames[frame]->setPixelIterative(&x, &y, value);\n\n\t\tif (y >= _height)\n\t\t{\n\t\t\t// Unlock the surface\n\t\t\t_frames[frame]->unlock();\n\n\t\t\tframe++;\n\t\t\tx = 0;\n\t\t\ty = 0;\n\n\t\t\tif (frame >= nframes)\n\t\t\t\tbreak;\n\t\t\telse\n\t\t\t\t_frames[frame]->lock();\n\t\t}\n\t}\n\n\timgFile.close();\n}\n',
+        'void SurfaceSet::loadDat(const std::string &filename)\n{\n\tint nframes = 0;\n\n\t/* AMIGA-PORT 6am: slurp + decode from memory */\n\tlong datLen_ = 0;\n\tunsigned char *datBuf_ = amigaSlurpFile_(filename, &datLen_);\n\tif (!datBuf_)\n\t{\n\t\tthrow Exception(filename + " not found");\n\t}\n\n\tnframes = (int)(datLen_ / (_width * _height));\n\n\tfor (int i = 0; i < nframes; ++i)\n\t{\n\t\tSurface *surface = new Surface(_width, _height);\n\t\t_frames[i] = surface;\n\t}\n\n\tUint8 value;\n\tint x = 0, y = 0, frame = 0;\n\n\tSurface *fr_ = _frames[frame]; /* AMIGA-PORT 6am2 */\n\n\t// Lock the surface\n\tfr_->lock();\n\n\tconst unsigned char *p_ = datBuf_, *pEnd_ = datBuf_ + datLen_;\n\twhile (p_ < pEnd_)\n\t{\n\t\tvalue = *p_++;\n\t\tfr_->setPixelIterative(&x, &y, value);\n\n\t\tif (y >= _height)\n\t\t{\n\t\t\t// Unlock the surface\n\t\t\tfr_->unlock();\n\n\t\t\tframe++;\n\t\t\tx = 0;\n\t\t\ty = 0;\n\n\t\t\tif (frame >= nframes)\n\t\t\t\tbreak;\n\t\t\telse\n\t\t\t{\n\t\t\t\tfr_ = _frames[frame];\n\t\t\t\tfr_->lock();\n\t\t\t}\n\t\t}\n\t}\n\n\tfree(datBuf_);\n}\n',
+        "loadDat slurp")))
+
+    # 6am4. Load step A4 (2026-08-19): the last big block of
+    #       loadBattlescapeResources (76->77%%, 24 s on the 040/40) was
+    #       createTransparencyLUT: TFTD builds transparency tables for the
+    #       four battlescape palettes, ~1.5M comparisons each with THREE
+    #       Palette::getColors() cross-TU calls inside the innermost loop.
+    #       A local copy of the palette makes it pure integer math -
+    #       bit-identical tables. loadLOFTEMPS read its file 2 bytes at a
+    #       time through istream::read - slurped (odd trailing byte dropped
+    #       exactly like the original EOF path).
+    results.append(("Mod/Mod.cpp (transparency LUT local palette)", edit(
+        os.path.join(src, "Mod", "Mod.cpp"),
+        "void Mod::createTransparencyLUT(Palette *pal)\n{\n\tSDL_Color desiredColor;\n\tstd::vector<Uint8> lookUpTable;\n\t// start with the color sets\n\tfor (std::vector<SDL_Color>::const_iterator tint = _transparencies.begin(); tint != _transparencies.end(); ++tint)\n\t{\n\t\t// then the opacity levels, using the alpha channel as the step\n\t\tfor (int opacity = 1; opacity < 1 + tint->unused * 4; opacity += tint->unused)\n\t\t{\n\t\t\t// then the palette itself\n\t\t\tfor (int currentColor = 0; currentColor < 256; ++currentColor)\n\t\t\t{\n\t\t\t\t// add the RGB values from the ruleset to those of the colors contained in the palette\n\t\t\t\t// in order to determine the desired color\n\t\t\t\t// yes all this casting and clamping is required, we're dealing with Uint8s here, and there's\n\t\t\t\t// a lot of potential for values to wrap around, which would be very bad indeed.\n\t\t\t\tdesiredColor.r = std::min(255, (int)(pal->getColors(currentColor)->r) + (tint->r * opacity));\n\t\t\t\tdesiredColor.g = std::min(255, (int)(pal->getColors(currentColor)->g) + (tint->g * opacity));\n\t\t\t\tdesiredColor.b = std::min(255, (int)(pal->getColors(currentColor)->b) + (tint->b * opacity));\n\n\t\t\t\tUint8 closest = 0;\n\t\t\t\tint lowestDifference = INT_MAX;\n\t\t\t\t// now compare each color in the palette to find the closest match to our desired one\n\t\t\t\tfor (int comparator = 0; comparator < 256; ++comparator)\n\t\t\t\t{\n\t\t\t\t\tint currentDifference = Sqr(desiredColor.r - pal->getColors(comparator)->r) +\n\t\t\t\t\t\tSqr(desiredColor.g - pal->getColors(comparator)->g) +\n\t\t\t\t\t\tSqr(desiredColor.b - pal->getColors(comparator)->b);\n\n\t\t\t\t\tif (currentDifference < lowestDifference)\n\t\t\t\t\t{\n\t\t\t\t\t\tclosest = comparator;\n\t\t\t\t\t\tlowestDifference = currentDifference;\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t\tlookUpTable.push_back(closest);\n\t\t\t}\n\t\t}\n\t}\n\t_transparencyLUTs.push_back(lookUpTable);\n}\n",
+        "void Mod::createTransparencyLUT(Palette *pal)\n{\n\t/* AMIGA-PORT 6am4: copy the palette into local arrays once. The inner\n\t * loop called Palette::getColors() (a cross-TU function call) three\n\t * times per comparison - ~6 s per palette on the 040/40, and TFTD\n\t * builds four battlescape palettes = the whole 24 s block. Same\n\t * integers, same argmin, bit-identical tables. */\n\tint palR_[256], palG_[256], palB_[256];\n\tfor (int i_ = 0; i_ < 256; ++i_)\n\t{\n\t\tconst SDL_Color *c_ = pal->getColors(i_);\n\t\tpalR_[i_] = c_->r; palG_[i_] = c_->g; palB_[i_] = c_->b;\n\t}\n\tSDL_Color desiredColor;\n\tstd::vector<Uint8> lookUpTable;\n\t// start with the color sets\n\tfor (std::vector<SDL_Color>::const_iterator tint = _transparencies.begin(); tint != _transparencies.end(); ++tint)\n\t{\n\t\t// then the opacity levels, using the alpha channel as the step\n\t\tfor (int opacity = 1; opacity < 1 + tint->unused * 4; opacity += tint->unused)\n\t\t{\n\t\t\t// then the palette itself\n\t\t\tfor (int currentColor = 0; currentColor < 256; ++currentColor)\n\t\t\t{\n\t\t\t\t// add the RGB values from the ruleset to those of the colors contained in the palette\n\t\t\t\t// in order to determine the desired color\n\t\t\t\t// yes all this casting and clamping is required, we're dealing with Uint8s here, and there's\n\t\t\t\t// a lot of potential for values to wrap around, which would be very bad indeed.\n\t\t\t\tdesiredColor.r = std::min(255, palR_[currentColor] + (tint->r * opacity));\n\t\t\t\tdesiredColor.g = std::min(255, palG_[currentColor] + (tint->g * opacity));\n\t\t\t\tdesiredColor.b = std::min(255, palB_[currentColor] + (tint->b * opacity));\n\n\t\t\t\tUint8 closest = 0;\n\t\t\t\tint lowestDifference = INT_MAX;\n\t\t\t\t// now compare each color in the palette to find the closest match to our desired one\n\t\t\t\tfor (int comparator = 0; comparator < 256; ++comparator)\n\t\t\t\t{\n\t\t\t\t\tint currentDifference = Sqr((int)desiredColor.r - palR_[comparator]) +\n\t\t\t\t\t\tSqr((int)desiredColor.g - palG_[comparator]) +\n\t\t\t\t\t\tSqr((int)desiredColor.b - palB_[comparator]);\n\n\t\t\t\t\tif (currentDifference < lowestDifference)\n\t\t\t\t\t{\n\t\t\t\t\t\tclosest = comparator;\n\t\t\t\t\t\tlowestDifference = currentDifference;\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t\tlookUpTable.push_back(closest);\n\t\t\t}\n\t\t}\n\t}\n\t_transparencyLUTs.push_back(lookUpTable);\n}\n",
+        "transparency LUT local palette")))
+    results.append(("Mod/MapDataSet.cpp (loftemps includes)", edit(
+        os.path.join(src, "Mod", "MapDataSet.cpp"),
+        '#include "MapDataSet.h"\n',
+        '#include "MapDataSet.h"\n#include <cstdio>\n',
+        "loftemps includes")))
+    results.append(("Mod/MapDataSet.cpp (loadLOFTEMPS slurp)", edit(
+        os.path.join(src, "Mod", "MapDataSet.cpp"),
+        'void MapDataSet::loadLOFTEMPS(const std::string &filename, std::vector<Uint16> *voxelData)\n{\n\t// Load file\n\tstd::ifstream mapFile (filename.c_str(), std::ios::in | std::ios::binary);\n\tif (!mapFile)\n\t{\n\t\tthrow Exception(filename + " not found");\n\t}\n\n\tUint16 value;\n\n\twhile (mapFile.read((char*)&value, sizeof(value)))\n\t{\n\t\tvalue = SDL_SwapLE16(value);\n\t\tvoxelData->push_back(value);\n\t}\n\n\tif (!mapFile.eof())\n\t{\n\t\tthrow Exception("Invalid LOFTEMPS");\n\t}\n\n\tmapFile.close();\n}\n',
+        'void MapDataSet::loadLOFTEMPS(const std::string &filename, std::vector<Uint16> *voxelData)\n{\n\t/* AMIGA-PORT 6am4: slurp - the 2-bytes-at-a-time istream reads cost\n\t * more than the file itself. Little-endian pairs, odd trailing byte\n\t * dropped exactly like the original EOF behaviour. */\n\tFILE *f_ = fopen(filename.c_str(), "rb");\n\tif (!f_)\n\t{\n\t\tthrow Exception(filename + " not found");\n\t}\n\tfseek(f_, 0, SEEK_END);\n\tlong len_ = ftell(f_);\n\tfseek(f_, 0, SEEK_SET);\n\tif (len_ < 0)\n\t{\n\t\tfclose(f_);\n\t\tthrow Exception("Invalid LOFTEMPS");\n\t}\n\tstd::vector<unsigned char> buf_((size_t)len_ + 1);\n\tif (len_ > 0 && fread(&buf_[0], 1, (size_t)len_, f_) != (size_t)len_)\n\t{\n\t\tfclose(f_);\n\t\tthrow Exception("Invalid LOFTEMPS");\n\t}\n\tfclose(f_);\n\tvoxelData->reserve(voxelData->size() + (size_t)(len_ / 2));\n\tfor (long i_ = 0; i_ + 1 < len_; i_ += 2)\n\t{\n\t\tvoxelData->push_back((Uint16)(buf_[i_] | (buf_[i_ + 1] << 8)));\n\t}\n}\n',
+        "loadLOFTEMPS slurp")))
+
+    # 6am5. Load step D (2026-08-19): Font::load decodes EVERY image sheet of
+    #       every font at startup, including the Japanese and Korean ones -
+    #       FontBig_jp.png alone is a 189 KB PNG with thousands of glyphs
+    #       (lodepng inflate on the 68k + a std::map insert per glyph). ~17 s
+    #       of the start for sheets an en/pl player never renders. The _jp/_ko
+    #       sheets are skipped unless the configured language needs them;
+    #       ja/ko users keep the full set.
+    results.append(("Engine/Font.cpp (options include)", edit(
+        os.path.join(src, "Engine", "Font.cpp"),
+        '#include "Language.h"\n',
+        '#include "Language.h"\n#include "Options.h"\n',
+        "font options include")))
+    results.append(("Engine/Font.cpp (CJK sheet skip)", edit(
+        os.path.join(src, "Engine", "Font.cpp"),
+        "\t\tstd::string file = \"Language/\" + (*i)[\"file\"].as<std::string>();\n"
+        "\t\tstd::wstring chars = Language::utf8ToWstr((*i)[\"chars\"].as<std::string>());\n",
+        "\t\tstd::string file = \"Language/\" + (*i)[\"file\"].as<std::string>();\n"
+        "#ifdef __AMIGA__\n"
+        "\t\t/* AMIGA-PORT 6am5: skip CJK sheets unless the language needs them */\n"
+        "\t\t{\n"
+        "\t\t\tconst std::string &lang_ = Options::language;\n"
+        "\t\t\tconst bool ja_ = lang_.compare(0, 2, \"ja\") == 0;\n"
+        "\t\t\tconst bool ko_ = lang_.compare(0, 2, \"ko\") == 0;\n"
+        "\t\t\tconst size_t L_ = file.size();\n"
+        "\t\t\tif (!ja_ && L_ > 7 && file.compare(L_ - 7, 7, \"_jp.png\") == 0) continue;\n"
+        "\t\t\tif (!ko_ && L_ > 7 && file.compare(L_ - 7, 7, \"_ko.png\") == 0) continue;\n"
+        "\t\t}\n"
+        "#endif\n"
+        "\t\tstd::wstring chars = Language::utf8ToWstr((*i)[\"chars\"].as<std::string>());\n",
+        "CJK sheet skip")))
 
     # 6. File streams. bebbo's libstdc++ hangs forever in
     #    std::ifstream::close() on a file that exists (see native/amiga_fstream.h
