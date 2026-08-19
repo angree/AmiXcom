@@ -1,59 +1,48 @@
-# LEFTOFF — hand-off for the next session (written 2026-08-19 night, after v0.6.0 build)
+# LEFTOFF — hand-off for the next session (updated 2026-08-19 evening, after v0.7.1 release)
 
 Read this, then `CLAUDE.md` (rules), then the top entry of `PROGRESS.md` (proofs).
 
-## PLAN RYSOWANIA BITWY (2026-08-19 rano, zatwierdzony przez usera) - AKTUALNA ROBOTA
+## STAN 2026-08-19 wieczor: v0.7.1 WYDANE - bitwa zamknieta, nastepny cel: LADOWANIE
 
-Pomiar (sonda us:/us2:, E-clock, 040/40-ekw. -80%): pelne zlozenie 160-240 ms
-= blit 110-126 (70%; 426-499 blitow, 463-549 tys. px PRZETWORZONYCH na 64 tys.
-ekranu, gcc -O1 robi ~7 instr/px przez stos) + logika per kafel 50-115
-(386-1169 kafli, ~100-130 us/kafel nawet pusty, 523-602 getFrame = 2x std::map).
-Scroll 8 fps = box naprawy (pas u kursor-kolumny) = 82% ekranu -> drawTerrain
-150-190 ms/krok + ksiegowosc cache 22 + ui 35 + flip 13. Kursor 58 ms (kolumna,
-130 kafli). Staly koszt kazdej klatki: mapa->bufor 6 ms (colour-key 0 na
-Surface mapy = sciezka per-piksel), bufor->ekran diff 6, c2p+fill 5.
-Siec: PCK to RLE (0xFE skip/0xFF end); oryginal rysowal z run-ow, nigdy nie
-dotykal przezroczystych px. OpenXcom dekoduje do plaskich 32x40 = zrodlo kosztu.
+github.com/angree/AmiXcom/releases/tag/v0.7.1 (kod 20a2a71). Pasek:
+"AmiXcom 68K 0.7.1". CALY plan rysowania z rana ZROBIONY (1A run-y sprite'ow,
+1B/1B2 osobne boxy + dokladny box kursora, 1C logika per kafel, 1D bez
+colour-key, 1E scroll tylko biezaca faza + animacja wstrzymana, krok 3 =
+amigaReachUp, 2 = asm blit) ORAZ tura AI 280 -> ~84 s (pary bezcelowe, memo
+swiatla, cywil bez FOV, int A* guess, memo getTUCost) + fix TRAPV (dzielenie
+przez sqrt(0) gdy strzelec dokladnie nad celem - ubijalo ture w srodku; user
+nie umie juz wywolac dawnego "zwisu", byc moze to bylo to). Wyniki na 040-ekw:
+postoj ~35 fps, kursor ~15, scroll 11-12, pelne zlozenie ~85 ms; na 030/50
+walka grywalna. Szczegoly + liczby: PROGRESS.md dwa gorne wpisy (0.7.1, 0.6.1).
 
-Kolejnosc (user: "1 a-d, potem e, potem dopiero 2", test usera miedzy krokami,
-jedna zmiana na build, backup przed krokiem):
- 1A. [x] (0.6.1) Sprite'y jako listy run-ow w blitNShade (C): tabela per wiersz
-        (n, (x,len)..), budowana leniwie przy 1. blicie, kasowana przez kazda
-        sciezke zapisu Surface (setPixel/clear/blit-dest/draw*/load*/lock).
-        Kod: C:\temp\amiga_oxcom\spans.py (blok 6ab). Zysk: blit 110 -> ~35-40.
- 1B. [x] (0.6.1, niedokonczone - patrz 1B2) Scroll: osobne boxy (pas, stary kursor, nowy kursor) zamiast unii;
-        kursor bez pelnej kolumny (= stary pkt 0a: sprite + 1-2 kafle nad nim).
-        Zysk: krok scrolla 150-190 -> ~30-40 ms, kursor 58 -> ~15.
- 1B2.[x] (zbudowane 19.08 12:45, test usera w toku) Kursor: box = DOKLADNY prostokat sprite'a kursora (32x40 na kafel,
-        stara+nowa pozycja, poziomy 0..vl), bez otoczki 3x3 i bez kolumny;
-        scalanie boxow tylko gdy unia nie marnuje >25%. Powod: przy krawedzi
-        kursor styka sie z pasem scrolla -> unia 73% ekranu = stan sprzed 1B.
- 1F. [x] (0.6.1) Memo visible() - krok byl 2-3 s przy ukrytych obcych w stozku
-        (canTargetUnit: do 37 promieni na kazdego niewidocznego, 3-4x na krok).
- 1G. [ ] TURA AI za dlugo trwa (user 19.08): zmierzyc sondami co zjada czas
-        (podejrzani: pelne calculateFOV po kazdym kroku obcego, AI decyzje
-        z voxelowymi promieniami, brak memo miedzy krokami). Memo visible()
-        z 1F juz pomaga; reszta do zbadania OSOBNA sesja pomiarowa.
- 1C. [ ] Logika per kafel: filtr Y 3 wysokosci -> 1 + 24 px; szybki continue
-        dla pustych kafli (pietra!); Surface* cache w MapData zamiast
-        SurfaceSet::getFrame (2x std::map); wskazniki CURSOR/SMOKE/FLOOROB
-        raz w Map::init; sonda per kafel (skad 100 us na pusty kafel?).
-        Zysk: logika 50 -> ~25.
- 1D. [ ] Surface mapy bez colour-key -> memcpy: -4 ms na KAZDEJ klatce.
- 1E. [ ] Leniwe przesuwanie 7 nieaktywnych faz przy scrollu: -15 ms/krok.
- 2.  [ ] Asm (vasm, jak c2p): amiga_span_blit(src,dst,spans,rowoff,rows,
-        spitch,dpitch,lut) dla blitow BEZ obcinania w X (reszta w C), 68020,
-        raz na sprite; przelacznik C/asm + suma kontrolna klatki. Zysk: blit
-        ~35 -> ~15. Asm NIE pomaga na logike/scroll - to algorytm.
- Potem: sprzatanie sond (us:/us2:/prof:/cache:/sig:/seed:/frameprof: ...).
-OBSERWACJA (raz, pilnowac): CPU TRAP 7/TRAPV w turze AI, stos:
-UnitWalkBState::think -> calculateFOV -> visible -> canTargetUnit ->
-distanceSq(bool) - soft-float przepelnienie, handler exit(20). Szczegoly
-LISTA-ROBOT na gorze.
-Szacunek uczciwy: scroll gesty 125 -> 60-70 ms (8 -> 14-17 fps), pelne
-zlozenie 160 -> ~70-80 ms. Nie 5x; 2-2.5x.
+**NASTEPNY CEL (user): CZASY LADOWANIA.** Zmierzone wczesniej (PROGRESS/LISTA):
+start gry ~3 min (sortLists ~80 s + region-sanitacja/vanilla resources ~72 s
+juz czesciowo zbite - sprawdzic stan), New Battle ekran ~35 s
+(NewBattleState::load: YAML battle.cfg 27 KB + Base::load), bgen.run ~35 s
+(generateMap: MCD+PCK ~2.5 s?, recalcFOV 3 s, initMap), load save ~20-25 s
+(parse ~11 s). Sondy startowe/loadowe juz sa w patch scripcie (6e-6v).
 
-## Where the port stands (2026-08-19, 0.6.0 built, release pending user test)
+**SONDY po 0.7.1**: gadatliwe (prof:/cache:/us:/us2:/geo:/map:/seed:/sig:/
+frameprof/slow frame) za opcja amigaPerfLog w options.cfg (domyslnie 0,
+zmiana bez rebuilda). fov:/step: tylko >=300 ms. ZAWSZE wlaczone i tanie:
+aisum: co 10 s w turze AI + aiturn: TOTAL na koniec (think/fov/path/light/
+ray/vis/draw + id/typ biezacej jednostki - zwis AI sam sie nazwie w logu).
+
+**Pulapki z 19.08** (oprocz starych): (1) restore_file.sh MUSI dostac pelna
+liste przed KAZDYM buildem - dzis dochodza: Engine/Options.inc.h, Engine/
+version.h (via tar -O, nie ma go w skrypcie restore), Battlescape/Pathfinding.
+cpp/.h, PathfindingNode.cpp, AIModule.cpp, BattlescapeGame.cpp, Mod/Mod.cpp,
+Engine/SurfaceSet.cpp; (2) extern "C" w srodku funkcji = blad kompilacji,
+deklaracje na poziom pliku; (3) heredoc bash psuje \ w tresci patchy - skrypty
+lat pisac Write'em; (4) zostawiony amigaAutoBattle: 1 w Work:user/options.cfg
+= "gra startuje do walki" (dzis 2x); wydania NIE zawieraja options.cfg, wiec
+zip czysty; (5) po przerwaniu buildow zaczete tlo NIE zyje - sprawdzic EXIT
+w logu zanim sie czeka.
+
+Backupy 19.08 (najwazniejsze): _1328 scroll 11-12 fps, _1341 przed krokiem 3,
+_1410 TRAPV+sondy, _1452 przed 1G3, _1507 przed memo getTUCost (tura 88 s).
+
+## Where the port stands (older context; newest state above)
 
 **Released**: github.com/angree/AmiXcom - v0.1.0..v0.5.7 (code without
 ROM/HDF/CGX-headers/game data; releases without X-COM data). Bar shows

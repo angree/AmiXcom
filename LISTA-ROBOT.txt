@@ -42,6 +42,14 @@ PILNE (19.08): tura komputera nie dziala.
     -> canTargetUnit -> distanceSq(...,bool). Handler robi exit(20) => gra ginie
     w srodku tury AI. To osobny bug (kod upstreamu), do naprawy po tescie ekranu.
 
+STAN PO 0.7.1 (19.08 wieczor, wydane): bitwa ZAMKNIETA - rysowanie (caly
+plan LEFTOFF: run-y, boxy, kafle, colour-key, scroll-faza, reachUp, asm) +
+tura AI 280 -> ~84 s (pary, swiatlo, cywile, int A*, memo getTUCost) + fix
+TRAPV. Postoj ~35 fps, kursor ~15, scroll 11-12. Na 030/50 walka grywalna.
+NASTEPNY CEL: CZASY LADOWANIA (start ~3 min, New Battle ~35 s, bgen ~35 s,
+load save ~20-25 s; sondy 6e-6v w patch scripcie gotowe). Sondy AI na stale
+(aisum/aiturn); gadatliwe za amigaPerfLog (domyslnie 0).
+
 NOWE 19.08: tura AI za wolna - zbadac sondami (LEFTOFF 1G).
 
 PLAN RYSOWANIA BITWY 19.08 (szczegoly + liczby: LEFTOFF.md gora) - kolejnosc:
