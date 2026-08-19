@@ -1,6 +1,6 @@
 AMIXCOM - LISTA POZOSTALYCH ROBOT
 
-ZROBIONE 19.08 noc (dzien LADOWANIA; niewydane, czeka na decyzje o 0.7.2):
+ZROBIONE 19.08 noc (dzien LADOWANIA; wydane jako v0.7.2):
  - Start 344 -> 128 s na 040/40 (2.7x); 030/50: 15 min -> 5.3 min.
    Kroki A-D + B + C w PROGRESS.md (slurp loaderow, hoist mapy klatek,
    cache .ybc drzew yaml, BDY row-decode, transparency-LUT lokalna paleta,

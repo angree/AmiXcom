@@ -4,7 +4,7 @@ Read this, then `CLAUDE.md` (rules), then the top entry of `PROGRESS.md` (proofs
 
 ## STAN 2026-08-19 noc: LADOWANIE 2.7x SZYBSZE - start 344 -> 128 s (040/40), na 030/50 15 min -> 5.3 min
 
-NIEWYDANE (kod lokalnie + backupy; user zdecyduje o 0.7.2). Pomiar = timeline
+WYDANE jako v0.7.2 (kod 82b9b75, release z zipem na github). Pomiar = timeline
 splashu (`splash: N% at X ms` w sdlmini.log, jest w binarce na stale).
 Mapa procentow: 1-6 start+metadata, 6-37 parse .rul (tick/plik), 40-57
 SCR/BDY/SPK geo, 58-70 sound CATy, 71-76 PCK UNITS, 76-77 okno battlescape

@@ -44,7 +44,7 @@ z RAM gry po wyjsciu (2x zerowany).
 Stan po dniu (040/40, 128 s): rulesety 43 (konsumpcja wezlow w Rule::load),
 extra+jezyk 26, PCK+okno 21, vanilla+CATy 19, start 9, sorty 3 (sortLists
 z dawnych pomiarow uniewinniony - to byl LUT+resources). Na 030/50
-grafika+dzwiek 123 s > yaml 94 s. NIEWYDANE - kod lokalny + backupy.
+grafika+dzwiek 123 s > yaml 94 s. Wydane jako v0.7.2.
 
 ## 2026-08-19 (popoludnie/wieczor): 0.7.1 - rysowanie dokonczone, tura AI 3.3x
 
