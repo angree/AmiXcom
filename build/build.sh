@@ -203,7 +203,7 @@ done
 # libnix_fixes.c: libc routines libnix gets wrong (wmemcpy copies half of a
 # wide string; that garbled every std::wstring in the game).
 for f in amiga_gfx.c amiga_audio.c amiga_adpcm.c amiga_startup.c amiga_stack.c \
-         fp_conv.c fp_single.c amiga_trap.c libnix_fixes.c amiga_splash.c amiga_splash_data.c; do
+         fp_conv.c fp_single.c amiga_trap.c libnix_fixes.c amiga_splash.c amiga_splash_data.c amiga_uclock.c; do
 	NATIVE_OBJS="$NATIVE_OBJS $(compile_c "$NATIVE" "$f")"
 done
 

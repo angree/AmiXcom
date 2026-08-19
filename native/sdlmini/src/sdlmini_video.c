@@ -106,6 +106,8 @@ static void free_format(SDL_PixelFormat *fmt)
  * per-pixel compares of variant A happen only once, at build time.
  * unused1: 0 unknown, 1 has key pixels but too noisy to cache (A path),
  * 2 fully opaque (memcpy path), 3 span cache attached (this). */
+extern unsigned long SDLmini_ProfClassifyUs;
+unsigned long amiga_uclock_us(void);
 struct private_hwdata {
 	Uint32 *rowoff;   /* [h] index into runs[] where the row starts */
 	Uint16 *runs;     /* per row: count n, then n * (offset, length) */
@@ -480,6 +482,9 @@ static unsigned long s_perf_px, s_perf_px_ck;            /* pixels copied */
 static unsigned long s_perf_fills, s_perf_fill_px;
 static unsigned long s_perf_c2p_ms, s_perf_last_ms;
 static unsigned long s_perf_c2p_px, s_perf_skips;        /* dirty-rect effect */
+/* TEMP us-probes (2026-08-19): split the per-frame blit cost */
+#include "amiga_uclock.h"
+unsigned long SDLmini_ProfBlitBigUs = 0, SDLmini_ProfBlitBigN = 0, SDLmini_ProfBlitSmallUs = 0, SDLmini_ProfBlitSmallN = 0, SDLmini_ProfClassifyUs = 0, SDLmini_ProfFillUs = 0;
 
 /* -------------------------------------------------- dirty rectangles ------
  * LISTA-ROBOT pkt 1. s_screen->pixels IS amiga_gfx's chunky buffer, so the
@@ -518,7 +523,15 @@ static void dirty_add_lock(SDL_Surface *s)
 	if (s == s_screen) dirty_add(0, 0, s->w, s->h);
 }
 
+static int SDL_FillRect_(SDL_Surface *dst, SDL_Rect *dstrect, Uint32 color);
 int SDL_FillRect(SDL_Surface *dst, SDL_Rect *dstrect, Uint32 color)
+{
+	unsigned long ft0_ = amiga_uclock_us();
+	int r_ = SDL_FillRect_(dst, dstrect, color);
+	SDLmini_ProfFillUs += amiga_uclock_us() - ft0_;
+	return r_;
+}
+static int SDL_FillRect_(SDL_Surface *dst, SDL_Rect *dstrect, Uint32 color)
 {
 	int x, y, w, h, bpp;
 	if (dst == NULL) return -1;
@@ -593,7 +606,7 @@ static void blit8(SDL_Surface *src, const SDL_Rect *srcrect,
 
 	surf_touch(dst);    /* destination pixels change: reclassify before reuse */
 	if ((src->flags & SDL_SRCCOLORKEY) && src->unused1 == 0)
-		src->unused1 = surf_classify(src);
+		{ unsigned long ct0_ = amiga_uclock_us(); src->unused1 = surf_classify(src); SDLmini_ProfClassifyUs += amiga_uclock_us() - ct0_; }
 	/* Colorkey blits onto the screen dirty their rectangle as-is; the plain
 	 * path below diff-copies instead and dirties only what really changed. */
 	if (dst == s_screen && (src->flags & SDL_SRCCOLORKEY) && src->unused1 != 2)
@@ -738,7 +751,13 @@ int SDL_UpperBlit(SDL_Surface *src, SDL_Rect *srcrect, SDL_Surface *dst, SDL_Rec
 
 	dr.w = sr.w;
 	dr.h = sr.h;
-	blit8(src, &sr, dst, &dr);
+	{
+		unsigned long bt0_ = amiga_uclock_us();
+		blit8(src, &sr, dst, &dr);
+		bt0_ = amiga_uclock_us() - bt0_;
+		if ((unsigned long)sr.w * sr.h >= 32000UL) { SDLmini_ProfBlitBigUs += bt0_; SDLmini_ProfBlitBigN++; }
+		else { SDLmini_ProfBlitSmallUs += bt0_; SDLmini_ProfBlitSmallN++; }
+	}
 	if (dstrect != NULL) *dstrect = dr;
 	{
 		/* TEMP diagnostic: who wipes the left 256 columns of the 320x200

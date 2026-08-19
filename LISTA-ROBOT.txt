@@ -17,6 +17,21 @@ ZROBIONE 18.08 wieczor - 19.08 noc (0.6.0, zbudowane, wypchniecie po tescie):
    Work:autoinput.on (bez pliku nigdy nie czyta skryptu).
  - Ikony WB przepisane, autostart z Work:run usuniety (run.autostart), -80%.
 
+PILNE (19.08): tura komputera nie dziala.
+ 1. [x] Ekran "next turn" (kto gra + klik) byl skipNextTurnScreen:true w
+    przeniesionym options.cfg -> tura AI wpada od razu w hidden movement bez
+    klikniecia. Naprawione: flip w live cfg + migracja amigaCfgVersion<2
+    wymusza false. UWAGA: w logu tury AI jest realny CRASH: CPU TRAP 7 (TRAPV,
+    przepelnienie soft-float) w UnitWalkBState::think -> calculateFOV -> visible
+    -> canTargetUnit -> distanceSq(...,bool). Handler robi exit(20) => gra ginie
+    w srodku tury AI. To osobny bug (kod upstreamu), do naprawy po tescie ekranu.
+
+PLAN RYSOWANIA BITWY 19.08 (szczegoly + liczby: LEFTOFF.md gora) - kolejnosc:
+ 1A run-y sprite'ow w blitNShade (C) | 1B scroll osobne boxy + kursor bez
+ kolumny | 1C logika per kafel (filtr Y, puste kafle, Surface* cache,
+ wskazniki setow) | 1D mapa bez colour-key | 1E leniwe przesuwanie faz |
+ 2 asm pętli blitu (vasm) | sprzatanie sond. Test usera po kazdym kroku.
+
 DO ZROBIENIA - z 0.6.0:
  0. GESTA MAPA: box brudnego kafla = cala kolumna do poziomu widoku (~110 px)
     -> 15% ekranu na kazda zmiane. Ma byc: sprite kafla + 1-2 kafle NAD nim

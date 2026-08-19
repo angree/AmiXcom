@@ -2,6 +2,53 @@
 
 Read this, then `CLAUDE.md` (rules), then the top entry of `PROGRESS.md` (proofs).
 
+## PLAN RYSOWANIA BITWY (2026-08-19 rano, zatwierdzony przez usera) - AKTUALNA ROBOTA
+
+Pomiar (sonda us:/us2:, E-clock, 040/40-ekw. -80%): pelne zlozenie 160-240 ms
+= blit 110-126 (70%; 426-499 blitow, 463-549 tys. px PRZETWORZONYCH na 64 tys.
+ekranu, gcc -O1 robi ~7 instr/px przez stos) + logika per kafel 50-115
+(386-1169 kafli, ~100-130 us/kafel nawet pusty, 523-602 getFrame = 2x std::map).
+Scroll 8 fps = box naprawy (pas u kursor-kolumny) = 82% ekranu -> drawTerrain
+150-190 ms/krok + ksiegowosc cache 22 + ui 35 + flip 13. Kursor 58 ms (kolumna,
+130 kafli). Staly koszt kazdej klatki: mapa->bufor 6 ms (colour-key 0 na
+Surface mapy = sciezka per-piksel), bufor->ekran diff 6, c2p+fill 5.
+Siec: PCK to RLE (0xFE skip/0xFF end); oryginal rysowal z run-ow, nigdy nie
+dotykal przezroczystych px. OpenXcom dekoduje do plaskich 32x40 = zrodlo kosztu.
+
+Kolejnosc (user: "1 a-d, potem e, potem dopiero 2", test usera miedzy krokami,
+jedna zmiana na build, backup przed krokiem):
+ 1A. [x] (0.6.1) Sprite'y jako listy run-ow w blitNShade (C): tabela per wiersz
+        (n, (x,len)..), budowana leniwie przy 1. blicie, kasowana przez kazda
+        sciezke zapisu Surface (setPixel/clear/blit-dest/draw*/load*/lock).
+        Kod: C:\temp\amiga_oxcom\spans.py (blok 6ab). Zysk: blit 110 -> ~35-40.
+ 1B. [x] (0.6.1, niedokonczone - patrz 1B2) Scroll: osobne boxy (pas, stary kursor, nowy kursor) zamiast unii;
+        kursor bez pelnej kolumny (= stary pkt 0a: sprite + 1-2 kafle nad nim).
+        Zysk: krok scrolla 150-190 -> ~30-40 ms, kursor 58 -> ~15.
+ 1B2.[ ] Kursor: box = DOKLADNY prostokat sprite'a kursora (32x40 na kafel,
+        stara+nowa pozycja, poziomy 0..vl), bez otoczki 3x3 i bez kolumny;
+        scalanie boxow tylko gdy unia nie marnuje >25%. Powod: przy krawedzi
+        kursor styka sie z pasem scrolla -> unia 73% ekranu = stan sprzed 1B.
+ 1F. [x] (0.6.1) Memo visible() - krok byl 2-3 s przy ukrytych obcych w stozku
+        (canTargetUnit: do 37 promieni na kazdego niewidocznego, 3-4x na krok).
+ 1C. [ ] Logika per kafel: filtr Y 3 wysokosci -> 1 + 24 px; szybki continue
+        dla pustych kafli (pietra!); Surface* cache w MapData zamiast
+        SurfaceSet::getFrame (2x std::map); wskazniki CURSOR/SMOKE/FLOOROB
+        raz w Map::init; sonda per kafel (skad 100 us na pusty kafel?).
+        Zysk: logika 50 -> ~25.
+ 1D. [ ] Surface mapy bez colour-key -> memcpy: -4 ms na KAZDEJ klatce.
+ 1E. [ ] Leniwe przesuwanie 7 nieaktywnych faz przy scrollu: -15 ms/krok.
+ 2.  [ ] Asm (vasm, jak c2p): amiga_span_blit(src,dst,spans,rowoff,rows,
+        spitch,dpitch,lut) dla blitow BEZ obcinania w X (reszta w C), 68020,
+        raz na sprite; przelacznik C/asm + suma kontrolna klatki. Zysk: blit
+        ~35 -> ~15. Asm NIE pomaga na logike/scroll - to algorytm.
+ Potem: sprzatanie sond (us:/us2:/prof:/cache:/sig:/seed:/frameprof: ...).
+OBSERWACJA (raz, pilnowac): CPU TRAP 7/TRAPV w turze AI, stos:
+UnitWalkBState::think -> calculateFOV -> visible -> canTargetUnit ->
+distanceSq(bool) - soft-float przepelnienie, handler exit(20). Szczegoly
+LISTA-ROBOT na gorze.
+Szacunek uczciwy: scroll gesty 125 -> 60-70 ms (8 -> 14-17 fps), pelne
+zlozenie 160 -> ~70-80 ms. Nie 5x; 2-2.5x.
+
 ## Where the port stands (2026-08-19, 0.6.0 built, release pending user test)
 
 **Released**: github.com/angree/AmiXcom - v0.1.0..v0.5.7 (code without

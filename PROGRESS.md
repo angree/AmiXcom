@@ -2,6 +2,57 @@
 
 Newest first. Facts and measurements only; plans live in `PORT_RESEARCH.md`.
 
+## 2026-08-19 (dzien): 0.6.1 - tura obcych wrocila; run-y sprite'ow; boxy; memo visible()
+
+Wydane jako v0.6.1. **Blad zgloszony przez usera po 0.6.0: tura komputera
+"nie dziala"** - po "next turn" ekran od razu przechodzil w Hidden Movement
+i nic sie nie dzialo. Przyczyna NIE byla w kodzie tury: przeniesiony
+options.cfg mial `skipNextTurnScreen: true` (ustawiony kiedys w opcjach gry),
+wiec ekran "kto gra + klik" byl pomijany. Naprawa: migracja amigaCfgVersion
+podbita do 2 i wymusza `skipNextTurnScreen: false` jeden raz. User potwierdzil:
+tura wraca i konczy sie poprawnie.
+(Obserwacja, nie naprawione: w JEDNYM logu tury AI z buildu posredniego byl
+CPU TRAP 7 / TRAPV w UnitWalkBState::think -> calculateFOV -> visible ->
+canTargetUnit -> distanceSq - soft-floatowe przepelnienie, handler robi
+exit(20). Wystapil raz; stos zmapowany w LISTA-ROBOT. Pilnowac.)
+
+Do tego trzy kroki planu rysowania (LEFTOFF.md "PLAN RYSOWANIA BITWY";
+sondy us:/us2: na E-clocku timer.device, native/amiga_uclock.c, bo
+SDL_GetTicks ma ziarno 20 ms):
+
+1A. **Run-y sprite'ow w blitNShade**: tabela nieprzezroczystych odcinkow per
+   wiersz (n,(x,len)..; budowana leniwie przy 1. blicie, kasowana przez kazda
+   sciezke zapisu Surface). Blit rysuje tylko odcinki - bez testu per piksel,
+   puste wiersze pomijane. Pelne zlozenie 160-240 -> ~85 ms (czesc blit
+   110-126 -> 30-44). gcc -O1 z petli LUT robi move.b/move.b(a2,d2.l)/(a0)+
+   x4 + dbra = ~2.5 instr/px - recznego asm duzo tu nie ma.
+2 (1B). **Do 4 osobnych boxow brudnych per faza** zamiast jednej unii
+   (pas scrolla u gory + kursor w srodku dawaly unie ~82% ekranu). Kazdy box
+   ma wlasne przejscie drawTerrain z wlasnym klipem; propagacja scrolla
+   kopiuje boxy, nie unie. Scroll wciaz ~5-8 fps, bo kursor przy krawedzi
+   STYKA sie z pasem (otoczka 3x3 + kolumna ~130 px) i scala w jeden box
+   73% ekranu - nastepny krok 1B2: box kursora = dokladny prostokat sprite'a
+   (32x40 na kafel, poziomy 0..vl), scalanie tylko gdy unia nie marnuje >25%.
+3 (1F). **Memo visible()** (para obserwator-cel, pozycje, klek/wysokosc;
+   generacja uniewaznia: calculateTerrainLighting, drzwi, nowy TileEngine).
+   Powod: user zglosil "krok 2-3 s, coraz wolniej" - kazdy krok = 3-4x
+   calculateFOV, kazde ~500 ms NIEZALEZNIE od promieni odkrywania (fov: 520 ms
+   rays 21), bo dla kazdego NIEWIDOCZNEGO obcego w stozku canTargetUnit
+   strzela do 37 promieni wokselowych zanim sie podda (~100 ms/obcy); im dalej
+   od Trytona tym wiecej ukrytych obcych w zasiegu 20 kafli. Po memo w logu
+   fov: 0-20 ms, vis hit >> miss.
+
+Pomiar wyjsciowy (sonda us:, pelne rozliczenie klatki bitwy w us):
+zlozenie = blit 110-126 ms (70%; 463-549 tys. px przetworzonych na 64 tys.
+ekranu = 7-8x overdraw) + logika per kafel 50-115 ms (~100-130 us/kafel,
+523-602 wywolan getFrame = 2x std::map kazde). Klatka scrolla: drawTerrain
+150-190 + ksiegowosc cache ~40 (memmove 8 buforow + propagacja ~1 MB/klatke)
++ blity mapa->bufor->ekran 12 (colour-key na Surface mapy!) + flip/c2p 18.
+Research (agent, siec): PCK to natywnie RLE (0xFE skip, 0xFF end) - oryginal
+nigdy nie dotykal przezroczystych pikseli; OpenXcom dekoduje do plaskich
+32x40 i placi per piksel. Na 040 copyback byte-write do fast RAM nie karze;
+koszt to liczba instrukcji, nie szerokosc zapisu.
+
 ## 2026-08-18 wieczor / 2026-08-19 noc: 0.6.0 - bitwa 3.8 -> 35 fps (postoj); cache klatek
 
 Wydane jako v0.6.0 (2026-08-19 ~01:20). Do tego migracja options.cfg:
