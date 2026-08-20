@@ -1,6 +1,23 @@
-# LEFTOFF — hand-off for the next session (updated 2026-08-19 noc, po dniu LADOWANIA)
+# LEFTOFF — hand-off for the next session (updated 2026-08-20, po v0.8.0)
 
 Read this, then `CLAUDE.md` (rules), then the top entry of `PROGRESS.md` (proofs).
+
+## STAN 2026-08-20: v0.8.0 WYDANE - marsz bez freeze'ow, New Battle 2x
+
+Dzien opisany w PROGRESS.md (gorny wpis): plastry FOV/swiatla na klatkach
+animacji marszu (pomysl usera; 6amB-6amH; opcja amigaSplitWalk ON), zakladka
+Amiga = przewijana lista jak ADVANCED, New Battle otwarcie 10->6 s, okclick
+12.7->11.4 s. Sondy: wf:/newbattle:/savecfg: (gadatliwe za amigaPerfLog;
+w LIVE options.cfg amigaPerfLog stoi na 1 z testow - wyzerowac gdy przestanie
+byc potrzebne). OTWARTE: (a) cache .ybc battle.cfg pisze sie, ale odczyt nie
+trafia (fallback ok, czasy akceptowalne - zagadka na pozniej); (b) dalsze cele
+ladowania: rulesety 43 s (konsumpcja wezlow), audio ~25 s, LBM/LUT ~14 s,
+jezyk ~13 s; (c) tura AI ~84 s (parkowane).
+
+NOWE PULAPKI (pelniej w PROGRESS): -O1 potrafi zjesc porownanie Position w
+warunku (jawne inty dzialaja); TileEngine.h na liscie restore; w repr-literale
+eskapowac cudzyslowy i ast.parse PRZED zapisem pliku; substring '\t\t\t}'
+lapie ogon '\t\t\t\t}'.
 
 ## STAN 2026-08-19 noc: LADOWANIE 2.7x SZYBSZE - start 344 -> 128 s (040/40), na 030/50 15 min -> 5.3 min
 

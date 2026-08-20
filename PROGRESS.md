@@ -2,6 +2,46 @@
 
 Newest first. Facts and measurements only; plans live in `PORT_RESEARCH.md`.
 
+## 2026-08-20: 0.8.0 - marsz bez freeze'ow (plastry FOV/swiatla), New Battle 2x
+
+Problem (user): ~1 s zamrozenia na KAZDEJ granicy kratki marszu (fov 300-760 ms
++ swiatlo ~200 + LOS-y obserwatorow ~350). Pomysl usera: w obrebie przejscia
+kratka->kratka NIC nie moze przerwac animacji, wiec wynik granicy jest
+przesadzony od klatki 0 - liczyc go plastrami na klatkach animacji.
+
+Implementacja (6amB-6amH w patch scripcie, opcja amigaSplitWalk domyslnie ON):
+- petla FOV-po-jednostce z granicy wydzielona do amigaWalkFovOne; slice
+  przerabia jednostki w TEJ SAMEJ kolejnosci, budzet czasu E-clock na tick;
+- stozek idacego ciety OKNEM KOLUMN (amFovXLo_/Hi_ w calculateFOV; chunki
+  po 1 kolumnie; chunki >0 nie czyszcza list i reuzywaja decyzji incremental);
+- swiatlo jednostek budowane w BUFORZE BOCZNYM (addLight ma tryb bufora),
+  jedno zrodlo na tick, commit ~15 ms atomowo - zero blysku;
+- na czas plastra WARTOSC _pos idacego podmieniana na docelowa (kafle
+  nietkniete, restore przed powrotem) - oko/dystanse/memo/swiatlo licza sie
+  "jak po dojsciu" od klatki 0; latarka przeskakuje na cel na poczatku kroku;
+- granica: amigaWalkFovFinish dokancza resztki (zwykle 0 ms), reakcje
+  zostaja na granicy (zasady gry nietkniete); postPathProcedures nie liczy
+  drugi raz (marker pozycja+generacja); straznik amVisGen_ -> pelny fallback.
+Pomiar (040/40, wf: t phN): bylo ~1000 ms na granicy; jest max ~60 ms na
+klatke, granica 0-20 ms, kazdy krok "fin ok1".
+
+Pulapki dnia: (1) -O1 ZJADL porownanie Position w warunku hooka (warunek
+logowal true, call nie odpalal; jawne porownania int dzialaja) - kolejny
+przyklad "impossible behavior = kompilator"; (2) TileEngine.h doszedl do
+listy restore (podwojne deklaracje bez tego); (3) nieeskapowany cudzyslow
+w repr-literale + zapis pliku przed ast.parse = zepsuty patch script;
+(4) substring '\t\t\t}' lapie ogon '\t\t\t\t}' (osierocony nawias).
+
+New Battle (sondy newbattle:/bgen:): otwarcie 10.2 -> 5.9 s (parse 7.8 ->
+3.5 po szybkim writerze; cache .ybc battle.cfg pisany przy OK - ZAGADKA:
+odczyt nie trafia mimo poprawnego pliku, fallback dziala, odlozone);
+OK->briefing 12.7 -> 11.4 s (AmigaYamlWrite zamiast emitera + ybc store
+280 ms). Battle save ~4.5 s (efekt nodealloc z 0.7.2).
+
+Zakladka Amiga przepisana na przewijana liste w stylu ADVANCED (wiersz na
+opcje, LPM/PPM cykluje, opis w tooltipie) - poprzedni layout combo #5
+wchodzil w pole opisu. Wydane jako v0.8.0.
+
 ## 2026-08-19 (noc): ladowanie 2.7x - start 344 -> 128 s (040/40), 030/50: 15 min -> 5.3 min
 
 Pomiar: timeline splashu (splash: N% at X ms, w binarce na stale). Baseline

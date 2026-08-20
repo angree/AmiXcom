@@ -1,117 +1,171 @@
 /*
  * AMIGA-PORT: the "Amiga" options tab (first tab of the options screen).
  *
- *   Amiga screen title bar  off / on   -> Options::amigaAppBar
- *   Mouse pointer           original / Amiga only -> Options::amigaCursor
- *
+ * A scrolling TextList in the style of the ADVANCED tab: one row per
+ * option, left click cycles the value forward, right click backward, and
+ * the row's description shows in the shared tooltip area at the bottom.
  * The strings are in bin/common/Language/en-US.yml (added by the patch
- * script). The interface colours reuse "videoMenu" so no ruleset change is
- * needed. Layout follows OptionsAudioState.
+ * script). The interface colours reuse "videoMenu".
+ *
+ * Rows:
+ *   Amiga screen title bar        Off / On            Options::amigaAppBar
+ *   Mouse pointer                 Original / Amiga    Options::amigaCursor
+ *   Map reveal                    Fast/Accurate/Test  Options::amigaAccurateFov
+ *   Battle animation speed        Normal / Half       Options::amigaAnimMs
+ *   Split movement calculation    Off / On            Options::amigaSplitWalk
  */
 #include "OptionsAmigaState.h"
 #include "../Engine/Game.h"
 #include "../Engine/LocalizedText.h"
 #include "../Engine/Action.h"
 #include "../Engine/Options.h"
-#include "../Interface/ComboBox.h"
+#include "../Interface/TextList.h"
 #include "../Interface/Text.h"
+#include "../Interface/Window.h"
 
 namespace OpenXcom
 {
+
+enum
+{
+	AMIGA_ROW_APPBAR = 0,
+	AMIGA_ROW_CURSOR,
+	AMIGA_ROW_FOV,
+	AMIGA_ROW_ANIM,
+	AMIGA_ROW_SPLITWALK,
+	AMIGA_ROW_COUNT
+};
+
+static const char *amigaRowLabel_[AMIGA_ROW_COUNT] =
+{
+	"STR_AMIGA_APP_BAR",
+	"STR_AMIGA_CURSOR",
+	"STR_AMIGA_FOV",
+	"STR_AMIGA_ANIM",
+	"STR_AMIGA_SPLIT_WALK"
+};
+
+static const char *amigaRowDesc_[AMIGA_ROW_COUNT] =
+{
+	"STR_AMIGA_APP_BAR_DESC",
+	"STR_AMIGA_CURSOR_DESC",
+	"STR_AMIGA_FOV_DESC",
+	"STR_AMIGA_ANIM_DESC",
+	"STR_AMIGA_SPLIT_WALK_DESC"
+};
+
+/* how many values each row cycles through */
+static const int amigaRowVals_[AMIGA_ROW_COUNT] = { 2, 2, 3, 2, 2 };
+
+static int amigaRowGet_(size_t row)
+{
+	switch (row)
+	{
+	case AMIGA_ROW_APPBAR:    return Options::amigaAppBar ? 1 : 0;
+	case AMIGA_ROW_CURSOR:    return Options::amigaCursor ? 1 : 0;
+	case AMIGA_ROW_FOV:       return Options::amigaAccurateFov;
+	case AMIGA_ROW_ANIM:      return Options::amigaAnimMs >= 200 ? 1 : 0;
+	case AMIGA_ROW_SPLITWALK: return Options::amigaSplitWalk ? 1 : 0;
+	}
+	return 0;
+}
+
+static void amigaRowSet_(size_t row, int v)
+{
+	switch (row)
+	{
+	case AMIGA_ROW_APPBAR:    Options::amigaAppBar = (v == 1); break;
+	case AMIGA_ROW_CURSOR:    Options::amigaCursor = v; break;
+	case AMIGA_ROW_FOV:       Options::amigaAccurateFov = v; break;
+	case AMIGA_ROW_ANIM:      Options::amigaAnimMs = (v == 1) ? 200 : 100; break;
+	case AMIGA_ROW_SPLITWALK: Options::amigaSplitWalk = (v == 1); break;
+	}
+}
+
+static const char *amigaRowValue_(size_t row, int v)
+{
+	switch (row)
+	{
+	case AMIGA_ROW_CURSOR:
+		return v == 1 ? "STR_AMIGA_CURSOR_AMIGA" : "STR_AMIGA_CURSOR_ORIGINAL";
+	case AMIGA_ROW_FOV:
+		return v == 2 ? "STR_AMIGA_FOV_TEST" : (v == 1 ? "STR_AMIGA_FOV_ACCURATE" : "STR_AMIGA_FOV_FAST");
+	case AMIGA_ROW_ANIM:
+		return v == 1 ? "STR_AMIGA_ANIM_HALF" : "STR_AMIGA_ANIM_NORMAL";
+	default:
+		return v == 1 ? "STR_AMIGA_ON" : "STR_AMIGA_OFF";
+	}
+}
 
 OptionsAmigaState::OptionsAmigaState(OptionsOrigin origin) : OptionsBaseState(origin)
 {
 	setCategory(_btnAmiga);
 
-	_txtAppBar = new Text(218, 9, 94, 8);
-	_cbxAppBar = new ComboBox(this, 104, 16, 94, 18);
-
-	_txtCursor = new Text(218, 9, 94, 40);
-	_cbxCursor = new ComboBox(this, 104, 16, 94, 50);
-
-	_txtFov = new Text(218, 9, 94, 72);
-	_cbxFov = new ComboBox(this, 104, 16, 94, 82);
-
-	_txtAnim = new Text(218, 9, 94, 104);
-	_cbxAnim = new ComboBox(this, 104, 16, 94, 114);
-
-	add(_txtAppBar, "text", "videoMenu");
-	add(_txtCursor, "text", "videoMenu");
-	add(_txtFov, "text", "videoMenu");
-	add(_txtAnim, "text", "videoMenu");
-	add(_cbxAnim, "button", "videoMenu");
-	add(_cbxFov, "button", "videoMenu");
-	add(_cbxCursor, "button", "videoMenu");
-	add(_cbxAppBar, "button", "videoMenu");
+	_lstOptions = new TextList(200, 136, 94, 8);
+	add(_lstOptions, "optionLists", "advancedMenu");
 
 	centerAllSurfaces();
 
-	std::vector<std::wstring> onOff, cursors, fovs, anims;
-	onOff.push_back(tr("STR_AMIGA_OFF"));
-	onOff.push_back(tr("STR_AMIGA_ON"));
-	cursors.push_back(tr("STR_AMIGA_CURSOR_ORIGINAL"));
-	cursors.push_back(tr("STR_AMIGA_CURSOR_AMIGA"));
-	fovs.push_back(tr("STR_AMIGA_FOV_FAST"));
-	fovs.push_back(tr("STR_AMIGA_FOV_ACCURATE"));
-	fovs.push_back(tr("STR_AMIGA_FOV_TEST"));
-	anims.push_back(tr("STR_AMIGA_ANIM_NORMAL"));
-	anims.push_back(tr("STR_AMIGA_ANIM_HALF"));
+	_lstOptions->setColumns(2, 168, 32);
+	_lstOptions->setWordWrap(true);
+	_lstOptions->setSelectable(true);
+	_lstOptions->setBackground(_window);
+	_lstOptions->onMouseClick((ActionHandler)&OptionsAmigaState::lstOptionsClick, 0);
+	_lstOptions->onMouseOver((ActionHandler)&OptionsAmigaState::lstOptionsMouseOver);
+	_lstOptions->onMouseOut((ActionHandler)&OptionsAmigaState::lstOptionsMouseOut);
 
-	_txtAppBar->setText(tr("STR_AMIGA_APP_BAR"));
-	_cbxAppBar->setOptions(onOff);
-	_cbxAppBar->setSelected(Options::amigaAppBar ? 1 : 0);
-	_cbxAppBar->onChange((ActionHandler)&OptionsAmigaState::cbxAppBarChange);
-	_cbxAppBar->setTooltip("STR_AMIGA_APP_BAR_DESC");
-	_cbxAppBar->onMouseIn((ActionHandler)&OptionsAmigaState::txtTooltipIn);
-	_cbxAppBar->onMouseOut((ActionHandler)&OptionsAmigaState::txtTooltipOut);
-
-	_txtCursor->setText(tr("STR_AMIGA_CURSOR"));
-	_cbxCursor->setOptions(cursors);
-	_cbxCursor->setSelected(Options::amigaCursor ? 1 : 0);
-	_cbxCursor->onChange((ActionHandler)&OptionsAmigaState::cbxCursorChange);
-	_cbxCursor->setTooltip("STR_AMIGA_CURSOR_DESC");
-	_cbxCursor->onMouseIn((ActionHandler)&OptionsAmigaState::txtTooltipIn);
-	_cbxCursor->onMouseOut((ActionHandler)&OptionsAmigaState::txtTooltipOut);
-
-	_txtFov->setText(tr("STR_AMIGA_FOV"));
-	_cbxFov->setOptions(fovs);
-	_cbxFov->setSelected((size_t)Options::amigaAccurateFov);
-	_cbxFov->onChange((ActionHandler)&OptionsAmigaState::cbxFovChange);
-	_cbxFov->setTooltip("STR_AMIGA_FOV_DESC");
-	_cbxFov->onMouseIn((ActionHandler)&OptionsAmigaState::txtTooltipIn);
-	_cbxFov->onMouseOut((ActionHandler)&OptionsAmigaState::txtTooltipOut);
-
-	_txtAnim->setText(tr("STR_AMIGA_ANIM"));
-	_cbxAnim->setOptions(anims);
-	_cbxAnim->setSelected(Options::amigaAnimMs >= 200 ? 1 : 0);
-	_cbxAnim->onChange((ActionHandler)&OptionsAmigaState::cbxAnimChange);
-	_cbxAnim->setTooltip("STR_AMIGA_ANIM_DESC");
-	_cbxAnim->onMouseIn((ActionHandler)&OptionsAmigaState::txtTooltipIn);
-	_cbxAnim->onMouseOut((ActionHandler)&OptionsAmigaState::txtTooltipOut);
+	for (size_t row = 0; row < AMIGA_ROW_COUNT; ++row)
+	{
+		_lstOptions->addRow(2, tr(amigaRowLabel_[row]).c_str(),
+			tr(amigaRowValue_(row, amigaRowGet_(row))).c_str());
+	}
 }
 
 OptionsAmigaState::~OptionsAmigaState()
 {
 }
 
-void OptionsAmigaState::cbxAppBarChange(Action *)
+void OptionsAmigaState::updateRow(size_t row)
 {
-	Options::amigaAppBar = (_cbxAppBar->getSelected() == 1);
+	_lstOptions->setCellText(row, 1, tr(amigaRowValue_(row, amigaRowGet_(row))));
 }
 
-void OptionsAmigaState::cbxCursorChange(Action *)
+void OptionsAmigaState::lstOptionsClick(Action *action)
 {
-	Options::amigaCursor = (int)_cbxCursor->getSelected();
+	Uint8 button = action->getDetails()->button.button;
+	if (button != SDL_BUTTON_LEFT && button != SDL_BUTTON_RIGHT)
+	{
+		return;
+	}
+	size_t row = _lstOptions->getSelectedRow();
+	if (row >= AMIGA_ROW_COUNT)
+	{
+		return;
+	}
+	const int n = amigaRowVals_[row];
+	int v = amigaRowGet_(row);
+	if (button == SDL_BUTTON_LEFT)
+		v = (v + 1) % n;
+	else
+		v = (v + n - 1) % n;
+	amigaRowSet_(row, v);
+	updateRow(row);
 }
 
-void OptionsAmigaState::cbxFovChange(Action *)
+void OptionsAmigaState::lstOptionsMouseOver(Action *)
 {
-	Options::amigaAccurateFov = (int)_cbxFov->getSelected();
+	size_t row = _lstOptions->getSelectedRow();
+	std::wstring desc;
+	if (row < AMIGA_ROW_COUNT)
+	{
+		desc = tr(amigaRowDesc_[row]);
+	}
+	_txtTooltip->setText(desc);
 }
 
-void OptionsAmigaState::cbxAnimChange(Action *)
+void OptionsAmigaState::lstOptionsMouseOut(Action *)
 {
-	Options::amigaAnimMs = _cbxAnim->getSelected() == 1 ? 200 : 100;
+	_txtTooltip->setText(L"");
 }
 
 }

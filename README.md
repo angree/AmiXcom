@@ -10,7 +10,12 @@ for **real classic hardware**: 68020+ without FPU, AGA chipset. Not PiStorm-, Va
 or Emu68-only. No SDL: the SDL 1.2 API the game expects is a small shim
 (`native/sdlmini/`) on top of a bare-metal Amiga graphics/audio layer.
 
-## Status: 0.7.2 — alpha
+## Status: 0.8.0 — alpha
+
+New in 0.8.0: **walking no longer freezes at every tile** — the per-step visibility and
+lighting scan runs in slices across the walk animation (new Amiga option "Split movement
+calculation", ON by default), the Amiga options tab is a scrolling list, and the New
+Battle screen opens ~2× faster.
 
 New in 0.7.2: **game startup ~2.7× faster** (040/40-class: ~6 min → ~2 min; 030/50:
 ~15 min → ~5.5 min) — graphics loaders no longer read byte-by-byte, yaml rulesets get

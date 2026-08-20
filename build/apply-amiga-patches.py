@@ -225,6 +225,14 @@ static void amiga_ybc_save(const std::string& fn, unsigned long srcSize,
   remove(cf.c_str());
   rename(tmp.c_str(), cf.c_str());
 }
+/* Public: writers that already hold a node tree (NewBattleState::save)
+ * drop the cache themselves right after writing the source file. */
+void AmigaYbcStore(const std::string& filename, const Node& root) {
+  struct stat st_;
+  if (stat(filename.c_str(), &st_) != 0) return;
+  amiga_ybc_save(filename, (unsigned long)st_.st_size,
+                 (unsigned long)st_.st_mtime, root);
+}
 /* --- end AMIGA-PORT ybc --------------------------------------------------*/
 """
 
@@ -269,25 +277,24 @@ static bool amiga_slurp(const std::string& filename, std::string& out) {
         "  return Load(fin);",
         "  std::string text;\n"
         "  unsigned long srcSize_ = 0, srcMtime_ = 0;\n"
-        "  bool cache_ = amiga_ybc_wanted(filename);\n"
-        "  if (cache_) {\n"
+        "  bool haveStat_ = false;\n"
+        "  {\n"
         "    struct stat st_;\n"
         "    if (stat(filename.c_str(), &st_) == 0) {\n"
         "      srcSize_ = (unsigned long)st_.st_size;\n"
         "      srcMtime_ = (unsigned long)st_.st_mtime;\n"
+        "      haveStat_ = true;\n"
         "      Node cached_;\n"
         "      if (amiga_ybc_try_load(filename, srcSize_, srcMtime_, cached_)) {\n"
         "        return cached_;\n"
         "      }\n"
-        "    } else {\n"
-        "      cache_ = false;\n"
         "    }\n"
         "  }\n"
         "  if (!amiga_slurp(filename, text)) {\n"
         "    throw BadFile();\n"
         "  }\n"
         "  Node root_ = Load(text);\n"
-        "  if (cache_) {\n"
+        "  if (haveStat_ && amiga_ybc_wanted(filename)) {\n"
         "    amiga_ybc_save(filename, srcSize_, srcMtime_, root_);\n"
         "  }\n"
         "  return root_;")
@@ -1513,11 +1520,11 @@ def main():
         '#define OPENXCOM_VERSION_LONG "1.0.0.0"\n'
         '#define OPENXCOM_VERSION_NUMBER 1,0,0,0\n',
         '#ifdef AMIGA_FPU_BUILD\n'
-        '#define OPENXCOM_VERSION_SHORT "0.7.2 FPU"\n'
+        '#define OPENXCOM_VERSION_SHORT "0.8.0 FPU"\n'
         '#else\n'
-        '#define OPENXCOM_VERSION_SHORT "0.7.2"\n'
+        '#define OPENXCOM_VERSION_SHORT "0.8.0"\n'
         '#endif\n'
-        '#define OPENXCOM_VERSION_LONG "0.7.2.0"\n'
+        '#define OPENXCOM_VERSION_LONG "0.8.0.0"\n'
         '#define OPENXCOM_VERSION_NUMBER 0,7,1,0\n'
         '#define OPENXCOM_VERSION_GIT ""\n',
         "port version")))
@@ -7614,6 +7621,386 @@ def main():
         "#endif\n"
         "\t\tstd::wstring chars = Language::utf8ToWstr((*i)[\"chars\"].as<std::string>());\n",
         "CJK sheet skip")))
+
+    # 6am6. New Battle phase probes (2026-08-20): the user's two waits are
+    #       (1) main-menu "New Battle" -> generator screen (NewBattleState
+    #       ctor incl. load() of battle.cfg + base build) and (2) generator
+    #       OK -> briefing (whole btnOkClick; bgen.run inside already logs
+    #       its own bgen: breakdown). One line each, always on, cheap.
+    results.append(("NewBattleState.cpp (probe ctor start)", edit(
+        os.path.join(src, "Menu", "NewBattleState.cpp"),
+        "NewBattleState::NewBattleState() : _craft(0)\n"
+        "{\n",
+        "NewBattleState::NewBattleState() : _craft(0)\n"
+        "{\n"
+        "#ifdef __AMIGA__\n"
+        "\tunsigned int nbcT_ = SDL_GetTicks();\n"
+        "#endif\n",
+        "nb probe ctor start")))
+    results.append(("NewBattleState.cpp (probe ctor end)", edit(
+        os.path.join(src, "Menu", "NewBattleState.cpp"),
+        "\tload();\n"
+        "}\n",
+        "\tload();\n"
+        "#ifdef __AMIGA__\n"
+        "\t{ char nbb_[96]; snprintf(nbb_, sizeof nbb_, \"newbattle: open (ctor+load cfg) %u ms\", SDL_GetTicks() - nbcT_); SDLmini_Log(nbb_); }\n"
+        "#endif\n"
+        "}\n",
+        "nb probe ctor end")))
+    results.append(("NewBattleState.cpp (probe ok start)", edit(
+        os.path.join(src, "Menu", "NewBattleState.cpp"),
+        "void NewBattleState::btnOkClick(Action *)\n"
+        "{\n"
+        "\tsave();\n",
+        "void NewBattleState::btnOkClick(Action *)\n"
+        "{\n"
+        "#ifdef __AMIGA__\n"
+        "\tunsigned int nbokT_ = SDL_GetTicks();\n"
+        "#endif\n"
+        "\tsave();\n",
+        "nb probe ok start")))
+    results.append(("NewBattleState.cpp (probe ok end)", edit(
+        os.path.join(src, "Menu", "NewBattleState.cpp"),
+        "\t_game->pushState(new BriefingState(_craft, base));\n"
+        "\t_craft = 0;\n"
+        "}\n",
+        "\t_game->pushState(new BriefingState(_craft, base));\n"
+        "\t_craft = 0;\n"
+        "#ifdef __AMIGA__\n"
+        "\t{ char nbb_[96]; snprintf(nbb_, sizeof nbb_, \"newbattle: okclick TOTAL %u ms\", SDL_GetTicks() - nbokT_); SDLmini_Log(nbb_); }\n"
+        "#endif\n"
+        "}\n",
+        "nb probe ok end")))
+
+    # 6am7. New Battle cuts (2026-08-20): save() built a YAML::Emitter over
+    #       the whole base node tree on every OK click (part of the 7.5 s
+    #       outside bgen.run) - the fast writer replaces it, same YAML for
+    #       the same loader. load() gets a one-line breakdown probe
+    #       (parse / base / research / items) to aim the next cut.
+    results.append(("NewBattleState.cpp (yamlout include)", edit(
+        os.path.join(src, "Menu", "NewBattleState.cpp"),
+        '#include "NewBattleState.h"\n',
+        '#include "NewBattleState.h"\n#include "amiga_yamlout.h"\n',
+        "nb yamlout include")))
+    results.append(("NewBattleState.cpp (fast cfg write)", edit(
+        os.path.join(src, "Menu", "NewBattleState.cpp"),
+        "\tYAML::Emitter out;\n"
+        "\n"
+        "\tYAML::Node node;\n",
+        "\tYAML::Node node;\n",
+        "nb fast cfg write 1")))
+    results.append(("NewBattleState.cpp (fast cfg write 2)", edit(
+        os.path.join(src, "Menu", "NewBattleState.cpp"),
+        "\tnode[\"base\"] = _game->getSavedGame()->getBases()->front()->save();\n"
+        "\tout << node;\n"
+        "\n"
+        "\tsav << out.c_str();\n"
+        "\tsav.close();\n",
+        "\tnode[\"base\"] = _game->getSavedGame()->getBases()->front()->save();\n"
+        "\t{\n"
+        "\t\t/* AMIGA-PORT 6am7: no YAML::Emitter - see the patch script */\n"
+        "\t\tstd::string ydump_;\n"
+        "\t\tydump_.reserve(64 * 1024);\n"
+        "\t\tAmigaYamlWrite(ydump_, node);\n"
+        "\t\tsav << ydump_;\n"
+        "\t}\n"
+        "\tsav.close();\n",
+        "nb fast cfg write 2")))
+    results.append(("NewBattleState.cpp (load breakdown probe)", edit(
+        os.path.join(src, "Menu", "NewBattleState.cpp"),
+        "\t\ttry\n"
+        "\t\t{\n"
+        "\t\t\tYAML::Node doc = YAML::LoadFile(s);\n",
+        "\t\ttry\n"
+        "\t\t{\n"
+        "#ifdef __AMIGA__\n"
+        "\t\t\tunsigned int nlT0_ = SDL_GetTicks(), nlT1_, nlT2_, nlT3_;\n"
+        "#endif\n"
+        "\t\t\tYAML::Node doc = YAML::LoadFile(s);\n"
+        "#ifdef __AMIGA__\n"
+        "\t\t\tnlT1_ = SDL_GetTicks();\n"
+        "\t\t\tnlT2_ = nlT3_ = nlT1_;\n"
+        "#endif\n",
+        "nb load probe start")))
+    results.append(("NewBattleState.cpp (load probe base)", edit(
+        os.path.join(src, "Menu", "NewBattleState.cpp"),
+        "\t\t\t\tbase->load(doc[\"base\"], save, false);\n"
+        "\t\t\t\tsave->getBases()->push_back(base);\n",
+        "\t\t\t\tbase->load(doc[\"base\"], save, false);\n"
+        "\t\t\t\tsave->getBases()->push_back(base);\n"
+        "#ifdef __AMIGA__\n"
+        "\t\t\t\tnlT2_ = SDL_GetTicks();\n"
+        "#endif\n",
+        "nb load probe base")))
+    results.append(("NewBattleState.cpp (load probe research)", edit(
+        os.path.join(src, "Menu", "NewBattleState.cpp"),
+        "\t\t\t\t// Generate items\n",
+        "#ifdef __AMIGA__\n"
+        "\t\t\t\tnlT3_ = SDL_GetTicks();\n"
+        "#endif\n"
+        "\t\t\t\t// Generate items\n",
+        "nb load probe research")))
+    results.append(("NewBattleState.cpp (load probe end)", edit(
+        os.path.join(src, "Menu", "NewBattleState.cpp"),
+        "\t\t\t\t_game->setSavedGame(save);\n",
+        "#ifdef __AMIGA__\n"
+        "\t\t\t\t{ char nbb_[128]; snprintf(nbb_, sizeof nbb_, \"newbattle: loadcfg parse %u base %u research %u items+rest %u ms\",\n"
+        "\t\t\t\t\tnlT1_ - nlT0_, nlT2_ - nlT1_, nlT3_ - nlT2_, SDL_GetTicks() - nlT3_); SDLmini_Log(nbb_); }\n"
+        "#endif\n"
+        "\t\t\t\t_game->setSavedGame(save);\n",
+        "nb load probe end")))
+
+    # 6am8. battle.cfg ybc (2026-08-20): phase 1 of New Battle was 76% pure
+    #       yaml parse of battle.cfg (7.8 s of 10.2 s on the 040/40) - a
+    #       user/ file, so outside the automatic ybc write-back. save()
+    #       already holds the node tree, so it stores the .ybc right after
+    #       writing the cfg; LoadFile now tries the cache for ANY file that
+    #       has one next to it.
+    results.append(("NewBattleState.cpp (cfg ybc store)", edit(
+        os.path.join(src, "Menu", "NewBattleState.cpp"),
+        "\t\tAmigaYamlWrite(ydump_, node);\n"
+        "\t\tsav << ydump_;\n"
+        "\t}\n"
+        "\tsav.close();\n",
+        "\t\tAmigaYamlWrite(ydump_, node);\n"
+        "\t\tsav << ydump_;\n"
+        "\t}\n"
+        "\tsav.close();\n"
+        "#ifdef __AMIGA__\n"
+        "\t/* AMIGA-PORT 6am8: pre-parsed cache next to the cfg */\n"
+        "\tYAML::AmigaYbcStore(s, node);\n"
+        "#endif\n",
+        "nb cfg ybc store")))
+    results.append(("NewBattleState.cpp (cfg ybc decl)", edit(
+        os.path.join(src, "Menu", "NewBattleState.cpp"),
+        '#include "NewBattleState.h"\n#include "amiga_yamlout.h"\n',
+        '#include "NewBattleState.h"\n#include "amiga_yamlout.h"\n'
+        '#ifdef __AMIGA__\n'
+        'namespace YAML { class Node; void AmigaYbcStore(const std::string&, const Node&); }\n'
+        '#endif\n',
+        "nb cfg ybc decl")))
+
+    # 6am9. Probe (2026-08-20): okclick grew 4.5 -> 12 s outside bgen after
+    #       the ybc store landed - split save() to see which part it is.
+    results.append(("NewBattleState.cpp (savecfg probe start)", edit(
+        os.path.join(src, "Menu", "NewBattleState.cpp"),
+        "\tYAML::Node node;\n"
+        "\tnode[\"mission\"] = _cbxMission->getSelected();\n",
+        "#ifdef __AMIGA__\n"
+        "\tunsigned int scT0_ = SDL_GetTicks(), scT1_, scT2_, scT3_;\n"
+        "#endif\n"
+        "\tYAML::Node node;\n"
+        "\tnode[\"mission\"] = _cbxMission->getSelected();\n",
+        "savecfg probe start")))
+    results.append(("NewBattleState.cpp (savecfg probe marks)", edit(
+        os.path.join(src, "Menu", "NewBattleState.cpp"),
+        "\tnode[\"base\"] = _game->getSavedGame()->getBases()->front()->save();\n"
+        "\t{\n"
+        "\t\t/* AMIGA-PORT 6am7: no YAML::Emitter - see the patch script */\n"
+        "\t\tstd::string ydump_;\n"
+        "\t\tydump_.reserve(64 * 1024);\n"
+        "\t\tAmigaYamlWrite(ydump_, node);\n"
+        "\t\tsav << ydump_;\n"
+        "\t}\n"
+        "\tsav.close();\n"
+        "#ifdef __AMIGA__\n"
+        "\t/* AMIGA-PORT 6am8: pre-parsed cache next to the cfg */\n"
+        "\tYAML::AmigaYbcStore(s, node);\n"
+        "#endif\n",
+        "\tnode[\"base\"] = _game->getSavedGame()->getBases()->front()->save();\n"
+        "#ifdef __AMIGA__\n"
+        "\tscT1_ = SDL_GetTicks();\n"
+        "#endif\n"
+        "\t{\n"
+        "\t\t/* AMIGA-PORT 6am7: no YAML::Emitter - see the patch script */\n"
+        "\t\tstd::string ydump_;\n"
+        "\t\tydump_.reserve(64 * 1024);\n"
+        "\t\tAmigaYamlWrite(ydump_, node);\n"
+        "\t\tsav << ydump_;\n"
+        "\t}\n"
+        "\tsav.close();\n"
+        "#ifdef __AMIGA__\n"
+        "\tscT2_ = SDL_GetTicks();\n"
+        "\t/* AMIGA-PORT 6am8: pre-parsed cache next to the cfg */\n"
+        "\tYAML::AmigaYbcStore(s, node);\n"
+        "\tscT3_ = SDL_GetTicks();\n"
+        "\t{ char nbb_[128]; snprintf(nbb_, sizeof nbb_, \"newbattle: savecfg nodebuild %u write %u ybcstore %u ms\",\n"
+        "\t\tscT1_ - scT0_, scT2_ - scT1_, scT3_ - scT2_); SDLmini_Log(nbb_); }\n"
+        "#endif\n",
+        "savecfg probe marks")))
+
+    # 6amB. Walk-FOV slices (2026-08-20, user's design): the ~0.8-1 s freeze
+    #       at every tile boundary (lighting + mover cone + watcher LOS) is
+    #       computed DURING the walk animation instead. From the mid-step
+    #       position flip the outcome is fixed (nothing interrupts a running
+    #       tile transition), so each animation tick burns a slice: first
+    #       unit lighting, then the boundary's per-unit FOV loop in the same
+    #       order, 2 units per tick. The boundary finishes leftovers and
+    #       postPathProcedures skips its duplicate lighting+FOV when the
+    #       marker (position + amVisGen_) still matches. Reactions stay at
+    #       the boundary - gameplay untouched, results bit-identical.
+    results.append(("TileEngine.h (walk slice decls)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.h"),
+        '\tvoid calculateFOV(const Position &position);\n',
+        '\tvoid calculateFOV(const Position &position);\n\t/// AMIGA 6amB: walk-FOV spread over the step animation (UnitWalkBState)\n\tbool amigaWalkFovSlice(const Position &pos, BattleUnit *walker, int budget);\n\tbool amigaWalkFovFinish(const Position &pos, BattleUnit *walker);\n\tbool amigaWalkFovIsDone(const Position &pos) const;\n\tvoid amigaWalkFovMarkDone(const Position &pos);\n\tvoid amigaWalkFovOne(BattleUnit *w0_, BattleUnit *mover_, const Position &position);\n',
+        "walk slice decls")))
+    results.append(("TileEngine.cpp (walk slice engine)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        'void TileEngine::calculateFOV(const Position &position)\n{\n\tfor (std::vector<BattleUnit*>::iterator i = _save->getUnits()->begin(); i != _save->getUnits()->end(); ++i)\n\t{\n\t\tif (distanceSq(position, (*i)->getPosition()) <= MAX_VIEW_DISTANCE_SQR)\n\t\t{\n\t\t\t/* AMIGA-PORT: after a step only the pairs involving the unit at\n\t\t\t * `position` (the mover) can have changed. The mover gets a full\n\t\t\t * FOV; everyone else just re-checks the mover: cheap cone test,\n\t\t\t * one visibility ray at most. If no unit stands at `position`\n\t\t\t * (terrain changed: door, explosion) fall back to full FOVs. */\n\t\t\tBattleUnit *mover_ = _save->getTile(position) ? _save->getTile(position)->getUnit() : 0;\n\t\t\tif (mover_ == 0)\n\t\t\t{\n\t\t\t\tcalculateFOV(*i);\n\t\t\t}\n\t\t\telse if (*i == mover_)\n\t\t\t{\n\t\t\t\tcalculateFOV(*i, true);\n\t\t\t}\n\t\t\telse if (!(*i)->isOut())\n\t\t\t{\n\t\t\t\tBattleUnit *w_ = *i;\n\t\t\t\tstd::vector<BattleUnit*> *vu_ = w_->getVisibleUnits();\n\t\t\t\tvu_->erase(std::remove(vu_->begin(), vu_->end(), mover_), vu_->end());\n\t\t\t\tint dir_;\n\t\t\t\tif (Options::strafe && (w_->getTurretType() > -1))\n\t\t\t\t\tdir_ = w_->getTurretDirection();\n\t\t\t\telse\n\t\t\t\t\tdir_ = w_->getDirection();\n\t\t\t\t{\n\t\t\t\t\tstatic const int sX_[8] = { +1, +1, +1, +1, -1, -1, -1, -1 };\n\t\t\t\t\tstatic const int sY_[8] = { -1, -1, -1, +1, +1, +1, -1, -1 };\n\t\t\t\t\tconst bool sw_ = (dir_ == 0 || dir_ == 4);\n\t\t\t\t\tconst Position d_ = mover_->getPosition() - w_->getPosition();\n\t\t\t\t\tconst int xi_ = sw_ ? sY_[dir_]*d_.y : sX_[dir_]*d_.x;\n\t\t\t\t\tconst int yi_ = sw_ ? sX_[dir_]*d_.x : sY_[dir_]*d_.y;\n\t\t\t\t\tif (xi_ < 0 || xi_ > MAX_VIEW_DISTANCE) continue;\n\t\t\t\t\tif (dir_%2) { if (yi_ < 0 || yi_ > MAX_VIEW_DISTANCE) continue; }\n\t\t\t\t\telse        { if (yi_ < -xi_ || yi_ > xi_) continue; }\n\t\t\t\t\tif (xi_*xi_ + yi_*yi_ > MAX_VIEW_DISTANCE_SQR) continue;\n\t\t\t\t}\n\t\t\t\t/* AMIGA-PORT 1G: pointless pair - see the patch script */\n\t\t\t\tif (w_->getFaction() == FACTION_NEUTRAL\n\t\t\t\t\t|| (w_->getFaction() == FACTION_HOSTILE && mover_->getFaction() == FACTION_HOSTILE)) continue;\n\t\t\t\tif (visible(w_, mover_->getTile()))\n\t\t\t\t{\n\t\t\t\t\tif (w_->getFaction() == FACTION_PLAYER)\n\t\t\t\t\t\tmover_->setVisible(true);\n\t\t\t\t\tif ((mover_->getFaction() == FACTION_HOSTILE && w_->getFaction() == FACTION_PLAYER)\n\t\t\t\t\t\t|| (mover_->getFaction() != FACTION_HOSTILE && w_->getFaction() == FACTION_HOSTILE))\n\t\t\t\t\t{\n\t\t\t\t\t\tw_->addToVisibleUnits(mover_);\n\t\t\t\t\t\tif (w_->getFaction() == FACTION_HOSTILE && mover_->getFaction() != FACTION_HOSTILE)\n\t\t\t\t\t\t\tmover_->setTurnsSinceSpotted(0);\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t}\n}\n',
+        'void TileEngine::calculateFOV(const Position &position)\n{\n\tBattleUnit *mover_ = _save->getTile(position) ? _save->getTile(position)->getUnit() : 0;\n\tfor (std::vector<BattleUnit*>::iterator i = _save->getUnits()->begin(); i != _save->getUnits()->end(); ++i)\n\t{\n\t\tif (distanceSq(position, (*i)->getPosition()) <= MAX_VIEW_DISTANCE_SQR)\n\t\t{\n\t\t\tamigaWalkFovOne(*i, mover_, position);\n\t\t}\n\t}\n}\n\n/* AMIGA-PORT 6amB: one unit\'s worth of the after-step FOV work - shared by\n * the boundary loop above and the animation-time slices below. */\nvoid TileEngine::amigaWalkFovOne(BattleUnit *w0_, BattleUnit *mover_, const Position &position)\n{\n\t/* AMIGA-PORT: after a step only the pairs involving the unit at\n\t * `position` (the mover) can have changed. The mover gets a full\n\t * FOV; everyone else just re-checks the mover: cheap cone test,\n\t * one visibility ray at most. If no unit stands at `position`\n\t * (terrain changed: door, explosion) fall back to full FOVs. */\n\tif (mover_ == 0)\n\t{\n\t\tcalculateFOV(w0_);\n\t}\n\telse if (w0_ == mover_)\n\t{\n\t\tcalculateFOV(w0_, true);\n\t}\n\telse if (!w0_->isOut())\n\t{\n\t\tBattleUnit *w_ = w0_;\n\t\tstd::vector<BattleUnit*> *vu_ = w_->getVisibleUnits();\n\t\tvu_->erase(std::remove(vu_->begin(), vu_->end(), mover_), vu_->end());\n\t\tint dir_;\n\t\tif (Options::strafe && (w_->getTurretType() > -1))\n\t\t\tdir_ = w_->getTurretDirection();\n\t\telse\n\t\t\tdir_ = w_->getDirection();\n\t\t{\n\t\t\tstatic const int sX_[8] = { +1, +1, +1, +1, -1, -1, -1, -1 };\n\t\t\tstatic const int sY_[8] = { -1, -1, -1, +1, +1, +1, -1, -1 };\n\t\t\tconst bool sw_ = (dir_ == 0 || dir_ == 4);\n\t\t\tconst Position d_ = mover_->getPosition() - w_->getPosition();\n\t\t\tconst int xi_ = sw_ ? sY_[dir_]*d_.y : sX_[dir_]*d_.x;\n\t\t\tconst int yi_ = sw_ ? sX_[dir_]*d_.x : sY_[dir_]*d_.y;\n\t\t\tif (xi_ < 0 || xi_ > MAX_VIEW_DISTANCE) return;\n\t\t\tif (dir_%2) { if (yi_ < 0 || yi_ > MAX_VIEW_DISTANCE) return; }\n\t\t\telse        { if (yi_ < -xi_ || yi_ > xi_) return; }\n\t\t\tif (xi_*xi_ + yi_*yi_ > MAX_VIEW_DISTANCE_SQR) return;\n\t\t}\n\t\t/* AMIGA-PORT 1G: pointless pair - see the patch script */\n\t\tif (w_->getFaction() == FACTION_NEUTRAL\n\t\t\t|| (w_->getFaction() == FACTION_HOSTILE && mover_->getFaction() == FACTION_HOSTILE)) return;\n\t\tif (visible(w_, mover_->getTile()))\n\t\t{\n\t\t\tif (w_->getFaction() == FACTION_PLAYER)\n\t\t\t\tmover_->setVisible(true);\n\t\t\tif ((mover_->getFaction() == FACTION_HOSTILE && w_->getFaction() == FACTION_PLAYER)\n\t\t\t\t|| (mover_->getFaction() != FACTION_HOSTILE && w_->getFaction() == FACTION_HOSTILE))\n\t\t\t{\n\t\t\t\tw_->addToVisibleUnits(mover_);\n\t\t\t\tif (w_->getFaction() == FACTION_HOSTILE && mover_->getFaction() != FACTION_HOSTILE)\n\t\t\t\t\tmover_->setTurnsSinceSpotted(0);\n\t\t\t}\n\t\t}\n\t}\n}\n\n/* AMIGA-PORT 6amB: the step-boundary freeze spread over the walk animation\n * (the user\'s design). Once the walker\'s logical position flips to the\n * destination tile (mid-animation) nothing can interrupt the rest of the\n * animation, so the boundary results are already determined: lighting on\n * the first slice tick, then the per-unit FOV loop in EXACTLY the boundary\n * order, `budget` units per tick. The boundary finishes leftovers (usually\n * none). amVisGen_ guards a map change mid-flight -> full recompute. */\nstatic Position amWfPos_ = Position(-1, -1, -1);\nstatic Position amWfDonePos_ = Position(-1, -1, -1);\nstatic unsigned long amWfGen_ = 0;\nstatic unsigned long amWfDoneGen_ = 0;\nstatic size_t amWfIdx_ = 0;\nstatic int amWfLight_ = 0;\nstatic int amWfConeX_ = 0;\nstatic int amWfConeDone_ = 0;\nstatic int amWfLightPh_ = 0;      /* 0 collect, 1 floods, 2 commit, 3 done */\nstatic int amWfSrcI_ = 0, amWfSrcN_ = 0;\nstatic Position amWfSrcP_[256];\nstatic int amWfSrcW_[256];\nstatic int amWfSpot_ = 0;\n\nbool TileEngine::amigaWalkFovSlice(const Position &pos, BattleUnit *walker, int budget)\n{\n\t/* AMIGA-PORT 6amF: while slicing, the walker\'s _pos VALUE is swapped to\n\t * the destination (occupancy untouched, restored before returning) so\n\t * eye voxel, distances, memo keys and lighting all compute as-if\n\t * arrived - from the FIRST animation frame. */\n\tif (amWfPos_ != pos)\n\t{\n\t\tamWfPos_ = pos;\n\t\tamWfIdx_ = 0;\n\t\tamWfLight_ = 0;\n\t\tamWfLightPh_ = 0;\n\t\tamWfConeX_ = 0;\n\t\tamWfConeDone_ = 0;\n\t\tamWfGen_ = amVisGen_;\n\t\tif (AmigaPerfLog) SDLmini_Log("wf: arm");\n\t}\n\tif (amWfGen_ != amVisGen_)\n\t\treturn false;\n\tconst unsigned long t0_ = amiga_uclock_us();\n\tif (!amWfLight_ || !amWfConeDone_)\n\t{\n\t\tconst Position realPos_ = walker->getPosition();\n\t\tconst bool swap_ = !(realPos_.x == pos.x && realPos_.y == pos.y && realPos_.z == pos.z);\n\t\tif (swap_) walker->setPosition(pos, false);\n\t\t/* 6amG: lighting built in a side buffer, one source per tick, then a\n\t\t * cheap atomic commit - the screen never sees a half-updated layer */\n\t\tif (amWfLightPh_ == 0)\n\t\t{\n\t\t\tconst int n_ = _save->getMapSizeXYZ();\n\t\t\tif (amLbufN_ != n_)\n\t\t\t{\n\t\t\t\tdelete[] amLbuf_;\n\t\t\t\tamLbuf_ = new Uint8[n_];\n\t\t\t\tamLbufN_ = n_;\n\t\t\t}\n\t\t\tmemset(amLbuf_, 0, (size_t)n_);\n\t\t\tamWfSrcN_ = 0;\n\t\t\tfor (std::vector<BattleUnit*>::iterator i = _save->getUnits()->begin(); i != _save->getUnits()->end(); ++i)\n\t\t\t{\n\t\t\t\tif (amWfSrcN_ > 254) break;\n\t\t\t\t/* same criteria and 15/15 powers as calculateUnitLighting */\n\t\t\t\tif (_personalLighting && (*i)->getFaction() == FACTION_PLAYER && !(*i)->isOut())\n\t\t\t\t{ amWfSrcP_[amWfSrcN_] = (*i)->getPosition(); amWfSrcW_[amWfSrcN_++] = 15; }\n\t\t\t\tif ((*i)->getFire())\n\t\t\t\t{ amWfSrcP_[amWfSrcN_] = (*i)->getPosition(); amWfSrcW_[amWfSrcN_++] = 15; }\n\t\t\t}\n\t\t\tamWfSrcI_ = 0;\n\t\t\tamWfLightPh_ = 1;\n\t\t}\n\t\twhile (amWfLightPh_ == 1 && amiga_uclock_us() - t0_ <= 60000UL)\n\t\t{\n\t\t\tif (amWfSrcI_ >= amWfSrcN_) { amWfLightPh_ = 2; break; }\n\t\t\tamLbufOn_ = 1;\n\t\t\taddLight(amWfSrcP_[amWfSrcI_], amWfSrcW_[amWfSrcI_], 2);\n\t\t\tamLbufOn_ = 0;\n\t\t\t++amWfSrcI_;\n\t\t}\n\t\tif (amWfLightPh_ == 2 && amiga_uclock_us() - t0_ <= 60000UL)\n\t\t{\n\t\t\tconst int n_ = _save->getMapSizeXYZ();\n\t\t\tfor (int i_ = 0; i_ < n_; ++i_)\n\t\t\t{\n\t\t\t\tTile *t_ = _save->getTiles()[i_];\n\t\t\t\tt_->resetLight(2);\n\t\t\t\tt_->addLight(amLbuf_[i_], 2);\n\t\t\t}\n\t\t\tamWfLightPh_ = 3;\n\t\t\tamWfLight_ = 1;\n\t\t}\n\t\twhile (amWfLightPh_ == 3 && !amWfConeDone_ && amiga_uclock_us() - t0_ <= 60000UL)\n\t\t{\n\t\t\tamFovXLo_ = amWfConeX_;\n\t\t\tamFovXHi_ = amWfConeX_ + 1;\n\t\t\tif (amFovXHi_ > MAX_VIEW_DISTANCE) amFovXHi_ = MAX_VIEW_DISTANCE;\n\t\t\tcalculateFOV(walker, true);\n\t\t\tamWfConeX_ = amFovXHi_ + 1;\n\t\t\tamFovXLo_ = amFovXHi_ = -1;\n\t\t\tif (amWfConeX_ > MAX_VIEW_DISTANCE)\n\t\t\t\tamWfConeDone_ = 1;\n\t\t}\n\t\tif (swap_) walker->setPosition(realPos_, false);\n\t\tif (amWfLightPh_ != 3 || !amWfConeDone_ || amiga_uclock_us() - t0_ > 60000UL)\n\t\t\treturn true;\n\t}\n\t/* watchers need the walker really occupying the tile */\n\tBattleUnit *mover_ = _save->getTile(pos) ? _save->getTile(pos)->getUnit() : 0;\n\tif (mover_ != walker)\n\t\treturn true;\n\tstd::vector<BattleUnit*> *u_ = _save->getUnits();\n\twhile (amWfIdx_ < u_->size())\n\t{\n\t\tif (amiga_uclock_us() - t0_ > 60000UL)\n\t\t\tbreak;\n\t\tBattleUnit *b_ = (*u_)[amWfIdx_];\n\t\tif (b_ == walker || distanceSq(pos, b_->getPosition()) > MAX_VIEW_DISTANCE_SQR)\n\t\t{\n\t\t\t++amWfIdx_;\n\t\t\tcontinue;\n\t\t}\n\t\tamigaWalkFovOne(b_, mover_, pos);\n\t\t++amWfIdx_;\n\t}\n\treturn amWfIdx_ < u_->size();\n}\n\nbool TileEngine::amigaWalkFovFinish(const Position &pos, BattleUnit *walker)\n{\n\tif (amWfPos_ != pos || amWfGen_ != amVisGen_)\n\t{\n\t\tif (AmigaPerfLog) SDLmini_Log("wf: finish REJECT");\n\t\tamWfPos_ = Position(-1, -1, -1);\n\t\treturn false;\n\t}\n\tBattleUnit *mover_ = _save->getTile(pos) ? _save->getTile(pos)->getUnit() : 0;\n\tif (mover_ != walker)\n\t{\n\t\tamWfPos_ = Position(-1, -1, -1);\n\t\treturn false;\n\t}\n\tif (amWfLightPh_ != 3)\n\t{\n\t\tcalculateUnitLighting();\n\t\tamWfLightPh_ = 3;\n\t\tamWfLight_ = 1;\n\t}\n\twhile (!amWfConeDone_)\n\t{\n\t\tamFovXLo_ = amWfConeX_;\n\t\tamFovXHi_ = MAX_VIEW_DISTANCE;\n\t\tcalculateFOV(walker, true);\n\t\tamFovXLo_ = amFovXHi_ = -1;\n\t\tamWfConeDone_ = 1;\n\t}\n\tstd::vector<BattleUnit*> *u_ = _save->getUnits();\n\twhile (amWfIdx_ < u_->size())\n\t{\n\t\tBattleUnit *b_ = (*u_)[amWfIdx_];\n\t\tif (b_ == walker || distanceSq(pos, b_->getPosition()) > MAX_VIEW_DISTANCE_SQR)\n\t\t{\n\t\t\t++amWfIdx_;\n\t\t\tcontinue;\n\t\t}\n\t\tamigaWalkFovOne(b_, mover_, pos);\n\t\t++amWfIdx_;\n\t}\n\tamWfPos_ = Position(-1, -1, -1);\n\tamWfDonePos_ = pos;\n\tamWfDoneGen_ = amVisGen_;\n\treturn true;\n}\n\nbool TileEngine::amigaWalkFovIsDone(const Position &pos) const\n{\n\treturn amWfDonePos_ == pos && amWfDoneGen_ == amVisGen_;\n}\n\nvoid TileEngine::amigaWalkFovMarkDone(const Position &pos)\n{\n\tamWfDonePos_ = pos;\n\tamWfDoneGen_ = amVisGen_;\n}\n',
+        "walk slice engine")))
+    results.append(("UnitWalkBState.cpp (walk slice tick)", edit(
+        os.path.join(src, "Battlescape", "UnitWalkBState.cpp"),
+        '\t\telse if (onScreen)\n\t\t{\n\t\t\t// make sure the unit sprites are up to date\n',
+        '\t\telse if (onScreen)\n\t\t{\n#ifdef __AMIGA__\n\t\t\t/* AMIGA-PORT 6amB: from the mid-animation position flip on, the\n\t\t\t * boundary outcome is fixed - burn it down a slice per tick */\n\t\t\tif (Options::amigaSplitWalk && _unit->getFaction() == FACTION_PLAYER && !_falling)\n\t\t\t{\n\t\t\t\tUint32 wfT_ = SDL_GetTicks();\n\t\t\t\t_terrain->amigaWalkFovSlice(_unit->getDestination(), _unit, 2);\n\t\t\t\tif (AmigaPerfLog)\n\t\t\t\t{\n\t\t\t\t\tchar wt_[64];\n\t\t\t\t\tsnprintf(wt_, sizeof wt_, "wf: t ph%d %lu ms", _unit->getWalkingPhase(), (unsigned long)(SDL_GetTicks() - wfT_));\n\t\t\t\t\tSDLmini_Log(wt_);\n\t\t\t\t}\n\t\t\t}\n#endif\n\t\t\t// make sure the unit sprites are up to date\n',
+        "walk slice tick")))
+    results.append(("UnitWalkBState.cpp (walk slice boundary)", edit(
+        os.path.join(src, "Battlescape", "UnitWalkBState.cpp"),
+        '\t\t\t// move our personal lighting with us\n\t\t\tAMIGA_STEP_T("unitLighting", _terrain->calculateUnitLighting());\n\t\t\tif (_unit->getFaction() != FACTION_PLAYER)\n\t\t\t{\n\t\t\t\t_unit->setVisible(false);\n\t\t\t}\n\t\t\tAMIGA_STEP_T("fovAll", _terrain->calculateFOV(_unit->getPosition()));\n',
+        '#ifdef __AMIGA__\n\t\t\t/* AMIGA-PORT 6amB: usually precomputed during the animation */\n\t\t\tUint32 wfFt_ = SDL_GetTicks();\n\t\t\tbool wfOk_ = _terrain->amigaWalkFovFinish(_unit->getPosition(), _unit);\n\t\t\tif (AmigaPerfLog)\n\t\t\t{\n\t\t\t\tchar wt_[64];\n\t\t\t\tsnprintf(wt_, sizeof wt_, "wf: fin %lu ms ok%d", (unsigned long)(SDL_GetTicks() - wfFt_), (int)wfOk_);\n\t\t\t\tSDLmini_Log(wt_);\n\t\t\t}\n\t\t\tif (!wfOk_)\n\t\t\t{\n\t\t\t\tAMIGA_STEP_T("unitLighting", _terrain->calculateUnitLighting());\n\t\t\t\tif (_unit->getFaction() != FACTION_PLAYER)\n\t\t\t\t{\n\t\t\t\t\t_unit->setVisible(false);\n\t\t\t\t}\n\t\t\t\tAMIGA_STEP_T("fovAll", _terrain->calculateFOV(_unit->getPosition()));\n\t\t\t\t_terrain->amigaWalkFovMarkDone(_unit->getPosition());\n\t\t\t}\n#else\n\t\t\t// move our personal lighting with us\n\t\t\tAMIGA_STEP_T("unitLighting", _terrain->calculateUnitLighting());\n\t\t\tif (_unit->getFaction() != FACTION_PLAYER)\n\t\t\t{\n\t\t\t\t_unit->setVisible(false);\n\t\t\t}\n\t\t\tAMIGA_STEP_T("fovAll", _terrain->calculateFOV(_unit->getPosition()));\n#endif\n',
+        "walk slice boundary")))
+    results.append(("UnitWalkBState.cpp (walk slice postpath)", edit(
+        os.path.join(src, "Battlescape", "UnitWalkBState.cpp"),
+        '\t_unit->setCache(0);\n\t_terrain->calculateUnitLighting();\n\t_terrain->calculateFOV(_unit);\n',
+        '\t_unit->setCache(0);\n#ifdef __AMIGA__\n\t/* AMIGA-PORT 6amB: the boundary just did exactly this - skip when valid */\n\tif (!_terrain->amigaWalkFovIsDone(_unit->getPosition()))\n#endif\n\t{\n\t\t_terrain->calculateUnitLighting();\n\t\t_terrain->calculateFOV(_unit);\n\t}\n',
+        "walk slice postpath")))
+
+    # 6amD. Etap 2 of the walk slices (2026-08-20): the mover's own cone is
+    #       cut into COLUMN CHUNKS - calculateFOV(unit, tiles) honors a
+    #       window [amFovXLo_, amFovXHi_] over its x loop; chunks after the
+    #       first skip the clears and reuse the incremental-discovery
+    #       decision. The slice tick burns a ~55 ms E-clock budget instead
+    #       of a fixed unit count.
+    results.append(("TileEngine.cpp (uclock include)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        '#include "TileEngine.h"\n',
+        '#include "TileEngine.h"\n#include "amiga_uclock.h"\n',
+        "te uclock include")))
+    results.append(("TileEngine.cpp (cone window statics)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        'bool TileEngine::calculateFOV(BattleUnit *unit, bool tiles)\n{\n',
+        '/* AMIGA-PORT 6amD: cone chunk window (walk slices) */\n'
+        'static int amFovXLo_ = -1, amFovXHi_ = -1;\n'
+        'static bool amFovChunkIncr_ = false;\n'
+        'static Position amFovChunkOldC_ = Position(-1, -1, -1);\n'
+        '\n'
+        'bool TileEngine::calculateFOV(BattleUnit *unit, bool tiles)\n{\n',
+        "cone window statics")))
+    results.append(("TileEngine.cpp (cone chunk clears)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        '\tunit->clearVisibleUnits();\n'
+        '\tif (tiles)\n'
+        '\t\tunit->clearVisibleTiles();\n',
+        '\tif (amFovXLo_ <= 0) /* 6amD: mid-cone chunks must not re-clear */\n'
+        '\t{\n'
+        '\t\tunit->clearVisibleUnits();\n'
+        '\t\tif (tiles)\n'
+        '\t\t\tunit->clearVisibleTiles();\n'
+        '\t}\n',
+        "cone chunk clears")))
+    results.append(("TileEngine.cpp (cone chunk disco)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        '\tbool incr_ = false;\n\tPosition oldC_ = center;\n\t{\n\t\tstatic std::map<int, std::pair<Position, int> > lastDisco_;\n\t\tif (tiles && Options::amigaAccurateFov != 1)\n\t\t{\n\t\t\tstd::map<int, std::pair<Position, int> >::iterator li_ = lastDisco_.find(unit->getId());\n\t\t\tif (li_ != lastDisco_.end() && li_->second.second == direction)\n\t\t\t{\n\t\t\t\tPosition dd_ = center - li_->second.first;\n\t\t\t\t/* same position included: a repeat full FOV skips every ray */\n\t\t\t\tif (dd_.z == 0 && dd_.x >= -1 && dd_.x <= 1 && dd_.y >= -1 && dd_.y <= 1)\n\t\t\t\t{\n\t\t\t\t\tincr_ = true;\n\t\t\t\t\toldC_ = li_->second.first;\n\t\t\t\t}\n\t\t\t}\n\t\t\tlastDisco_[unit->getId()] = std::make_pair(center, direction);\n\t\t}\n\t}\n',
+        "\tbool incr_ = false;\n\tPosition oldC_ = center;\n\tif (amFovXLo_ > 0)\n\t{\n\t\t/* 6amD: later cone chunk - reuse the first chunk's decision */\n\t\tincr_ = amFovChunkIncr_;\n\t\toldC_ = amFovChunkOldC_;\n\t}\n\telse\n\t{\n\t{\n\t\tstatic std::map<int, std::pair<Position, int> > lastDisco_;\n\t\tif (tiles && Options::amigaAccurateFov != 1)\n\t\t{\n\t\t\tstd::map<int, std::pair<Position, int> >::iterator li_ = lastDisco_.find(unit->getId());\n\t\t\tif (li_ != lastDisco_.end() && li_->second.second == direction)\n\t\t\t{\n\t\t\t\tPosition dd_ = center - li_->second.first;\n\t\t\t\t/* same position included: a repeat full FOV skips every ray */\n\t\t\t\tif (dd_.z == 0 && dd_.x >= -1 && dd_.x <= 1 && dd_.y >= -1 && dd_.y <= 1)\n\t\t\t\t{\n\t\t\t\t\tincr_ = true;\n\t\t\t\t\toldC_ = li_->second.first;\n\t\t\t\t}\n\t\t\t}\n\t\t\tlastDisco_[unit->getId()] = std::make_pair(center, direction);\n\t\t}\n\t}\n\tamFovChunkIncr_ = incr_;\n\tamFovChunkOldC_ = oldC_;\n\t}\n",
+        "cone chunk disco")))
+    results.append(("TileEngine.cpp (cone chunk loop)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        '\tfor (int x = 0; x <= MAX_VIEW_DISTANCE; ++x)\n',
+        '\tint amX0_ = 0, amX1_ = MAX_VIEW_DISTANCE; /* 6amD chunk window */\n'
+        '\tif (amFovXLo_ >= 0) { amX0_ = amFovXLo_; amX1_ = amFovXHi_; }\n'
+        '\tfor (int x = amX0_; x <= amX1_; ++x)\n',
+        "cone chunk loop")))
+
+    # 6amE. Poziom 1 (2026-08-20, user's call): the walker's cone starts at
+    #       ANIMATION FRAME 0. calculateFOV honors a position override for
+    #       its geometry (center/pos locals); rays for unit spotting still
+    #       originate at the real eye, so a spot-only pass after the
+    #       mid-step flip redoes spotting exactly. Evens the work over the
+    #       whole transition instead of fast-half/slow-half.
+    results.append(("TileEngine.cpp (fov override statics)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        "/* AMIGA-PORT 6amD: cone chunk window (walk slices) */\n"
+        "static int amFovXLo_ = -1, amFovXHi_ = -1;\n",
+        "/* AMIGA-PORT 6amD: cone chunk window (walk slices) */\n"
+        "static int amFovXLo_ = -1, amFovXHi_ = -1;\n"
+        "/* AMIGA-PORT 6amE: cone geometry computed as-if standing at amFovOvrPos_ */\n"
+        "static int amFovOvrOn_ = 0;\n"
+        "static Position amFovOvrPos_ = Position(-1, -1, -1);\n",
+        "fov override statics")))
+    results.append(("TileEngine.cpp (fov position override)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        "\tsize_t oldNumVisibleUnits = unit->getUnitsSpottedThisTurn().size();\n"
+        "\tPosition center = unit->getPosition();\n",
+        "\tsize_t oldNumVisibleUnits = unit->getUnitsSpottedThisTurn().size();\n"
+        "\tPosition center = unit->getPosition();\n"
+        "\tif (amFovOvrOn_) center = amFovOvrPos_; /* 6amE */\n",
+        "fov position override")))
+    results.append(("TileEngine.cpp (fov pos local)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        "\tPosition pos = unit->getPosition();\n",
+        "\tPosition pos = center; /* 6amE: same value unless overridden */\n",
+        "fov pos local")))
+    results.append(("TileEngine.cpp (fov height tile)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        "\tif ((unit->getHeight() + unit->getFloatHeight() + -_save->getTile(unit->getPosition())->getTerrainLevel()) >= 24 + 4)\n",
+        "\tif ((unit->getHeight() + unit->getFloatHeight() + -_save->getTile(center)->getTerrainLevel()) >= 24 + 4)\n",
+        "fov height tile")))
+
+    # (6amF: slice bodies rewritten in the 6amB literal - pos-value swap)
+    # 6amG. Etap 4 (2026-08-20): buffered unit lighting for the walk slices.
+    #       addLight gains a buffer mode (amLbufOn_): the flood writes max()
+    #       into a side byte-array instead of the tiles; the slice floods one
+    #       source per tick and commits the finished layer in one ~15 ms
+    #       pass. Same light values, no half-updated frame ever drawn.
+    results.append(("TileEngine.cpp (light buffer statics)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        'void TileEngine::addLight(const Position &center, int power, int layer)\n{\n',
+        '/* AMIGA-PORT 6amG: buffered light mode (walk slices) */\n'
+        'static Uint8 *amLbuf_ = 0;\n'
+        'static int amLbufN_ = 0;\n'
+        'static int amLbufOn_ = 0;\n'
+        'static inline void amLightWrite_(SavedBattleGame *save_, Tile *t_, const Position &p_, int light_, int layer_)\n'
+        '{\n'
+        '\tif (amLbufOn_)\n'
+        '\t{\n'
+        '\t\tUint8 *b_ = &amLbuf_[save_->getTileIndex(p_)];\n'
+        '\t\tif (light_ > (int)*b_) *b_ = (Uint8)light_;\n'
+        '\t}\n'
+        '\telse\n'
+        '\t\tt_->addLight(light_, layer_);\n'
+        '}\n'
+        '\n'
+        'void TileEngine::addLight(const Position &center, int power, int layer)\n{\n',
+        "light buffer statics")))
+    results.append(("TileEngine.cpp (light buffer writes)", edit(
+        os.path.join(src, "Battlescape", "TileEngine.cpp"),
+        '\t\t\t\tTile *t_;\n\t\t\t\tif ((t_ = _save->getTile(Position(center.x + x,center.y + y, z))))\n\t\t\t\t\tt_->addLight(light_, layer);\n\t\t\t\tif ((t_ = _save->getTile(Position(center.x - x,center.y - y, z))))\n\t\t\t\t\tt_->addLight(light_, layer);\n\t\t\t\tif ((t_ = _save->getTile(Position(center.x - x,center.y + y, z))))\n\t\t\t\t\tt_->addLight(light_, layer);\n\t\t\t\tif ((t_ = _save->getTile(Position(center.x + x,center.y - y, z))))\n\t\t\t\t\tt_->addLight(light_, layer);\n',
+        '\t\t\t\tTile *t_;\n\t\t\t\tPosition pw_;\n\t\t\t\tpw_ = Position(center.x + x,center.y + y, z);\n\t\t\t\tif ((t_ = _save->getTile(pw_))) amLightWrite_(_save, t_, pw_, light_, layer);\n\t\t\t\tpw_ = Position(center.x - x,center.y - y, z);\n\t\t\t\tif ((t_ = _save->getTile(pw_))) amLightWrite_(_save, t_, pw_, light_, layer);\n\t\t\t\tpw_ = Position(center.x - x,center.y + y, z);\n\t\t\t\tif ((t_ = _save->getTile(pw_))) amLightWrite_(_save, t_, pw_, light_, layer);\n\t\t\t\tpw_ = Position(center.x + x,center.y - y, z);\n\t\t\t\tif ((t_ = _save->getTile(pw_))) amLightWrite_(_save, t_, pw_, light_, layer);\n',
+        "light buffer writes")))
+
+    # 6amH. Option "Split movement calculation" (2026-08-20): user-facing
+    #       switch for the 6amB-6amG walk slices, default ON. Off = the
+    #       original all-at-the-boundary behaviour (the boundary fallback).
+    #       Combo #5 on the Amiga tab (oxc-replace/Menu/OptionsAmigaState.*).
+    results.append(("Options.inc.h (amigaSplitWalk var)", edit(
+        os.path.join(src, "Engine", "Options.inc.h"),
+        "OPT int amigaPerfLog; /* 1 = verbose perf probes in sdlmini.log */\n",
+        "OPT int amigaPerfLog; /* 1 = verbose perf probes in sdlmini.log */\n"
+        "OPT bool amigaSplitWalk; /* spread the per-step FOV/light over the walk animation */\n",
+        "amigaSplitWalk var")))
+    results.append(("Options.cpp (amigaSplitWalk info)", edit(
+        os.path.join(src, "Engine", "Options.cpp"),
+        "\t_info.push_back(OptionInfo(\"amigaPerfLog\", &amigaPerfLog, 0));\n",
+        "\t_info.push_back(OptionInfo(\"amigaPerfLog\", &amigaPerfLog, 0));\n"
+        "\t_info.push_back(OptionInfo(\"amigaSplitWalk\", &amigaSplitWalk, true));\n",
+        "amigaSplitWalk info")))
+    results.append(("en-US.yml (split walk strings)", edit(
+        os.path.join(src, "..", "bin", "common", "Language", "en-US.yml"),
+        "  STR_AMIGA_ANIM_HALF: \"Half (faster)\"\n",
+        "  STR_AMIGA_ANIM_HALF: \"Half (faster)\"\n"
+        "  STR_AMIGA_SPLIT_WALK: \"SPLIT MOVEMENT CALCULATION\"\n"
+        "  STR_AMIGA_SPLIT_WALK_DESC: \"Spreads the visibility and lighting work of every step across the whole walk animation instead of freezing at each tile. Off = original behaviour.\"\n",
+        "split walk strings")))
 
     # 6. File streams. bebbo's libstdc++ hangs forever in
     #    std::ifstream::close() on a file that exists (see native/amiga_fstream.h
