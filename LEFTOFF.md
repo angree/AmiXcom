@@ -2,7 +2,17 @@
 
 Read this, then `CLAUDE.md` (rules), then the top entry of `PROGRESS.md` (proofs).
 
+## NASTEPNY CEL (user): MUZYKA. User sam zaproponuje podejscie (na Amidze
+## nie ma MIDI); nie projektowac na zapas - czekac na jego pomysl. Kontekst:
+## audio portu = Paula, 4 kanaly (2 muzyka streamowana z dysku, 2 SFX),
+## ADPCM 22 kHz (CLAUDE.md); muzyka obecnie w praktyce niema.
+
 ## STAN 2026-08-20: v0.8.0 WYDANE - marsz bez freeze'ow, New Battle 2x
+
+Po wydaniu: falszywy alarm "scroll 12->8 fps" - to byl amigaPerfLog: 1
+pozostawiony w live options.cfg (per-blit pomiary us); wyzerowany. W Work:
+leza binarki porownawcze aga071/aga072/aga080 (+ .info) - SPRZATNAC gdy
+przestana byc potrzebne, zeby nie mylily (jak stare probe'y w run).
 
 Dzien opisany w PROGRESS.md (gorny wpis): plastry FOV/swiatla na klatkach
 animacji marszu (pomysl usera; 6amB-6amH; opcja amigaSplitWalk ON), zakladka

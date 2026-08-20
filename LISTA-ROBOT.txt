@@ -6,9 +6,12 @@ ZROBIONE 20.08 (wydane jako v0.8.0):
    przewijana lista. Max klatka ~60 ms (bylo ~1000 ms na granicy kratki).
  - New Battle: otwarcie 10.2->5.9 s, OK->briefing 12.7->11.4 s (szybki
    writer battle.cfg + ybc store przy OK).
+NASTEPNY CEL: MUZYKA (user zaproponuje podejscie; brak MIDI na Amidze;
+ platforma: Paula 2 kanaly streamowane + ADPCM 22 kHz - patrz CLAUDE.md).
 OTWARTE po 0.8.0: ybc battle.cfg nie trafia przy odczycie (fallback ok);
- amigaPerfLog=1 w live options.cfg (wyzerowac); loading dalej: rulesety 43 s,
- audio ~25 s, LBM/LUT ~14 s, jezyk ~13 s; tura AI ~84 s (parkowane).
+ loading dalej: rulesety 43 s, audio ~25 s, LBM/LUT ~14 s, jezyk ~13 s;
+ tura AI ~84 s (parkowane); sprzatnac Work:aga071/072/080 po porownaniach
+ (falszywy alarm scrolla = amigaPerfLog:1, wyzerowany).
 
 ZROBIONE 19.08 noc (dzien LADOWANIA; wydane jako v0.7.2):
  - Start 344 -> 128 s na 040/40 (2.7x); 030/50: 15 min -> 5.3 min.
