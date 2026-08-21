@@ -49,22 +49,28 @@ static UBYTE aa_allocmap[] = { 15 };
 
 /* ---- streaming music state (Paula channels 2 & 3) ---------------------- */
 #define AA_MUS_MAX_CHUNK 16384          /* 8-bit samples per buffer ceiling */
+/* Depth of the queue. Two buffers (the original ping-pong) only held about
+ * 90 ms, and a single slow geoscape frame drained it; the mixer then had
+ * nothing to hand Paula and the music chopped. Eight buffers give ~0.7 s of
+ * slack for 8 KB of Chip RAM, and each refill still mixes just one buffer. */
+#define AA_MUS_BUFS 8
 
 static int   aa_mus_active = 0;
 static int   aa_mus_ended  = 0;         /* refill returned end-of-stream */
 static int   aa_mus_period = 400;
 static int   aa_mus_vol    = 48;        /* 0..64 */
 static int   aa_mus_chunk  = 0;         /* samples per buffer */
-static signed char *aa_mus_buf[2] = { NULL, NULL }; /* Chip, shared by both channels */
-static int   aa_mus_len[2] = { 0, 0 };  /* valid bytes per buffer (even) */
+static signed char *aa_mus_buf[AA_MUS_BUFS];        /* Chip, shared by both channels */
+static int   aa_mus_len[AA_MUS_BUFS];   /* valid bytes per buffer (even) */
+static int   aa_mus_next = 0;           /* next buffer to hand to the mixer */
 static int   (*aa_mus_refill)(void *, signed char *, int) = NULL;
 static void *aa_mus_ud = NULL;
 
 /* Logical music channel 0 -> Paula ch3 (LEFT), 1 -> ch2 (RIGHT); two
- * requests each for gapless ping-pong over aa_mus_buf[0]/[1]. */
+ * one request per queued buffer, so audio.device chains them gaplessly. */
 static const int aa_mus_chan[2] = { 3, 2 };
-static struct IOAudio *aa_mus_req[2][2] = { { NULL, NULL }, { NULL, NULL } };
-static int   aa_mus_busy[2][2] = { { 0, 0 }, { 0, 0 } };
+static struct IOAudio *aa_mus_req[2][AA_MUS_BUFS];
+static int   aa_mus_busy[2][AA_MUS_BUFS];
 
 int AmigaAudio_Open(void)
 {
@@ -236,7 +242,7 @@ static void MusFreeReqs(void)
 {
     int mc, p;
     for (mc = 0; mc < 2; mc++) {
-        for (p = 0; p < 2; p++) {
+        for (p = 0; p < AA_MUS_BUFS; p++) {
             if (aa_mus_req[mc][p] == NULL) continue;
             if (aa_mus_busy[mc][p]) {
                 AbortIO((struct IORequest *)aa_mus_req[mc][p]);
@@ -251,10 +257,13 @@ static void MusFreeReqs(void)
 
 void AmigaAudio_MusicStop(void)
 {
+    int b;
     if (aa_mus_req[0][0] != NULL || aa_mus_active) MusFreeReqs();
-    if (aa_mus_buf[0] != NULL) { FreeVec(aa_mus_buf[0]); aa_mus_buf[0] = NULL; }
-    if (aa_mus_buf[1] != NULL) { FreeVec(aa_mus_buf[1]); aa_mus_buf[1] = NULL; }
-    aa_mus_len[0] = aa_mus_len[1] = 0;
+    for (b = 0; b < AA_MUS_BUFS; b++) {
+        if (aa_mus_buf[b] != NULL) { FreeVec(aa_mus_buf[b]); aa_mus_buf[b] = NULL; }
+        aa_mus_len[b] = 0;
+    }
+    aa_mus_next = 0;
     aa_mus_active = 0;
     aa_mus_ended  = 0;
     aa_mus_refill = NULL;
@@ -264,7 +273,7 @@ void AmigaAudio_MusicStop(void)
 int AmigaAudio_MusicStart(int period, int chunk_samples,
                           int (*refill)(void *, signed char *, int), void *ud)
 {
-    int mc, p, n0, n1;
+    int mc, p, b, primed;
     if (!aa_ready || refill == NULL) return 0;
 
     AmigaAudio_MusicStop();
@@ -291,13 +300,16 @@ int AmigaAudio_MusicStart(int period, int chunk_samples,
     }
 
     /* One byte per 8-bit sample; the two channels share these buffers. */
-    aa_mus_buf[0] = (signed char *)AllocVec((ULONG)chunk_samples, MEMF_CHIP);
-    aa_mus_buf[1] = (signed char *)AllocVec((ULONG)chunk_samples, MEMF_CHIP);
-    if (aa_mus_buf[0] == NULL || aa_mus_buf[1] == NULL) { AmigaAudio_MusicStop(); return 0; }
+    for (b = 0; b < AA_MUS_BUFS; b++) {
+        aa_mus_buf[b] = (signed char *)AllocVec((ULONG)chunk_samples, MEMF_CHIP);
+        if (aa_mus_buf[b] == NULL) { AmigaAudio_MusicStop(); return 0; }
+        aa_mus_len[b] = 0;
+    }
 
-    /* Four requests, cloned from the opener so they carry ioa_AllocKey. */
+    /* One request per channel per buffer, cloned from the opener so they
+     * carry ioa_AllocKey. */
     for (mc = 0; mc < 2; mc++) {
-        for (p = 0; p < 2; p++) {
+        for (p = 0; p < AA_MUS_BUFS; p++) {
             struct IOAudio *io = (struct IOAudio *)AllocVec(sizeof(struct IOAudio),
                                                             MEMF_PUBLIC | MEMF_CLEAR);
             if (io == NULL) { AmigaAudio_MusicStop(); return 0; }
@@ -308,46 +320,54 @@ int AmigaAudio_MusicStart(int period, int chunk_samples,
         }
     }
 
-    /* Prime both buffers before starting DMA. */
-    n0 = refill(ud, aa_mus_buf[0], chunk_samples);
-    if (n0 <= 0) { AmigaAudio_MusicStop(); return 0; }   /* nothing to play */
-    aa_mus_len[0] = n0 & ~1;
-    n1 = refill(ud, aa_mus_buf[1], chunk_samples);
-    if (n1 <= 0) { aa_mus_len[1] = 0; aa_mus_ended = 1; }
-    else aa_mus_len[1] = n1 & ~1;
+    /* Fill the whole queue before starting DMA: the first seconds of a
+     * tune are exactly when the game is busiest changing state. */
+    primed = 0;
+    for (b = 0; b < AA_MUS_BUFS; b++) {
+        int n = refill(ud, aa_mus_buf[b], chunk_samples);
+        if (n <= 0) { aa_mus_len[b] = 0; aa_mus_ended = 1; break; }
+        aa_mus_len[b] = n & ~1;
+        primed++;
+    }
+    if (primed == 0) { AmigaAudio_MusicStop(); return 0; }   /* nothing to play */
 
     aa_mus_active = 1;
-    for (mc = 0; mc < 2; mc++) {
-        MusWrite(mc, 0);
-        if (aa_mus_len[1] >= 2) MusWrite(mc, 1);
-    }
+    aa_mus_next = primed % AA_MUS_BUFS;
+    for (b = 0; b < primed; b++)
+        for (mc = 0; mc < 2; mc++) MusWrite(mc, b);
     return 1;
 }
 
 void AmigaAudio_MusicService(void)
 {
-    int ping, mc;
+    int pass, mc;
     if (!aa_mus_active) return;
 
-    for (ping = 0; ping < 2; ping++) {
-        int both_idle = 1;
+    /* Reap whatever finished, then refill in queue order. At most a few
+     * buffers per call: mixing is expensive and doing the whole ring in one
+     * frame would stall the display worse than the starvation it fixes. */
+    for (pass = 0; pass < AA_MUS_BUFS; pass++) {
+        int b = aa_mus_next, both_idle = 1;
         for (mc = 0; mc < 2; mc++) {
-            if (!aa_mus_busy[mc][ping]) continue;
-            if (CheckIO((struct IORequest *)aa_mus_req[mc][ping]) != NULL) {
-                WaitIO((struct IORequest *)aa_mus_req[mc][ping]);
-                aa_mus_busy[mc][ping] = 0;
+            if (!aa_mus_busy[mc][b]) continue;
+            if (CheckIO((struct IORequest *)aa_mus_req[mc][b]) != NULL) {
+                WaitIO((struct IORequest *)aa_mus_req[mc][b]);
+                aa_mus_busy[mc][b] = 0;
             } else {
                 both_idle = 0;
             }
         }
-        if (!both_idle || aa_mus_ended) continue;
+        if (!both_idle) break;          /* still playing: the queue is full enough */
+        if (aa_mus_ended) { aa_mus_len[b] = 0; break; }
 
         {
-            int n = aa_mus_refill(aa_mus_ud, aa_mus_buf[ping], aa_mus_chunk);
-            if (n <= 0) { aa_mus_ended = 1; aa_mus_len[ping] = 0; continue; }
-            aa_mus_len[ping] = n & ~1;
-            for (mc = 0; mc < 2; mc++) MusWrite(mc, ping);
+            int n = aa_mus_refill(aa_mus_ud, aa_mus_buf[b], aa_mus_chunk);
+            if (n <= 0) { aa_mus_ended = 1; aa_mus_len[b] = 0; break; }
+            aa_mus_len[b] = n & ~1;
+            for (mc = 0; mc < 2; mc++) MusWrite(mc, b);
         }
+        aa_mus_next = (b + 1) % AA_MUS_BUFS;
+        if (pass >= 2) break;           /* spread the work over frames */
     }
 }
 

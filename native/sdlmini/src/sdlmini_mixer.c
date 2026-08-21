@@ -455,3 +455,19 @@ void SDLmini_MixerService(void)
 {
 	if (s_open) AmigaAudio_MusicService();
 }
+
+/* Same thing, but safe to call from the hot paths the game runs through
+ * when it is NOT drawing: timing calls, the event poll, long yaml parses.
+ * Throttled, because SDL_GetTicks alone is called thousands of times a
+ * second and CheckIO is not free. The guard keeps it re-entrant-safe. */
+void SDLmini_MusicPump(void)
+{
+	static int busy = 0;
+	static int skip = 0;
+	if (!s_open || busy) return;
+	if (++skip < 24) return;
+	skip = 0;
+	busy = 1;
+	AmigaAudio_MusicService();
+	busy = 0;
+}

@@ -1,3 +1,20 @@
+== 0.9.0 (2026-08-21) - MUZYKA - ZROBIONE ==
+- software wavetable mixer (16 glosow, 22 kHz mono) na wlasnym GM.CAT gracza
+- bank sampli z FluidR3 (MIT) w data/common/music.bnk
+- tryb domyslny: render raz na dysk (user/music/*.raw, ~36 MB), potem odtwarzanie
+- tryb "Mixed live" + przelacznik jakosci (interpolacja), domyslny wg POMIARU maszyny
+- drugi pasek postepu (bursztynowy) podczas konwersji
+- naprawione: pusty options.cfg po przerwanym zapisie (cicha zmiana rulesetu)
+
+OTWARTE PO 0.9.0
+- okienko na starcie z wyborem trybu muzyki (user prosil, potem odwolal, potem
+  wrocil do tematu - do ustalenia czy pokazywac zawsze przy 1. starcie)
+- sprzatnac Work:aga071/aga072/aga080 (stare binarki porownawcze)
+- bank 6.3 MB przy 22 kHz; 16 kHz zbilby go do ~4.6 MB i miks o 28%
+- zagadka .ybc battle.cfg (zapis dziala, odczyt nie trafia; fallback ok)
+- dalsze cele ladowania: rulesety 43 s, audio ~25 s, LBM/LUT ~14 s, jezyk ~13 s
+- tura AI ~84 s (parkowane)
+
 AMIXCOM - LISTA POZOSTALYCH ROBOT
 
 ZROBIONE 20.08 (wydane jako v0.8.0):

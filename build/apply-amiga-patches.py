@@ -1520,12 +1520,12 @@ def main():
         '#define OPENXCOM_VERSION_LONG "1.0.0.0"\n'
         '#define OPENXCOM_VERSION_NUMBER 1,0,0,0\n',
         '#ifdef AMIGA_FPU_BUILD\n'
-        '#define OPENXCOM_VERSION_SHORT "0.8.0 FPU"\n'
+        '#define OPENXCOM_VERSION_SHORT "0.9.0 FPU"\n'
         '#else\n'
-        '#define OPENXCOM_VERSION_SHORT "0.8.0"\n'
+        '#define OPENXCOM_VERSION_SHORT "0.9.0"\n'
         '#endif\n'
-        '#define OPENXCOM_VERSION_LONG "0.8.0.0"\n'
-        '#define OPENXCOM_VERSION_NUMBER 0,7,1,0\n'
+        '#define OPENXCOM_VERSION_LONG "0.9.0.0"\n'
+        '#define OPENXCOM_VERSION_NUMBER 0,9,0,0\n'
         '#define OPENXCOM_VERSION_GIT ""\n',
         "port version")))
     results.append(("MainMenuState.cpp (AmiXcom title)", edit(
@@ -3402,7 +3402,19 @@ def main():
         "\t\tnb_->init();\n"
         "\t\tnb_->btnOkClick(0);   /* pops NewBattle + MainMenu, pushes Briefing */\n"
         "\t\tBriefingState *br_ = dynamic_cast<BriefingState*>(_game->getStates()->back());\n"
-        "\t\tif (br_ != 0) br_->btnOkClick(0);\n"
+        "\t\tif (br_ != 0)\n"
+        "\t\t{\n"
+        "\t\t\t/* init() is what starts the battle music: BriefingState::init()\n"
+        "\t\t\t * ends in _game->getMod()->playMusic(_musicId). Clicking OK\n"
+        "\t\t\t * without it left the MENU track playing through the whole\n"
+        "\t\t\t * battlescape (reported 2026-08-20). NewBattleState above already\n"
+        "\t\t\t * gets its init(); the briefing was the odd one out. */\n"
+        "\t\t\tbr_->init();\n"
+        "\t\t\t/* init() can push a CutsceneState instead of playing music. If it\n"
+        "\t\t\t * did, the briefing is no longer on top, and clicking its OK would\n"
+        "\t\t\t * drive a state that is not the visible one. */\n"
+        "\t\t\tif (_game->getStates()->back() == br_) br_->btnOkClick(0);\n"
+        "\t\t}\n"
         "\t\tSDLmini_Log(\"autobattle: in the battlescape\");\n"
         "\t}\n"
         "#endif\n"
@@ -5432,8 +5444,10 @@ def main():
         'extern "C" void (*YamlTickHook)(unsigned long);\n'
         'extern "C" unsigned long YamlTickCount;\n'
         'static unsigned long amigaLangBase_ = 0;\n'
+        'extern "C" void SDLmini_MusicPump(void);\n'
         'static void amigaLangTick_(unsigned long n)\n'
         '{\n'
+        '\tSDLmini_MusicPump();   /* a long parse must not starve the music */\n'
         '\tint p = 89 + (int)((n - amigaLangBase_) / 40000UL);\n'
         '\tif (p > 98) p = 98;\n'
         '\tAmigaSplash_Progress(p);\n'
@@ -8001,6 +8015,476 @@ def main():
         "  STR_AMIGA_SPLIT_WALK: \"SPLIT MOVEMENT CALCULATION\"\n"
         "  STR_AMIGA_SPLIT_WALK_DESC: \"Spreads the visibility and lighting work of every step across the whole walk animation instead of freezing at each tile. Off = original behaviour.\"\n",
         "split walk strings")))
+
+    # 6amM. Atomic options save (0.9.0). save() truncated the real file on
+    #       open and wrote afterwards, so an interrupted save left options.cfg
+    #       empty - and an empty options.cfg silently means "default mods",
+    #       i.e. a TFTD install comes back as UFO with the wrong palettes and
+    #       missing terrain. Write beside it and rename over.
+    results.append(("Options.cpp (atomic options save)", edit(
+        os.path.join(src, "Engine", "Options.cpp"),
+        "\tstd::string s = _configFolder + filename + \".cfg\";\n"
+        "\tstd::ofstream sav(s.c_str());\n",
+        "\tstd::string s = _configFolder + filename + \".cfg\";\n"
+        "#ifdef __AMIGA__\n"
+        "\t/* AMIGA-PORT 6amM: never truncate the live file. Opening it for\n"
+        "\t * writing empties it immediately, and a save interrupted there left\n"
+        "\t * a zero-byte options.cfg, which reads as \"default mods\" - the\n"
+        "\t * install silently changed game. Write a temp file and rename. */\n"
+        "\tstd::string sTmp = s + \".tmp\";\n"
+        "\tstd::ofstream sav(sTmp.c_str());\n"
+        "#else\n"
+        "\tstd::ofstream sav(s.c_str());\n"
+        "#endif\n",
+        "atomic options save")))
+    results.append(("Options.cpp (atomic options rename)", edit(
+        os.path.join(src, "Engine", "Options.cpp"),
+        "\tcatch (YAML::Exception &e)\n"
+        "\t{\n"
+        "\t\tLog(LOG_WARNING) << e.what();\n"
+        "\t}\n"
+        "\tsav.close();\n"
+        "}\n",
+        "\tcatch (YAML::Exception &e)\n"
+        "\t{\n"
+        "\t\tLog(LOG_WARNING) << e.what();\n"
+        "\t}\n"
+        "\tsav.close();\n"
+        "#ifdef __AMIGA__\n"
+        "\t{\n"
+        "\t\t/* Only swap it in once the bytes are on disk. */\n"
+        "\t\tFILE *chk = fopen(sTmp.c_str(), \"rb\");\n"
+        "\t\tlong n = 0;\n"
+        "\t\tif (chk != 0)\n"
+        "\t\t{\n"
+        "\t\t\tfseek(chk, 0, SEEK_END);\n"
+        "\t\t\tn = ftell(chk);\n"
+        "\t\t\tfclose(chk);\n"
+        "\t\t}\n"
+        "\t\tif (n > 0)\n"
+        "\t\t{\n"
+        "\t\t\tremove(s.c_str());              /* AmigaDOS rename will not overwrite */\n"
+        "\t\t\tif (rename(sTmp.c_str(), s.c_str()) != 0)\n"
+        "\t\t\t\tLog(LOG_WARNING) << \"could not replace \" << s;\n"
+        "\t\t}\n"
+        "\t\telse\n"
+        "\t\t{\n"
+        "\t\t\tremove(sTmp.c_str());\n"
+        "\t\t\tLog(LOG_WARNING) << \"options save produced nothing, keeping the old file\";\n"
+        "\t\t}\n"
+        "\t}\n"
+        "#endif\n"
+        "}\n",
+        "atomic options rename")))
+    results.append(("Options.cpp (stdio include)", edit(
+        os.path.join(src, "Engine", "Options.cpp"),
+        "#include \"Options.h\"\n",
+        "#include \"Options.h\"\n"
+        "#ifdef __AMIGA__\n"
+        "#include <stdio.h>   /* rename()/remove() for the atomic save */\n"
+        "#endif\n",
+        "stdio include")))
+
+    # 6amJ. Music (0.9.0). The tunes are the user's own GM.CAT, rendered by
+    #       native/amiga_music.c through the instrument bank in
+    #       data/common/music.bnk. Live mixing costs real CPU on an 030, so
+    #       the interpolation switch defaults from the detected processor and
+    #       a pre-rendered mode trades disk for CPU.
+    results.append(("Options.inc.h (music vars)", edit(
+        os.path.join(src, "Engine", "Options.inc.h"),
+        "OPT bool amigaSplitWalk; /* spread the per-step FOV/light over the walk animation */\n",
+        "OPT bool amigaSplitWalk; /* spread the per-step FOV/light over the walk animation */\n"
+        "OPT int amigaMusic; /* 0 off, 1 mixed live, 2 pre-rendered to disk */\n"
+        "OPT int amigaMusicQuality; /* 0 low, 1 high (sample interpolation) */\n",
+        "music vars")))
+    results.append(("Options.cpp (music info)", edit(
+        os.path.join(src, "Engine", "Options.cpp"),
+        "\t_info.push_back(OptionInfo(\"amigaSplitWalk\", &amigaSplitWalk, true));\n",
+        "\t_info.push_back(OptionInfo(\"amigaSplitWalk\", &amigaSplitWalk, true));\n"
+        "\t_info.push_back(OptionInfo(\"amigaMusic\", &amigaMusic, 2));\n"
+        "\t_info.push_back(OptionInfo(\"amigaMusicQuality\", &amigaMusicQuality,\n"
+        "\t\tamigaMusicQualityDefault_()));\n",
+        "music info")))
+    results.append(("Options.cpp (cpu decl)", edit(
+        os.path.join(src, "Engine", "Options.cpp"),
+        "namespace OpenXcom\n{\n",
+        "extern \"C\" int amigastartup_cpu(void);\n"
+        "extern \"C\" int amigastartup_mixcost(void);\n"
+        "extern \"C\" void SDLmini_Log(const char *msg);\n"
+        "\n"
+        "/* High quality means interpolating between sample points, which costs\n"
+        " * roughly twice as much mixing. Decide from what this machine actually\n"
+        " * does, not from the CPU model: the 020 in the test config runs at 040\n"
+        " * speed, and an 030/25 is nothing like an 030/50. One second of music\n"
+        " * is about 3.365 times the probe workload, so predict the share and\n"
+        " * take interpolation only while it stays under a fifth of the CPU. */\n"
+        "static int amigaMusicQualityDefault_()\n"
+        "{\n"
+        "\tint us = amigastartup_mixcost();\n"
+        "\t/* worst case: the geoscape tune runs sixteen voices, not ten */\n"
+        "\t/* one second of music at sixteen voices is 5.384x the probe, and\n"
+        "\t * interpolation doubles it; x100 turns the fraction into percent */\n"
+        "\tint pct = (int)(((long)us * 1077L) / 1000000L); /* interpolated */\n"
+        "\tint high = (us > 0 && pct <= 20) ? 1 : 0;\n"
+        "\tchar mq_[96];\n"
+        "\tsnprintf(mq_, sizeof mq_, \"mus: mixcost %d us, ~%d%% interpolated, cpu %d -> quality %s\",\n"
+        "\t\tus, pct, amigastartup_cpu(), high ? \"High\" : \"Low\");\n"
+        "\tSDLmini_Log(mq_);\n"
+        "\treturn high;\n"
+        "}\n"
+        "\n"
+        "namespace OpenXcom\n{\n",
+        "cpu decl")))
+    results.append(("en-US.yml (music strings)", edit(
+        os.path.join(src, "..", "bin", "common", "Language", "en-US.yml"),
+        "  STR_AMIGA_SPLIT_WALK: \"SPLIT MOVEMENT CALCULATION\"\n",
+        "  STR_AMIGA_MUSIC: \"MUSIC\"\n"
+        "  STR_AMIGA_MUSIC_DESC: \"Off, mixed while you play, or rendered once to disk at first start. Live mixing costs CPU (roughly a quarter of an 030/50, little on 040/060); pre-rendered costs almost none but needs about 40 MB of disk and a few minutes once.\"\n"
+        "  STR_AMIGA_MUSIC_OFF: \"Off\"\n"
+        "  STR_AMIGA_MUSIC_LIVE: \"Mixed live\"\n"
+        "  STR_AMIGA_MUSIC_PRE: \"Pre-rendered\"\n"
+        "  STR_AMIGA_MUSIC_QUALITY: \"MUSIC QUALITY\"\n"
+        "  STR_AMIGA_MUSIC_QUALITY_DESC: \"High interpolates between sample points: cleaner treble, about twice the mixing cost. The default follows your processor (High on 040/060, Low on 020/030). Ignored when music is pre-rendered, which always renders at high quality.\"\n"
+        "  STR_AMIGA_QUALITY_LOW: \"Low\"\n"
+        "  STR_AMIGA_QUALITY_HIGH: \"High\"\n"
+        "  STR_AMIGA_SPLIT_WALK: \"SPLIT MOVEMENT CALCULATION\"\n",
+        "music strings")))
+
+    # 6amK. Play the tunes (0.9.0). Upstream turns a GM.CAT entry into a MIDI
+    #       file for SDL_mixer; there is no MIDI device here, so the raw stream
+    #       is kept instead and handed to native/amiga_music.c, which mixes it
+    #       in software and streams the result to Paula.
+    results.append(("Music.h (amiga tune)", edit(
+        os.path.join(src, "Engine", "Music.h"),
+        "class Music\n{\nprivate:\n\tMix_Music *_music;\npublic:\n",
+        "class Music\n{\nprivate:\n\tMix_Music *_music;\n"
+        "#ifdef __AMIGA__\n"
+        "\tstd::vector<unsigned char> _amigaData; /* raw GM.CAT stream */\n"
+        "\tint _amigaTrack;                       /* catPos, for the replay gain */\n"
+        "#endif\n"
+        "public:\n"
+        "#ifdef __AMIGA__\n"
+        "\t/// Keeps a GM.CAT tune to be mixed by the Amiga replayer.\n"
+        "\tvoid amigaSetTune(int track, const unsigned char *data, unsigned int size);\n"
+        "#endif\n",
+        "amiga tune")))
+    results.append(("Music.h (vector include)", edit(
+        os.path.join(src, "Engine", "Music.h"),
+        "#include <string>\n#include <SDL_mixer.h>\n",
+        "#include <string>\n#include <vector>\n#include <SDL_mixer.h>\n",
+        "vector include")))
+
+    results.append(("Music.cpp (amiga play)", edit(
+        os.path.join(src, "Engine", "Music.cpp"),
+        "namespace OpenXcom\n{\n",
+        "#ifdef __AMIGA__\n"
+        "#include \"Options.h\"\n"
+        "#include \"CrossPlatform.h\"\n"
+        "extern \"C\" {\n"
+        "#include \"amiga_music.h\"\n"
+        "void SDLmini_Log(const char *msg);\n"
+        "int  AmigaAudio_MusicStart(int period, int chunk_samples,\n"
+        "                           int (*refill)(void *ud, signed char *dst, int max),\n"
+        "                           void *ud);\n"
+        "void AmigaAudio_MusicStop(void);\n"
+        "}\n"
+        "\n"
+        "/* PAL colour clock over the mixing rate: the period Paula needs. */\n"
+        "#define AMIGA_MUSIC_PERIOD ((3546895 + MUSIC_RATE / 2) / MUSIC_RATE)\n"
+        "/* ~93 ms per buffer; amiga_audio.c queues eight of them, so the stream\n"
+        " * carries about 0.74 s of slack. Two buffers (0.09 s) could not survive\n"
+        " * a single slow geoscape frame and the music chopped. */\n"
+        "#define AMIGA_MUSIC_CHUNK  2048\n"
+        "\n"
+        "static bool amigaMusicBankTried_ = false;\n"
+        "\n"
+        "static bool amigaMusicBank_()\n"
+        "{\n"
+        "\tif (AmigaMusic_HaveBank()) return true;\n"
+        "\tif (amigaMusicBankTried_) return false;\n"
+        "\tamigaMusicBankTried_ = true;\n"
+        "\tstd::string p = OpenXcom::CrossPlatform::searchDataFile(\"common/music.bnk\");\n"
+        "\treturn AmigaMusic_LoadBank(p.c_str()) != 0;\n"
+        "}\n"
+        "#endif\n"
+        "\n"
+        "namespace OpenXcom\n{\n",
+        "amiga play")))
+
+    results.append(("Music.cpp (amiga setter)", edit(
+        os.path.join(src, "Engine", "Music.cpp"),
+        "void Music::play(int loop) const\n{\n",
+        "#ifdef __AMIGA__\n"
+        "/**\n"
+        " * Keeps a raw GM.CAT tune for the Amiga replayer.\n"
+        " */\n"
+        "void Music::amigaSetTune(int track, const unsigned char *data, unsigned int size)\n"
+        "{\n"
+        "\t_amigaTrack = track;\n"
+        "\t_amigaData.assign(data, data + size);\n"
+        "}\n"
+        "#endif\n"
+        "\n"
+        "void Music::play(int loop) const\n{\n"
+        "#ifdef __AMIGA__\n"
+        "\tif (!_amigaData.empty() && !Options::mute && Options::amigaMusic == 1)\n"
+        "\t{\n"
+        "\t\tif (amigaMusicBank_())\n"
+        "\t\t{\n"
+        "\t\t\tAmigaAudio_MusicStop();\n"
+        "\t\t\tAmigaMusic_SetInterp(Options::amigaMusicQuality ? 1 : 0);\n"
+        "\t\t\t/* Full scale here: Paula's own volume already carries the\n"
+        "\t\t\t * user setting, and attenuating twice would waste most of\n"
+        "\t\t\t * the 8-bit range the tune was calibrated against. */\n"
+        "\t\t\tAmigaMusic_SetVolume(64);\n"
+        "\t\t\tif (AmigaMusic_Play(&_amigaData[0], (unsigned long)_amigaData.size(),\n"
+        "\t\t\t\tAmigaMusic_TuneGain(_amigaTrack), loop != 0))\n"
+        "\t\t\t{\n"
+        "\t\t\t\tAmigaAudio_MusicStart(AMIGA_MUSIC_PERIOD, AMIGA_MUSIC_CHUNK,\n"
+        "\t\t\t\t\tAmigaMusic_Refill, 0);\n"
+        "\t\t\t}\n"
+        "\t\t}\n"
+        "\t}\n"
+        "\treturn;\n"
+        "#endif\n",
+        "amiga setter")))
+
+    results.append(("Music.cpp (amiga ctor)", edit(
+        os.path.join(src, "Engine", "Music.cpp"),
+        "Music::Music() : _music(0)\n{\n}",
+        "Music::Music() : _music(0)\n"
+        "#ifdef __AMIGA__\n"
+        "\t, _amigaTrack(0)\n"
+        "#endif\n"
+        "{\n}",
+        "amiga ctor")))
+
+    results.append(("Music.cpp (amiga stop)", edit(
+        os.path.join(src, "Engine", "Music.cpp"),
+        "void Music::stop()\n{\n",
+        "void Music::stop()\n{\n"
+        "#ifdef __AMIGA__\n"
+        "\tAmigaAudio_MusicStop();\n"
+        "\tAmigaMusic_Stop();\n"
+        "\treturn;\n"
+        "#endif\n",
+        "amiga stop")))
+
+    results.append(("GMCat.cpp (log decl)", edit(
+        os.path.join(src, "Engine", "GMCat.cpp"),
+        "#include \"GMCat.h\"\n",
+        "#include \"GMCat.h\"\n"
+        "#ifdef __AMIGA__\n"
+        "extern \"C\" void SDLmini_Log(const char *msg);\n"
+        "#endif\n",
+        "log decl")))
+    results.append(("GMCat.cpp (keep raw stream)", edit(
+        os.path.join(src, "Engine", "GMCat.cpp"),
+        "Music *GMCatFile::loadMIDI(unsigned int i)\n{\n\tMusic *music = new Music;\n",
+        "Music *GMCatFile::loadMIDI(unsigned int i)\n{\n\tMusic *music = new Music;\n"
+        "#ifdef __AMIGA__\n"
+        "\t/* AMIGA-PORT 6amK: no MIDI device exists here. Keep the raw stream;\n"
+        "\t * native/amiga_music.c walks it with the same rules this file uses\n"
+        "\t * to write a MIDI file, and mixes the notes in software. */\n"
+        "\t{\n"
+        "\t\tchar *rawa = load(i);\n"
+        "\t\tif (rawa != 0)\n"
+        "\t\t{\n"
+        "\t\t\tmusic->amigaSetTune((int)i, (const unsigned char *)rawa, getObjectSize(i));\n"
+        "\t\t\tdelete[] rawa;\n"
+        "\t\t}\n"
+        "\t\treturn music;\n"
+        "\t}\n"
+        "#endif\n",
+        "keep raw stream")))
+
+    results.append(("Mod.cpp (music block guard)", edit(
+        os.path.join(src, "Mod", "Mod.cpp"),
+        "#ifndef __NO_MUSIC\n\t// Load musics\n",
+        "/* AMIGA-PORT 6amK: __NO_MUSIC strips SDL_mixer, and with it the whole\n"
+        " * music-loading block below - which is where the GM.CAT tunes are read.\n"
+        " * This port plays them through its own software replayer, so the block\n"
+        " * must still be compiled. Without this the game is simply silent. */\n"
+        "#if !defined(__NO_MUSIC) || defined(__AMIGA__)\n\t// Load musics\n",
+        "music block guard")))
+    results.append(("Mod.cpp (music format order)", edit(
+        os.path.join(src, "Mod", "Mod.cpp"),
+        "\t\tMusicFormat priority[] = { Options::preferredMusic, MUSIC_FLAC, MUSIC_OGG, MUSIC_MP3, MUSIC_MOD, MUSIC_WAV, MUSIC_ADLIB, MUSIC_MIDI };\n",
+        "#ifdef __AMIGA__\n"
+        "\t\t/* AMIGA-PORT 6amK: the DOS GM.CAT stream is the one format this\n"
+        "\t\t * port can play - it is mixed in software by native/amiga_music.c.\n"
+        "\t\t * The stock order puts Adlib first, which would win (ADLIB.CAT is\n"
+        "\t\t * always present next to GM.CAT) and then play nothing at all. */\n"
+        "\t\tMusicFormat priority[] = { MUSIC_MIDI };\n"
+        "#else\n"
+        "\t\tMusicFormat priority[] = { Options::preferredMusic, MUSIC_FLAC, MUSIC_OGG, MUSIC_MP3, MUSIC_MOD, MUSIC_WAV, MUSIC_ADLIB, MUSIC_MIDI };\n"
+        "#endif\n",
+        "music format order")))
+
+    # 6amL. Pre-rendered music (0.9.0). Mixing keeps up on average even on a
+    #       slow machine, but it loses whenever the game stops drawing for a
+    #       while - a globe redraw, a savegame parse - and the stream chops.
+    #       Mixing each tune to disk once removes that failure mode entirely:
+    #       playback becomes a file read. Costs ~36 MB and a few minutes once.
+    results.append(("Music.h (rendered path)", edit(
+        os.path.join(src, "Engine", "Music.h"),
+        "\tint _amigaTrack;                       /* catPos, for the replay gain */\n",
+        "\tint _amigaTrack;                       /* catPos, for the replay gain */\n"
+        "\tstd::string _amigaPath;                /* pre-rendered stream, if any */\n",
+        "rendered path")))
+    results.append(("Music.h (rendered api)", edit(
+        os.path.join(src, "Engine", "Music.h"),
+        "\tvoid amigaSetTune(int track, const unsigned char *data, unsigned int size);\n",
+        "\tvoid amigaSetTune(int track, const unsigned char *data, unsigned int size);\n"
+        "\t/// Points this track at a stream mixed to disk beforehand.\n"
+        "\tvoid amigaSetRenderPath(const std::string &path) { _amigaPath = path; }\n"
+        "\t/// True when a GM.CAT tune was kept for the software mixer.\n"
+        "\tbool amigaHasTune() const { return !_amigaData.empty(); }\n"
+        "\tconst unsigned char *amigaData() const { return _amigaData.empty() ? 0 : &_amigaData[0]; }\n"
+        "\tunsigned long amigaSize() const { return (unsigned long)_amigaData.size(); }\n"
+        "\tint amigaTrack() const { return _amigaTrack; }\n",
+        "rendered api")))
+
+    results.append(("Music.cpp (play rendered)", edit(
+        os.path.join(src, "Engine", "Music.cpp"),
+        "\tif (!_amigaData.empty() && !Options::mute && Options::amigaMusic == 1)\n",
+        "\tif (!_amigaPath.empty() && !Options::mute && Options::amigaMusic == 2)\n"
+        "\t{\n"
+        "\t\t/* Mixed once, at startup: playing it back is just a file read. */\n"
+        "\t\tAmigaAudio_MusicStop();\n"
+        "\t\tif (AmigaMusic_PlayFile(_amigaPath.c_str(), loop != 0))\n"
+        "\t\t{\n"
+        "\t\t\tAmigaAudio_MusicStart(AMIGA_MUSIC_PERIOD, AMIGA_MUSIC_CHUNK,\n"
+        "\t\t\t\tAmigaMusic_Refill, 0);\n"
+        "\t\t}\n"
+        "\t\treturn;\n"
+        "\t}\n"
+        "\tif (!_amigaData.empty() && !Options::mute && Options::amigaMusic == 1)\n",
+        "play rendered")))
+
+    results.append(("Mod.h (prerender decl)", edit(
+        os.path.join(src, "Mod", "Mod.h"),
+        "\tMusic *getMusic(const std::string &name) const;\n",
+        "\tMusic *getMusic(const std::string &name) const;\n"
+        "#ifdef __AMIGA__\n"
+        "\t/// Mixes every tune to disk once, so playback costs a file read.\n"
+        "\tvoid amigaPrerenderMusic();\n"
+        "#endif\n",
+        "prerender decl")))
+
+    results.append(("Mod.cpp (prerender impl)", edit(
+        os.path.join(src, "Mod", "Mod.cpp"),
+        "namespace OpenXcom\n{\n",
+        "#ifdef __AMIGA__\n"
+        "#include \"../Engine/CrossPlatform.h\"\n"
+        "extern \"C\" {\n"
+        "#include \"amiga_music.h\"\n"
+        "void AmigaSplash_Progress2(int percent);\n"
+        "void AmigaSplash_Progress2End(void);\n"
+        "void SDLmini_Log(const char *msg);\n"
+        "}\n"
+        "\n"
+        "/* Progress of the whole set, not of one tune: the second splash bar is\n"
+        " * the only sign of life during a job that takes minutes. */\n"
+        "static int amigaMusIdx_ = 0;\n"
+        "static int amigaMusTotal_ = 1;\n"
+        "static void amigaMusProg_(unsigned long done, unsigned long total)\n"
+        "{\n"
+        "\tlong inner = total ? ((long)done * 100L) / (long)total : 100L;\n"
+        "\tlong pct = ((long)amigaMusIdx_ * 100L + inner) / (long)(amigaMusTotal_ ? amigaMusTotal_ : 1);\n"
+        "\tAmigaSplash_Progress2((int)pct);\n"
+        "}\n"
+        "#endif\n"
+        "\n"
+        "namespace OpenXcom\n{\n",
+        "prerender impl")))
+
+    results.append(("Mod.cpp (prerender body)", edit(
+        os.path.join(src, "Mod", "Mod.cpp"),
+        "Music *Mod::getMusic(const std::string &name) const\n{\n",
+        "#ifdef __AMIGA__\n"
+        "/**\n"
+        " * Mixes every GM.CAT tune to user/music/<NAME>.raw once. Tunes already\n"
+        " * there are left alone, so this only costs time on the first run (or\n"
+        " * after the bank changes). The instrument bank is freed afterwards -\n"
+        " * six megabytes that playback no longer needs.\n"
+        " */\n"
+        "void Mod::amigaPrerenderMusic()\n"
+        "{\n"
+        "\tstd::map<std::string, Music*>::iterator i;\n"
+        "\tstd::string dir = Options::getUserFolder() + \"music\";\n"
+        "\tint todo = 0;\n"
+        "\tchar mb_[128];\n"
+        "\n"
+        "\tfor (i = _musics.begin(); i != _musics.end(); ++i)\n"
+        "\t\tif (i->second != 0 && i->second->amigaHasTune()) todo++;\n"
+        "\tif (todo == 0) return;\n"
+        "\n"
+        "\tCrossPlatform::createFolder(dir);\n"
+        "\tamigaMusTotal_ = todo;\n"
+        "\tamigaMusIdx_ = 0;\n"
+        "\tAmigaSplash_Progress2(0);\n"
+        "\n"
+        "\tfor (i = _musics.begin(); i != _musics.end(); ++i)\n"
+        "\t{\n"
+        "\t\tMusic *m = i->second;\n"
+        "\t\tstd::string path;\n"
+        "\t\tif (m == 0 || !m->amigaHasTune()) continue;\n"
+        "\t\tpath = dir + \"/\" + i->first + \".raw\";\n"
+        "\t\tm->amigaSetRenderPath(path);\n"
+        "\t\tif (!AmigaMusic_HaveRendered(path.c_str()))\n"
+        "\t\t{\n"
+        "\t\t\tif (!AmigaMusic_HaveBank())\n"
+        "\t\t\t{\n"
+        "\t\t\t\tstd::string bank = CrossPlatform::searchDataFile(\"common/music.bnk\");\n"
+        "\t\t\t\tif (!AmigaMusic_LoadBank(bank.c_str()))\n"
+        "\t\t\t\t{\n"
+        "\t\t\t\t\tSDLmini_Log(\"mus: no instrument bank, cannot pre-render\");\n"
+        "\t\t\t\t\tbreak;\n"
+        "\t\t\t\t}\n"
+        "\t\t\t}\n"
+        "\t\t\tsnprintf(mb_, sizeof mb_, \"mus: rendering %s\", i->first.c_str());\n"
+        "\t\t\tSDLmini_Log(mb_);\n"
+        "\t\t\tif (!AmigaMusic_RenderToFile(m->amigaData(), m->amigaSize(),\n"
+        "\t\t\t\tAmigaMusic_TuneGain(m->amigaTrack()), path.c_str(), amigaMusProg_))\n"
+        "\t\t\t{\n"
+        "\t\t\t\tsnprintf(mb_, sizeof mb_, \"mus: render FAILED for %s\", i->first.c_str());\n"
+        "\t\t\t\tSDLmini_Log(mb_);\n"
+        "\t\t\t\tm->amigaSetRenderPath(\"\");\n"
+        "\t\t\t}\n"
+        "\t\t}\n"
+        "\t\tamigaMusIdx_++;\n"
+        "\t\tamigaMusProg_(1, 1);\n"
+        "\t}\n"
+        "\n"
+        "\tAmigaSplash_Progress2End();\n"
+        "\tAmigaMusic_FreeBank();   /* playback reads files now */\n"
+        "\tSDLmini_Log(\"mus: pre-render done\");\n"
+        "}\n"
+        "#endif\n"
+        "\n"
+        "Music *Mod::getMusic(const std::string &name) const\n{\n",
+        "prerender body")))
+
+    results.append(("StartState.cpp (mod include)", edit(
+        os.path.join(src, "Menu", "StartState.cpp"),
+        "#include \"../Engine/Music.h\"\n",
+        "#include \"../Engine/Music.h\"\n"
+        "#ifdef __AMIGA__\n"
+        "#include \"../Mod/Mod.h\"   /* amigaPrerenderMusic() */\n"
+        "#endif\n",
+        "mod include")))
+    results.append(("StartState.cpp (prerender call)", edit(
+        os.path.join(src, "Menu", "StartState.cpp"),
+        '\t\tLog(LOG_INFO) << "OpenXcom started successfully!";\n',
+        "#ifdef __AMIGA__\n"
+        "\t\tif (Options::amigaMusic == 2)\n"
+        "\t\t{\n"
+        "\t\t\t_game->getMod()->amigaPrerenderMusic();\n"
+        "\t\t}\n"
+        "#endif\n"
+        '\t\tLog(LOG_INFO) << "OpenXcom started successfully!";\n',
+        "prerender call")))
 
     # 6. File streams. bebbo's libstdc++ hangs forever in
     #    std::ifstream::close() on a file that exists (see native/amiga_fstream.h

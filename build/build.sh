@@ -203,7 +203,8 @@ done
 # libnix_fixes.c: libc routines libnix gets wrong (wmemcpy copies half of a
 # wide string; that garbled every std::wstring in the game).
 for f in amiga_gfx.c amiga_audio.c amiga_adpcm.c amiga_startup.c amiga_stack.c \
-         fp_conv.c fp_single.c amiga_trap.c libnix_fixes.c amiga_splash.c amiga_splash_data.c amiga_uclock.c; do
+         fp_conv.c fp_single.c amiga_trap.c libnix_fixes.c amiga_splash.c amiga_splash_data.c amiga_uclock.c \
+         amiga_music.c; do
 	NATIVE_OBJS="$NATIVE_OBJS $(compile_c "$NATIVE" "$f")"
 done
 
@@ -292,6 +293,18 @@ cp "$SRC/bin/common/Language/en-US.yml" "$DEPLOY/data/common/Language/en-US.yml"
 # only when missing or the generator is newer
 if [ ! -f "$DEPLOY/data/common/earthfix.dat" ] || [ "$REPO/build/gen_earthfix.py" -nt "$DEPLOY/data/common/earthfix.dat" ]; then
 	python3 "$REPO/build/gen_earthfix.py" "$DEPLOY/data/common/earthfix.dat"
+fi
+
+# instrument bank for the music replayer (build/gen_music_bank.py builds
+# it from a FluidR3 soundfont; the result is MIT-licensed sample data and
+# is the only music asset we may redistribute - the tunes themselves stay
+# in the user's own GM.CAT).
+if [ -f "$REPO/data/music.bnk" ]; then
+	mkdir -p "$DEPLOY/data/common"
+	cp "$REPO/data/music.bnk" "$DEPLOY/data/common/music.bnk"
+	cp "$REPO/data/FluidR3_License.txt" "$DEPLOY/data/common/FluidR3_License.txt" 2>/dev/null || true
+else
+	log "note: data/music.bnk missing - music will stay silent"
 fi
 
 log "deployed to $DEPLOY"

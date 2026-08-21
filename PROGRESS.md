@@ -2,6 +2,97 @@
 
 Newest first. Facts and measurements only; plans live in `PORT_RESEARCH.md`.
 
+## 2026-08-20/21 - 0.9.0: MUZYKA (software wavetable + render na dysk)
+
+CO GRA. Utwory z wlasnego GM.CAT gracza, mieszane 16 glosami programowo w
+`native/amiga_music.c` (22050 Hz MONO, wszystko na intach: pozycje 16.16,
+tablica poltonow, tablica glosnosci 65x256, zero FP). Parser GM.CAT jest
+przepisany 1:1 z `GMCat.cpp` - te same tablice velocity, rozwijanie
+podsekwencji, remapy patchy - wiec balans instrumentow jest ten sam, co
+zakladali autorzy. Bank sampli: `data/music.bnk` (6.3 MB, deploy do
+`data/common/music.bnk`), wyciety z FluidR3 (MIT) przez `build/gen_music_bank.py`.
+
+DLACZEGO SOFTWARE MIXER, A NIE 4 KANALY PAULI. Utwory to 16-kanalowe MIDI
+orkiestrowe; pomiar na 22 utworach dal srednio 2-10 glosow jednoczesnie, p95
+do 13, szczyt 22. Na czterech kanalach sprzetowych gina calve partie (test
+odsluchowy usera: "4 glosy" odpadly natychmiast). Mikser sklada wszystko do
+jednego strumienia 8-bit i Paula gra ten strumien - liczba kanalow przestaje
+byc ograniczeniem.
+
+BANK v1 GRAL INNE SAMPLE (pulapka warta zapamietania). Pierwszy generator
+wymyslil wlasny podzial klawiatury (7 stref na instrument, sortowanie po tonie
+podstawowym). Efekt: harfa grala innym samplem w 80% nut, bas w 100%, a GM 92
+gral "Fantasia" zamiast "Bowed Glass" - czyli inny instrument. User uslyszal to
+od razu ("ref ma inny sampel, to nie jest kwestia jakosci"). v2 nie zgaduje:
+pyta logike referencyjna o KAZDY ze 128 klawiszy i zapisuje gotowa mape
+klawisz->sampel. Weryfikacja: 11339 nut we wszystkich 22 utworach, 0 roznic.
+
+WERYFIKACJA C PRZECIW REFERENCJI. Prototyp w Pythonie (render_gm.py /
+render_bank.py) sluzy jako wzorzec; implementacja w C zgadza sie z nim
++-0.3 dB w kazdym pasmie, peak identyczny. Roznica dlugosci 124 vs 126 s to
+celowy 2-sekundowy ogon w Pythonie.
+
+TRZY RZECZY, KTORE POWODOWALY CISZE (kazda wygladala jak "muzyka nie dziala")
+1. `-D__NO_MUSIC` wycina CALY blok "Load musics" w `Mod::loadResources` -
+   zaden obiekt Music nie powstawal. Guard: `#if !defined(__NO_MUSIC) ||
+   defined(__AMIGA__)`.
+2. W kolejce formatow ADLIB stoi przed MIDI, a ADLIB.CAT lezy obok GM.CAT -
+   gra wybierala AdlibMusic (u nas niemy). Na Amidze kolejka = `{ MUSIC_MIDI }`.
+3. `SDLmini_MixerService()` istnial, ale NIKT go nie wolal.
+
+GLOSNOSC BYLA TLUMIONA DWA RAZY: raz w mikserze (master = musicVolume) i drugi
+raz przez wlasna glosnosc Pauli, ktora niesie to samo. Przy 84/128 to -7.6 dB
+i, gorzej, wiekszosc zakresu 8-bitowego w blocie. Teraz mikser pracuje na
+pelnej skali (tam gdzie kalibrowano gainy per utwor), a ustawienie uzytkownika
+robi wylacznie sprzet.
+
+POMIARY (`musicbench` w Work:, maszyna klasy 10 MIPS): miks 16 glosow -
+geoskop 40.7% z interpolacja / 25.9% bez, przechwyt 30.8% / 20.2%, walka
+4.6% / 4.0%. ADPCM odrzucony: kompresja 8%, DEKOMPRESJA 6.8% (drozsza niz
+sie wydawalo), konwersja 30 min muzyki 7.5 min - surowy 8-bit PCM jest
+tanszy w kazdym wymiarze poza dyskiem.
+
+RWANIE W GEOSCAPE TO BYLO GLODZENIE, NIE BRAK MOCY. Sonda kosztu w realnej
+grze pokazala 2-18% czasu rzeczywistego - mikser wyrabia z zapasem. Strumien
+byl dopelniany WYLACZNIE z `SDL_Flip`, wiec kazde dluzsze nierysowanie (globus,
+parsowanie save'a) go osuszalo; walka nie cierpiala, bo klatki leca rowno.
+Poprawki: kolejka audio z 2 buforow po 1024 probki (93 ms!) na 8 x 2048
+(~0.74 s) i pompa `SDLmini_MusicPump()` wolana takze z `SDL_GetTicks`,
+`SDL_PollEvent`, `SDL_Delay`, `SDL_UpdateRect` i z hooka parsowania yamla.
+
+TRYB DOMYSLNY: PRE-RENDERED. `Mod::amigaPrerenderMusic()` miksuje kazdy utwor
+raz do `user/music/<NAZWA>.raw` (8-bit mono 22050 Hz), pokazujac drugi,
+bursztynowy pasek nad glownym (`AmigaSplash_Progress2`). Zmierzone na danych
+TFTD: 22 utwory, 28 MB, 28.2 minuty muzyki (na PC; na Amidze render szedl
+~2 minuty). Kazdy plik pisany przez `.tmp` + rename, wiec przerwana konwersja
+sie dokancza. Po renderze bank (6.3 MB) jest zwalniany - do grania z pliku
+niepotrzebny.
+
+WYKRYWANIE JAKOSCI PYTALO O ZLA RZECZ. Model CPU z AttnFlags nie mowi nic o
+szybkosci: konfiguracja testowa to `cpu_type=68020` chodzacy z predkoscia 040.
+Teraz gra MIERZY koszt miksowania petla o ksztalcie tej z miksera
+(`amigastartup_mixcost`) i wybiera interpolacje tylko, gdy przewidywany koszt
+najgorszego utworu (16 glosow) zmiesci sie ponizej 20% CPU.
+
+PUSTY options.cfg = CICHA ZMIANA GRY (najkosztowniejsza pomylka dnia).
+`Options::save()` otwieral docelowy plik, co obcina go do zera natychmiast, a
+tresc pisal dopiero potem. Przerwanie w tym oknie zostawialo 0 bajtow, a pusty
+options.cfg znaczy "domyslne mody" - instalacja TFTD wracala jako UFO. Objawy:
+pokrecone kolory w calej grze (paleta UFO na grafikach TFTD) i "TERRAIN/
+CULTIVAT.MCD not found" przy wejsciu do walki. Wygladalo to jak zepsuta
+grafika; bylo zepsutym zapisem. Teraz zapis idzie do `.tmp` i podmienia
+oryginal dopiero, gdy plik ma niezerowy rozmiar (sekcja 6amM).
+
+DROBIAZG, KTORY WYGLADAL NA BLAD GRAFIKI: drugi pasek postepu dostal indeks
+palety 252, a logo AmiXcom kwantyzuje sie do 23 kolorow i zajmuje 230..252 -
+czyli podebralem mu ostatni kolor. Bursztyn siedzi teraz na 229, wyjetym z
+puli tla (225 kolorow -> 224, niewidoczne).
+
+LICENCJE. Sample: FluidR3, MIT (`data/FluidR3_License.txt` jedzie z bankiem) -
+zgodne z GPL3, bez zadnych zobowiazan poza nota. Same kompozycje sa wlasnoscia
+Take-Two i NIE moga byc rozpowszechniane - dlatego render dzieje sie na
+maszynie gracza, z jego wlasnego GM.CAT, i nic z tego nie trafia do paczki.
+
 ## 2026-08-20: 0.8.0 - marsz bez freeze'ow (plastry FOV/swiatla), New Battle 2x
 
 Problem (user): ~1 s zamrozenia na KAZDEJ granicy kratki marszu (fov 300-760 ms

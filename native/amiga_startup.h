@@ -30,6 +30,14 @@ int amigastartup_ask_backend(int rtg_available);
  * missing data folder, a failed screen, a crash. */
 void amigastartup_error(const char *text);
 
+/* Microseconds needed to mix 65536 voice-samples: a direct measure of how
+ * much music this machine can afford. Roughly 3.365x this is the cost of
+ * one second of 22050 Hz music with ten voices. */
+int amigastartup_mixcost(void);
+
+/* 20/30/40/60, or 0 for a plain 68000. */
+int amigastartup_cpu(void);
+
 /* Decide which display this run uses and tell SDLmini, before anything opens a
  * screen. Called from main() - the one line of Amiga-specific code in the
  * game's own source.

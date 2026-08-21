@@ -359,6 +359,7 @@ void SDL_PumpEvents(void) { SDLmini_PumpEvents(); }
 
 int SDL_PollEvent(SDL_Event *event)
 {
+	{ extern void SDLmini_MusicPump(void); SDLmini_MusicPump(); }
 	SDLmini_PumpEvents();
 	if (s_head == s_tail) return 0;
 	if (event != NULL) *event = s_queue[s_head];

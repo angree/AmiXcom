@@ -1,13 +1,126 @@
-# LEFTOFF — hand-off for the next session (updated 2026-08-20, po v0.8.0)
+# LEFTOFF - hand-off for the next session (updated 2026-08-20, wieczor)
 
 Read this, then `CLAUDE.md` (rules), then the top entry of `PROGRESS.md` (proofs).
 
-## NASTEPNY CEL (user): MUZYKA. User sam zaproponuje podejscie (na Amidze
-## nie ma MIDI); nie projektowac na zapas - czekac na jego pomysl. Kontekst:
-## audio portu = Paula, 4 kanaly (2 muzyka streamowana z dysku, 2 SFX),
-## ADPCM 22 kHz (CLAUDE.md); muzyka obecnie w praktyce niema.
+## ZGLOSZENIE USERA 2026-08-20 noc: muzyka kosztuje za duzo i sie zacina
 
-## STAN 2026-08-20: v0.8.0 WYDANE - marsz bez freeze'ow, New Battle 2x
+Trzy objawy, trzy rozne przyczyny. Jedna juz naprawiona.
+
+### 1. "040 chodzi jak 030" - to koszt miksowania, zmierzony juz wczesniej
+
+Nie jest to nowa regresja. Wlasne pomiary z `musicbench` (030/50): miks 16
+glosow to **40.7% CPU na geoskopie z interpolacja**, 25.9% bez, przechwyt
+30.8% / 20.2%. Zabranie ~1/3 procesora slychac dokladnie tak, jak user opisal.
+ROZWIAZANIE = tryb **Pre-rendered** (surowy 8-bit PCM z dysku, ~0-1% CPU).
+Tryb istnieje w opcjach, ale JEST NIENAPISANY - to nadal glowna pozycja 0.9.0.
+
+### 2. Muzyka zacina sie przy ladowaniu - PRZYCZYNA ZNALEZIONA
+
+`SDLmini_MixerService()` jest wolany z `SDL_Flip`
+(`native/sdlmini/src/sdlmini_video.c:850`). Nie ma klatki -> nie ma dopelnienia
+bufora -> Paula dogrywa ostatni bufor i przerywa. Podczas ladowania gra nie
+flipuje, wiec zacina sie dokladnie wtedy.
+
+User ma racje co do AmigaAMP: tam odtwarzanie nie stoi w petli glownej.
+WLASCIWE ROZWIAZANIE = **osobny Process AmigaOS** dla muzyki:
+- trzyma requesty audio.device dla kanalow 2+3,
+- spi na porcie odpowiedzi (bezczynny nic nie kosztuje),
+- dopelnia bufory Chip czytajac z dysku,
+- przyjmuje komendy (play/stop/volume) przez port komunikatow.
+MUSI to byc Process, nie przerwanie: czytanie pliku idzie przez dos.library,
+ktora nie jest bezpieczna w przerwaniu.
+
+UWAGA, zeby nie budowac zludzen: przy **miksowaniu na zywo** osobny Process
+NIE usuwa kosztu CPU, tylko go przenosi - podczas ladowania mikser zacznie
+konkurowac z loaderem o ten sam procesor. Zacinanie znika dopiero z
+POLACZENIA: pre-render (koszt spada do ~1%) + Process (dopelnianie niezalezne
+od klatek).
+
+### 3. Muzyka z menu leci w bitwie - NAPRAWIONE
+
+Dotyczy WYLACZNIE skrotu `amigaAutoBattle`, nie normalnej gry. W lacie
+"MainMenuState.cpp (auto battle)" bylo:
+
+    nb_->init();          <- NewBattle dostaje init()
+    nb_->btnOkClick(0);
+    br_->btnOkClick(0);   <- Briefing NIE dostawal init()
+
+A `BriefingState::init()` konczy sie na `_game->getMod()->playMusic(_musicId)`
+(zweryfikowane w zrodle upstream, `Battlescape/BriefingState.cpp:170`). Bez
+init() muzyka bitwy nigdy nie startowala i graj dalej to, co szlo w menu.
+Dodane `br_->init()` przed klikiem, plus zabezpieczenie: `init()` moze zamiast
+muzyki wypchnac `CutsceneState`, wiec klik idzie tylko gdy briefing nadal jest
+na wierzchu. NIEZBUDOWANE I NIEPRZETESTOWANE.
+
+### Kolejnosc prac - wazna
+
+Pytanie o muzyke na starcie (user prosil) ma sens DOPIERO po napisaniu trybu
+Pre-rendered. Requester oferujacy wybor, ktory nic nie robi, jest gorszy niz
+brak requestera. Wiec:
+
+1. Napisac tryb **Pre-rendered** (render do `user/music/*.raw` + manifest,
+   drugi pasek postepu juz gotowy, przerywalny, fallback na live).
+2. Przeniesc dopelnianie strumienia do **osobnego Process**.
+3. Dopiero teraz **requester na starcie** - wzorem `amigastartup_ask_backend()`
+   (`EasyRequestArgs`), z ta sama kolejnoscia: przelacznik CLI -> domyslna
+   wkompilowana -> requester. Wybor zapisac do options.cfg, zeby nie pytal
+   przy kazdym starcie. Tresc ma uczciwie nazwac koszt obu stron: pre-render
+   to ~40 MB na dysku i jednorazowy render, live to ~1/4-1/3 CPU na stale.
+4. Zbudowac i przetestowac poprawke z punktu 3 powyzej (muzyka bitwy).
+
+## STAN 2026-08-20 wieczor: MUZYKA GRA (0.9.0, jeszcze nie wydane)
+
+Zweryfikowane na oxc-aga-nojit-040-40: menu glowne gra, `SND: +6%` w pasku
+WinUAE, 44.6 fps w menu z muzyka (bez ~50), zero trapow. Binarki 19:28,
+backup `_1949_090-music-plays.zip`.
+
+CO POWSTALO
+- `native/amiga_music.c/.h` - programowy mikser wavetable: 16 glosow,
+  22 kHz MONO, wszystko na intach (pozycje 16.16, tablica poltonow,
+  tablica glosnosci 65x256), parser GM.CAT 1:1 z GMCat.cpp. Zweryfikowany
+  na PC przeciw referencji: +-0.3 dB w kazdym pasmie.
+- `data/music.bnk` (6.3 MB, deploy do `data/common/music.bnk`) - bank sampli
+  wyciety z FluidR3 (MIT, `data/FluidR3_License.txt` jedzie z nim).
+  Generator: `build/gen_music_bank.py`. KLUCZOWE: bank v2 pyta logike
+  referencyjna o KAZDY klawisz i zapisuje gotowa mape klawisz->sampel
+  (v1 wymyslal wlasne strefy i gral INNE sample - harfa 80% nut, GM92 gral
+  "Fantasia" zamiast "Bowed Glass"). Weryfikacja: 11339 nut, 0 roznic.
+- Opcje w zakladce Amiga: **MUSIC** (Off / Mixed live / Pre-rendered,
+  domyslnie Live) i **MUSIC QUALITY** (Low/High = interpolacja; domyslna
+  wg `SysBase->AttnFlags`: High na 040/060, Low na 020/030). Przy
+  Pre-rendered wiersz quality jest wyszarzony.
+- Drugi pasek postepu na splashu (bursztynowy, nad glownym):
+  `AmigaSplash_Progress2()` / `..._Progress2End()`. GOTOWY, ale NIC GO
+  JESZCZE NIE WOLA - czeka na tryb Pre-rendered.
+
+DLACZEGO BYLO CICHO (3 rzeczy, wszystkie naprawione)
+1. `-D__NO_MUSIC` wycinal CALY blok "Load musics" w `Mod::loadResources` -
+   zaden obiekt Music nie powstawal. Guard: `#if !defined(__NO_MUSIC) ||
+   defined(__AMIGA__)`.
+2. W kolejce formatow ADLIB stoi PRZED MIDI, a ADLIB.CAT lezy obok GM.CAT -
+   gra wybierala AdlibMusic (u nas niemy). Na Amidze kolejka = `{ MUSIC_MIDI }`.
+3. `SDLmini_MixerService()` istnial, ale nikt go nie wolal - bufor strumienia
+   nigdy sie nie dopelnial. Podpiety pod `SDL_Flip`.
+
+POMIARY (030/50, klasa 10 MIPS, `musicbench` w Work:)
+- miks 16 glosow: geoskop 40.7% z interpolacja / 25.9% bez; przechwyt
+  30.8% / 20.2%; walka 4.6% / 4.0%. PO optymalizacji petli (test zapetlenia
+  i sprawdzanie konca sampla wyrzucone z petli probek, probka strazna
+  w banku, amplituda raz na przebieg) NIE ZMIERZONE PONOWNIE - `musicbench`
+  jest przebudowany, warto odpalic i porownac.
+- ADPCM: kompresja 8%, dekompresja 6.8%; konwersja 30 min muzyki 7.5 min.
+  Dlatego tryb Pre-rendered ma pisac SUROWY 8-bit PCM (~0-1% CPU, ~40 MB),
+  nie ADPCM.
+
+DO ZROBIENIA W 0.9.0
+- Tryb **Pre-rendered**: render do `user/music/*.raw` + manifest, drugi pasek
+  postepu, przerywalny, fallback na live przy braku miejsca. NIENAPISANY.
+- Sondy `mus:` (cat/play/bank/parse/strm/audio) sa WLACZONE na stale -
+  usunac przed wydaniem.
+- `Work:aga071/aga072/aga080` (+ .info) - stare binarki porownawcze, sprzatnac.
+- Bank 6.3 MB przy 22 kHz; przy 16 kHz zszedlby do ~4.6 MB i miks -28%.
+
+## STAN wczesniejszy: v0.8.0 WYDANE - marsz bez freeze'ow, New Battle 2x
 
 Po wydaniu: falszywy alarm "scroll 12->8 fps" - to byl amigaPerfLog: 1
 pozostawiony w live options.cfg (per-blit pomiary us); wyzerowany. W Work:

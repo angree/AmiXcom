@@ -12,6 +12,7 @@ Palette layout (one 256-entry palette per background):
   3        black - FIXED
   4..228   background colours (quantised per image)
   230..252 logo colours (shared across all backgrounds)
+  229      music pre-render bar fill - FIXED amber
   253      progress-bar fill - FIXED muted steel blue
   254      black (bar background / bottom band)
   255      transparent marker in the logo data (never displayed)
@@ -30,8 +31,11 @@ PEN_TEXT = (0, 0, 0)            # black text on the yellow bar
 PEN_BAR  = (232, 216, 64)       # game-like yellow title bar
 PEN_FILL = (108, 116, 132)      # gadget
 BAR_FILL = (108, 160, 176)      # loading-bar fill, always the same
+BAR2_FILL = (216, 148, 56)      # music pre-render bar, sits above it
 BLACK = (0, 0, 0)
-RESERVED = (0, 15, 17, 19)
+# 229 is held back from the background so the second progress bar has a
+# colour of its own: 230..252 belong to the logo and 253..255 are fixed.
+RESERVED = (0, 15, 17, 19, 229)
 ALLOWED = [i for i in range(1, 230) if i not in RESERVED]
 
 def quant_logo(path):
@@ -79,6 +83,7 @@ def main(intro_dir, out_c):
         for k in range(ncol):
             pal[ALLOWED[k] * 3: ALLOWED[k] * 3 + 3] = bpal[k * 3: k * 3 + 3]
         pal[230 * 3: 230 * 3 + len(logo_pal)] = logo_pal
+        pal[229 * 3: 229 * 3 + 3] = bytes(BAR2_FILL)
         pal[253 * 3: 253 * 3 + 3] = bytes(BAR_FILL)
         pal[254 * 3: 254 * 3 + 3] = bytes(BLACK)
         pal[255 * 3: 255 * 3 + 3] = bytes(BLACK)

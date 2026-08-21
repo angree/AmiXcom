@@ -843,6 +843,12 @@ SDL_Surface *SDL_SetVideoMode(int width, int height, int bpp, Uint32 flags)
 int SDL_Flip(SDL_Surface *screen)
 {
 	SDLMINI_FIRST("SDL_Flip");
+	/* AMIGA-PORT: keep the streamed music fed. Nothing else in the port
+	 * calls this, and a starved music buffer means silence. */
+	{
+		extern void SDLmini_MixerService(void);
+		SDLmini_MixerService();
+	}
 	if (screen == NULL) return -1;
 	if (screen != s_screen) return 0;
 	if (AmigaSplash_Active()) { SDLmini_flips++; return 0; }   /* splash owns the display */
@@ -909,6 +915,7 @@ int SDL_Flip(SDL_Surface *screen)
 
 void SDL_UpdateRect(SDL_Surface *screen, Sint32 x, Sint32 y, Uint32 w, Uint32 h)
 {
+	{ extern void SDLmini_MusicPump(void); SDLmini_MusicPump(); }
 	if (screen == NULL || screen != s_screen) return;
 	if (w == 0 || h == 0) { x = 0; y = 0; w = (Uint32)screen->w; h = (Uint32)screen->h; }
 	amigagfx_blit((int)x, (int)y, (int)w, (int)h);

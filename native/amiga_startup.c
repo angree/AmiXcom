@@ -17,7 +17,57 @@
 
 #include "amiga_startup.h"
 
+unsigned long amiga_uclock_us(void);
+
 extern struct IntuitionBase *IntuitionBase;
+
+/* Highest 68k family the running machine reports, as 20/30/40/60 (0 = 68000).
+ * ExecBase->AttnFlags is set by the ROM and by any 060 library that patches
+ * it, so this is what every other Amiga program uses for the same question. */
+/* Microseconds this machine needs to mix 65536 voice-samples with the loop
+ * shape amiga_music.c uses (table lookup, 16.16 step, wrap). The caller turns
+ * that into a predicted CPU share: one second of 22050 Hz music with ~10
+ * voices is about 220500 voice-samples, i.e. 3.365 times this workload.
+ *
+ * This replaces asking AttnFlags for the CPU model, which answers a different
+ * question - the test machine reports a 68020 while running at 040 speed. */
+int amigastartup_mixcost(void)
+{
+	static signed char tab[256];
+	static signed char smp[1024];
+	volatile int sink = 0;
+	unsigned long t0, t1;
+	int acc = 0;
+	long i, k;
+
+	for (i = 0; i < 256; i++) tab[i] = (signed char)((i * 37) >> 3);
+	for (i = 0; i < 1024; i++) smp[i] = (signed char)(i * 11);
+
+	amiga_uclock_us();
+	t0 = amiga_uclock_us();
+	for (k = 0; k < 64; k++) {
+		unsigned long pos = 0;
+		for (i = 0; i < 1024; i++) {
+			acc += tab[(unsigned char)smp[pos >> 16]];
+			pos += 0x00010800UL;
+			if (pos >= (1024UL << 16)) pos -= (1024UL << 16);
+		}
+	}
+	t1 = amiga_uclock_us();
+	sink = acc;
+	(void)sink;
+	return (int)(t1 - t0);
+}
+
+int amigastartup_cpu(void)
+{
+	UWORD f = SysBase->AttnFlags;
+	if (f & (1 << 7)) return 60;      /* AFB_68060, set by the 060 libraries */
+	if (f & AFF_68040) return 40;
+	if (f & AFF_68030) return 30;
+	if (f & AFF_68020) return 20;
+	return 0;
+}
 
 void amigastartup_error(const char *text)
 {

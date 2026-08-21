@@ -10,7 +10,22 @@ for **real classic hardware**: 68020+ without FPU, AGA chipset. Not PiStorm-, Va
 or Emu68-only. No SDL: the SDL 1.2 API the game expects is a small shim
 (`native/sdlmini/`) on top of a bare-metal Amiga graphics/audio layer.
 
-## Status: 0.8.0 — alpha
+## Status: 0.9.0 — alpha
+
+New in 0.9.0: **music**. X-COM's tunes are read from your own `GM.CAT` and played
+through a software wavetable mixer written for this port — sixteen voices folded into
+one 8-bit stream, so Paula's four hardware channels stop being the limit. The
+instrument bank (`data/common/music.bnk`, samples from the MIT-licensed FluidR3
+soundfont) ships with the port; the music itself never leaves your own data.
+
+**Music needs about 36 MB of free disk space.** By default the game mixes every tune
+to disk once, at first start (a few minutes, with its own progress bar), and simply
+plays those files afterwards. Mixing live while you play is implemented too and can be
+picked in *Options → Amiga*, but on a slow machine it costs real CPU — a quarter of an
+030/50 — and, worse, it breaks up whenever the game stops drawing for a moment, such
+as during a globe redraw or a savegame parse. Pre-rendered audio has no such failure
+mode, so that is the default; "Mixed live" stays for anyone who would rather keep the
+disk space.
 
 New in 0.8.0: **walking no longer freezes at every tile** — the per-step visibility and
 lighting scan runs in slices across the walk animation (new Amiga option "Split movement
@@ -56,7 +71,8 @@ Known problems and gaps in this release, briefly:
 
 - **Load is still ~20 s** (yaml parse dominates) and the save-list dates show "????".
 - **~50 MB RAM required**; 32 MB machines will not load the game yet.
-- **No music yet** (basic sound effects work; music streaming not wired in).
+- **Music is new in 0.9.0** and has had little testing; if it misbehaves, *Options →
+  Amiga → Music* turns it off.
 - **AGA only, 320×200, 8-bit.** An RTG build (`openxcom-rtg`) is compiled but untested;
   the `-ask` build asks which one to use at start.
 - **No sound and no music yet** (built with `__NO_MUSIC`; the Paula/ADPCM path from the
@@ -96,7 +112,8 @@ copies work).
    `xcom2` → `active: true`).
 
 Requirements: 68020 or better (no FPU needed or used), AGA, Kickstart 3.0+, lots of fast
-RAM (see above), ~40 MB of disk for the game data.
+RAM (see above), ~40 MB of disk for the game data, plus **~36 MB for the pre-rendered
+music** (or none at all if you set *Options → Amiga → Music* to "Mixed live" or "Off").
 
 ## Building
 
@@ -117,6 +134,21 @@ CyberGraphX developer headers in `native/cgx-include/` (not redistributable, not
 included). Run `sh build/build.sh` inside WSL/Linux; the header comment of the script
 tells the rest.
 
+The instrument bank for the music (`data/music.bnk`, deployed to
+`data/common/music.bnk`) is generated, not stored in the repository — the same way
+`data/common/earthfix.dat` is. To rebuild it you need Frank Wen's **FluidR3_GM.sf2**
+(MIT; it is the `fluid-soundfont` source package in Debian/Ubuntu), the `sf2utils`
+Python package, and any X-COM `GM.CAT` to tell the generator which instruments the
+tunes actually use:
+
+```sh
+export AMX_SF2=/path/to/FluidR3_GM.sf2
+export AMX_GMCAT=/path/to/SOUND/GM.CAT
+python3 build/gen_music_bank.py          # writes music.bnk -> put it in data/
+```
+
+Without the bank the build still succeeds and simply plays no music.
+
 `winuae/` holds the WinUAE configs and the host-side test harness (autoinput driven
 from inside the guest, screenshots, trap-to-symbol mapping) used to develop this without
 a human at the emulator.
@@ -128,5 +160,8 @@ a human at the emulator.
 
 GPL 3.0, like OpenXcom itself — see `LICENSE`. OpenXcom is © the OpenXcom developers
 (https://openxcom.org). X-COM is a trademark of Take-Two Interactive; no game data is
-included or distributed here. The c2p routines are Mikael Kalms'; the graphics/audio
-platform layer comes from the author's OpenTTD Amiga port (MIT).
+included or distributed here — including the music, which is rendered on your own
+machine from your own `GM.CAT`. The c2p routines are Mikael Kalms'; the graphics/audio
+platform layer comes from the author's OpenTTD Amiga port (MIT). The instrument samples
+in `data/common/music.bnk` come from Frank Wen's FluidR3 soundfont, MIT licensed — see
+`data/common/FluidR3_License.txt`.

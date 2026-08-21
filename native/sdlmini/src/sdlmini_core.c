@@ -124,11 +124,13 @@ void SDL_Quit(void)
 
 Uint32 SDL_GetTicks(void)
 {
+	{ extern void SDLmini_MusicPump(void); SDLmini_MusicPump(); }
 	return (Uint32)amigagfx_millis();
 }
 
 void SDL_Delay(Uint32 ms)
 {
+	{ extern void SDLmini_MusicPump(void); SDLmini_MusicPump(); }
 	SDLmini_Sleep(ms);
 }
 
