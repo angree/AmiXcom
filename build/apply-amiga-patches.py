@@ -358,8 +358,16 @@ inline std::string amiga_to_string(long v)           { return amiga_to_string((l
 inline std::string amiga_to_string(unsigned v)       { return amiga_to_string((unsigned long long)v); }
 inline std::string amiga_to_string(unsigned short v) { return amiga_to_string((unsigned long long)v); }
 inline std::string amiga_to_string(unsigned long v)  { return amiga_to_string((unsigned long long)v); }
-inline std::string amiga_to_string(float v)  { char b[48]; std::snprintf(b, sizeof(b), "%.9g", (double)v); return std::string(b); }
-inline std::string amiga_to_string(double v) { char b[48]; std::snprintf(b, sizeof(b), "%.17g", v); return std::string(b); }
+/* snprintf writes the locale's decimal separator. Under a European locale
+ * that is a comma, and the game would then write "1,5" into its own saves
+ * and options and refuse to read them back. A formatted number holds no
+ * other punctuation, so forcing the point is safe. */
+inline std::string amiga_fix_decimal_point(char* b) {
+  for (char* q = b; *q; ++q) if (*q == ',') *q = '.';
+  return std::string(b);
+}
+inline std::string amiga_to_string(float v)  { char b[48]; std::snprintf(b, sizeof(b), "%.9g", (double)v); return amiga_fix_decimal_point(b); }
+inline std::string amiga_to_string(double v) { char b[48]; std::snprintf(b, sizeof(b), "%.17g", v); return amiga_fix_decimal_point(b); }
 inline std::string amiga_to_string(char v)          { return std::string(1, v); }
 inline std::string amiga_to_string(signed char v)   { return std::string(1, (char)v); }
 inline std::string amiga_to_string(unsigned char v) { return std::string(1, (char)v); }
@@ -415,12 +423,50 @@ inline bool amiga_from_string(const std::string& in, unsigned long long& r) {
   if (amiga_parse_ull10(in, (in[0] == '+') ? 1 : 0, u)) { r = u; return true; }
   unsigned long v; if (!amiga_parse_ul(in, v)) return false; r = v; return true;  /* hex/octal */
 }
-inline bool amiga_from_string(const std::string& in, double& r) {
-  if (!in.empty()) {
-    errno = 0; char* e = 0;
-    double v = std::strtod(in.c_str(), &e);
-    if (e == in.c_str() + in.size() && errno != ERANGE) { r = v; return true; }
+/* Locale-independent decimal parser. std::strtod was used here and it honours
+ * LC_NUMERIC: with a locale whose separator is a comma, "1.0" stops at the dot
+ * and every float in every ruleset fails to convert. The game itself switches
+ * to the system locale while converting wide characters, so this is not
+ * hypothetical - it bricked loading on OS 3.2 machines with a European locale.
+ * Ruleset values are plain decimals, so a small parser is enough and it can
+ * never be influenced by anything outside this function. */
+inline bool amiga_parse_double_c(const std::string& in, double& r) {
+  const char* p = in.c_str();
+  const char* end = p + in.size();
+  bool neg = false;
+  double mant = 0.0;
+  long exp10 = 0;
+  int digits = 0;
+  if (p < end && (*p == '+' || *p == '-')) { neg = (*p == '-'); ++p; }
+  while (p < end && *p >= '0' && *p <= '9') { mant = mant * 10.0 + (*p - '0'); ++digits; ++p; }
+  if (p < end && *p == '.') {
+    ++p;
+    while (p < end && *p >= '0' && *p <= '9') {
+      mant = mant * 10.0 + (*p - '0'); ++digits; --exp10; ++p;
+    }
   }
+  if (digits == 0) return false;
+  if (p < end && (*p == 'e' || *p == 'E')) {
+    bool eneg = false;
+    long ev = 0;
+    ++p;
+    if (p < end && (*p == '+' || *p == '-')) { eneg = (*p == '-'); ++p; }
+    if (p >= end || *p < '0' || *p > '9') return false;
+    while (p < end && *p >= '0' && *p <= '9') {
+      if (ev < 100000) ev = ev * 10 + (*p - '0');
+      ++p;
+    }
+    exp10 += eneg ? -ev : ev;
+  }
+  if (p != end) return false;
+  if (exp10 > 0)      { while (exp10-- > 0) mant *= 10.0; }
+  else if (exp10 < 0) { long n = -exp10; while (n-- > 0) mant /= 10.0; }
+  r = neg ? -mant : mant;
+  return true;
+}
+
+inline bool amiga_from_string(const std::string& in, double& r) {
+  if (amiga_parse_double_c(in, r)) return true;
   if (IsInfinity(in))         { r = std::numeric_limits<double>::infinity();  return true; }
   if (IsNegativeInfinity(in)) { r = -std::numeric_limits<double>::infinity(); return true; }
   if (IsNaN(in))              { r = std::numeric_limits<double>::quiet_NaN(); return true; }
@@ -1520,12 +1566,12 @@ def main():
         '#define OPENXCOM_VERSION_LONG "1.0.0.0"\n'
         '#define OPENXCOM_VERSION_NUMBER 1,0,0,0\n',
         '#ifdef AMIGA_FPU_BUILD\n'
-        '#define OPENXCOM_VERSION_SHORT "0.9.0 FPU"\n'
+        '#define OPENXCOM_VERSION_SHORT "0.9.1 FPU"\n'
         '#else\n'
-        '#define OPENXCOM_VERSION_SHORT "0.9.0"\n'
+        '#define OPENXCOM_VERSION_SHORT "0.9.1"\n'
         '#endif\n'
-        '#define OPENXCOM_VERSION_LONG "0.9.0.0"\n'
-        '#define OPENXCOM_VERSION_NUMBER 0,9,0,0\n'
+        '#define OPENXCOM_VERSION_LONG "0.9.1.0"\n'
+        '#define OPENXCOM_VERSION_NUMBER 0,9,1,0\n'
         '#define OPENXCOM_VERSION_GIT ""\n',
         "port version")))
     results.append(("MainMenuState.cpp (AmiXcom title)", edit(

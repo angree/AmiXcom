@@ -10,7 +10,14 @@ for **real classic hardware**: 68020+ without FPU, AGA chipset. Not PiStorm-, Va
 or Emu68-only. No SDL: the SDL 1.2 API the game expects is a small shim
 (`native/sdlmini/`) on top of a bare-metal Amiga graphics/audio layer.
 
-## Status: 0.9.0 — alpha
+## Status: 0.9.1 — alpha
+
+0.9.1 fixes a bug that stopped the game loading at all on a non-English Workbench:
+decimal numbers in the rulesets were converted with `strtod`, which follows the system
+locale, so where the separator is a comma `1.0` failed to parse and the first ruleset
+containing a decimal (`armors.rul`) killed the load. Decimals are now parsed by the
+port itself, in both directions, so no locale setting can reach them.
+
 
 New in 0.9.0: **music**. X-COM's tunes are read from your own `GM.CAT` and played
 through a software wavetable mixer written for this port — sixteen voices folded into

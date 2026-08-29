@@ -2,6 +2,54 @@
 
 Newest first. Facts and measurements only; plans live in `PORT_RESEARCH.md`.
 
+## 2026-08-29 - 0.9.1: LOCALE ZABIJALO WCZYTYWANIE (zgloszenie od gracza)
+
+OBJAW. Gracz nie mogl uruchomic ani 0.8.0, ani 0.9.0 na trzech swoich Amigach
+(030/50, 040, 060, wszystkie OS 3.2) ani na emulowanym 060 z OS 3.9: zawsze 9%,
+potem "failed to load 'X-Com: Terror From the Deep'" i
+"PROGDIR:data/standard/xcom2/armors.rul: bad conversion". Sprawdzil cztery rozne
+kopie danych (dwa big boxy PC-CD i dwa zakupy z GOG) - bez zmian.
+
+PIERWSZY WNIOSEK, KTORY OSZCZEDZIL SZUKANIA W ZLYM MIEJSCU: sciezka z loga to
+data/standard/, czyli NASZ plik z NASZEJ paczki, nie data/UFO ani data/TFTD.
+Jego armors.rul jest bajt w bajt taki sam jak nasz. Wersja gry nie mogla miec
+z tym nic wspolnego, wiec roznica musiala siedziec w srodowisku.
+
+PRZYCZYNA. `amiga_from_string(double&)` konwertowal przez `std::strtod` i wymagal,
+zeby ten zjadl caly tekst. strtod honoruje LC_NUMERIC. OpenXcom sam przelacza sie
+na lokalizacje systemu - `Language.cpp` robi `setlocale(LC_ALL, "")` przy konwersji
+szerokich znakow. Na Workbenchu z polska (albo dowolna europejska) lokalizacja
+separatorem dziesietnym jest przecinek, wiec "1.0" parsuje sie jako 1 i zatrzymuje
+na kropce -> koniec tekstu nie osiagniety -> yaml-cpp rzuca "bad conversion".
+armors.rul jest po prostu pierwszym rulesetem zawierajacym liczbe dziesietna
+(ma ich 240, pierwsza w 12 linii); wczesniejsze alien*.rul maja same calkowite.
+Screenshot gracza pokazywal Workbench po polsku, co potwierdzilo diagnoze.
+
+DLACZEGO U NAS NIGDY NIE WYSTAPILO: testujemy na OS 3.1 bez ustawionej
+lokalizacji, wiec separator zawsze byl kropka.
+
+DOWOD (na hoscie, na tym samym kodzie, przed wydaniem):
+  locale C:      stara sciezka 0/9 bledow, nowa 0/9
+  locale pl_PL:  stara sciezka 7/9 bledow, nowa 0/9
+Nie failuja tylko "2" i "1e3" - czyli dokladnie te bez kropki, co tlumaczy
+kolejnosc padania plikow.
+
+POPRAWKA. Wlasny parser dziesietny (`amiga_parse_double_c`), ktory czyta cyfry,
+kropke i wykladnik sam i nie da sie na niego wplynac z zewnatrz. Do tego druga
+strona: zapis szedl przez snprintf("%.17g"), rowniez zalezny od LC_NUMERIC, wiec
+pod przecinkowa lokalizacja gra zapisalaby "1,5" do save'ow i options.cfg i nie
+odczytalaby wlasnych plikow. Sformatowana liczba nie zawiera innej interpunkcji,
+wiec separator jest normalizowany po zapisie.
+
+PRZY OKAZJI: do paczki doszly `openxcom-rtg-fpu` i `openxcom-ask-fpu`. Matryca to
+3 warianty ekranu x 2 warianty FPU = 6 binarek; wczesniejsze wydania wysylaly 4,
+bo z wersji FPU szla tylko AGA, wiec ktos z RTG i FPU nie mial swojej binarki.
+
+LEKCJA OGOLNA: kazde API C, ktore formatuje albo parsuje liczby, jest podatne na
+locale (strtod, sscanf, snprintf, strumienie C++). W porcie, ktory ma dzialac na
+cudzych systemach z cudzymi ustawieniami, liczby w formatach plikow trzeba
+obslugiwac samemu.
+
 ## 2026-08-20/21 - 0.9.0: MUZYKA (software wavetable + render na dysk)
 
 CO GRA. Utwory z wlasnego GM.CAT gracza, mieszane 16 glosami programowo w
