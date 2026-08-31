@@ -29,7 +29,17 @@
 #include <exec/memory.h>
 #include <proto/exec.h>
 
-#define PAL_CLOCK 3546895L
+/* Paula's clock follows the display standard: 3546895 Hz on PAL,
+ * 3579545 on NTSC. It used to be PAL only, which played every sound
+ * about 0.9% sharp on an NTSC machine. Read once, on first use. */
+unsigned long amigagfx_paula_clock(void);
+static long paula_clock(void)
+{
+	static long c = 0;
+	if (c == 0) c = (long)amigagfx_paula_clock();
+	return c;
+}
+#define PAL_CLOCK paula_clock()
 
 static int  s_open;
 static int  s_rate = 22050;

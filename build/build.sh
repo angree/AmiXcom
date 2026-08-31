@@ -88,6 +88,28 @@ cp -r "$REPO/native/." "$NATIVE/"
 python3 "$REPO/build/gen_splash.py" "$REPO/intro" "$NATIVE/amiga_splash_data.c"
 
 log "applying Amiga patches"
+# yaml restore: the yaml-cpp tree is unpacked once and kept, and every patch
+# below is written to be idempotent - "my block is already there, nothing to
+# do". The two together silently freeze the patched files at whatever version
+# they had when they were first patched, so an EDIT to a yaml patch never
+# reaches the build. That is how the 0.9.1 locale fix shipped without being in
+# the binary. Put the patched files back from the tarball first.
+YAML_TGZ=$(ls "$WORK"/yaml-cpp-0.6.3.tar.gz 2>/dev/null | head -1)
+if [ -n "$YAML_TGZ" ] && [ -d "$YAML" ]; then
+	YAML_TOP=$(tar tzf "$YAML_TGZ" | head -1 | cut -d/ -f1)
+	for f in include/yaml-cpp/node/convert.h \
+	         include/yaml-cpp/node/impl.h \
+	         include/yaml-cpp/node/detail/memory.h \
+	         include/yaml-cpp/node/detail/node.h \
+	         include/yaml-cpp/node/detail/node_ref.h \
+	         src/parse.cpp src/memory.cpp src/stream.cpp; do
+		tar xzf "$YAML_TGZ" -C "$WORK" "$YAML_TOP/$f" 2>/dev/null \
+			&& cp "$WORK/$YAML_TOP/$f" "$YAML/$f"
+	done
+	rm -rf "$WORK/$YAML_TOP"
+	rm -f "$OBJ/yaml_all.o"          # headers changed: force the rebuild
+	log "yaml-cpp: patched files restored from the tarball"
+fi
 python3 "$REPO/build/apply-amiga-patches.py" "$SRC/src" "$YAML"
 
 # ------------------------------------------------------------------ build --
@@ -203,7 +225,7 @@ done
 # libnix_fixes.c: libc routines libnix gets wrong (wmemcpy copies half of a
 # wide string; that garbled every std::wstring in the game).
 for f in amiga_gfx.c amiga_audio.c amiga_adpcm.c amiga_startup.c amiga_stack.c \
-         fp_conv.c fp_single.c amiga_trap.c libnix_fixes.c amiga_splash.c amiga_splash_data.c amiga_uclock.c \
+         fp_conv.c fp_single.c fp_double.c amiga_trap.c libnix_fixes.c amiga_splash.c amiga_splash_data.c amiga_uclock.c \
          amiga_music.c; do
 	NATIVE_OBJS="$NATIVE_OBJS $(compile_c "$NATIVE" "$f")"
 done

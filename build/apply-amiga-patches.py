@@ -1566,12 +1566,12 @@ def main():
         '#define OPENXCOM_VERSION_LONG "1.0.0.0"\n'
         '#define OPENXCOM_VERSION_NUMBER 1,0,0,0\n',
         '#ifdef AMIGA_FPU_BUILD\n'
-        '#define OPENXCOM_VERSION_SHORT "0.9.1 FPU"\n'
+        '#define OPENXCOM_VERSION_SHORT "0.9.3 FPU"\n'
         '#else\n'
-        '#define OPENXCOM_VERSION_SHORT "0.9.1"\n'
+        '#define OPENXCOM_VERSION_SHORT "0.9.3"\n'
         '#endif\n'
-        '#define OPENXCOM_VERSION_LONG "0.9.1.0"\n'
-        '#define OPENXCOM_VERSION_NUMBER 0,9,1,0\n'
+        '#define OPENXCOM_VERSION_LONG "0.9.3.0"\n'
+        '#define OPENXCOM_VERSION_NUMBER 0,9,3,0\n'
         '#define OPENXCOM_VERSION_GIT ""\n',
         "port version")))
     results.append(("MainMenuState.cpp (AmiXcom title)", edit(
@@ -8233,10 +8233,11 @@ def main():
         "                           int (*refill)(void *ud, signed char *dst, int max),\n"
         "                           void *ud);\n"
         "void AmigaAudio_MusicStop(void);\n"
+        "unsigned long amigagfx_paula_clock(void);\n"
         "}\n"
         "\n"
         "/* PAL colour clock over the mixing rate: the period Paula needs. */\n"
-        "#define AMIGA_MUSIC_PERIOD ((3546895 + MUSIC_RATE / 2) / MUSIC_RATE)\n"
+        "#define AMIGA_MUSIC_PERIOD ((int)((amigagfx_paula_clock() + MUSIC_RATE / 2) / MUSIC_RATE))\n"
         "/* ~93 ms per buffer; amiga_audio.c queues eight of them, so the stream\n"
         " * carries about 0.74 s of slack. Two buffers (0.09 s) could not survive\n"
         " * a single slow geoscape frame and the music chopped. */\n"

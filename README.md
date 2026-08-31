@@ -10,88 +10,41 @@ for **real classic hardware**: 68020+ without FPU, AGA chipset. Not PiStorm-, Va
 or Emu68-only. No SDL: the SDL 1.2 API the game expects is a small shim
 (`native/sdlmini/`) on top of a bare-metal Amiga graphics/audio layer.
 
-## Status: 0.9.1 — alpha
+## Status: 0.9.3 — alpha
 
-0.9.1 fixes a bug that stopped the game loading at all on a non-English Workbench:
-decimal numbers in the rulesets were converted with `strtod`, which follows the system
-locale, so where the separator is a comma `1.0` failed to parse and the first ruleset
-containing a decimal (`armors.rul`) killed the load. Decimals are now parsed by the
-port itself, in both directions, so no locale setting can reach them.
+The whole game runs on the Amiga: main menu, Geoscape, bases, Battlescape, and both
+rulesets (UFO and TFTD). It has been tested for hours, not played to the end, so expect
+rough edges; every Guru is caught and logged with its PC in `oxc.log`.
 
+**Music** (0.9.0) comes from your own `GM.CAT`, played through a software mixer written
+for this port: sixteen voices folded into one stream, so Paula's four hardware channels
+stop being the limit. The instrument bank ships with the port (FluidR3, MIT); the music
+itself never leaves your own data. It needs about **36 MB of free disk**, because by
+default every tune is mixed to disk once at first start and simply played back after
+that. Mixing live while you play is an option too (*Options → Amiga*), but on a slow
+machine it costs a quarter of an 030/50 and breaks up whenever the game stops drawing.
 
-New in 0.9.0: **music**. X-COM's tunes are read from your own `GM.CAT` and played
-through a software wavetable mixer written for this port — sixteen voices folded into
-one 8-bit stream, so Paula's four hardware channels stop being the limit. The
-instrument bank (`data/common/music.bnk`, samples from the MIT-licensed FluidR3
-soundfont) ships with the port; the music itself never leaves your own data.
+Speed, compared to the first version that ran at all: startup about 2.7x faster,
+Geoscape ~50 fps, Battlescape idle ~35 fps on an 040/40, unit step 6 s to 0.3 s, alien
+turn 280 s to ~84 s, saving 45-60 s to ~8 s. The globe is integer fixed-point with
+precomputed shadow tables.
 
-**Music needs about 36 MB of free disk space.** By default the game mixes every tune
-to disk once, at first start (a few minutes, with its own progress bar), and simply
-plays those files afterwards. Mixing live while you play is implemented too and can be
-picked in *Options → Amiga*, but on a slow machine it costs real CPU — a quarter of an
-030/50 — and, worse, it breaks up whenever the game stops drawing for a moment, such
-as during a globe redraw or a savegame parse. Pre-rendered audio has no such failure
-mode, so that is the default; "Mixed live" stays for anyone who would rather keep the
-disk space.
+Earlier releases and their numbers are on the
+[releases page](https://github.com/angree/AmiXcom/releases).
 
-New in 0.8.0: **walking no longer freezes at every tile** — the per-step visibility and
-lighting scan runs in slices across the walk animation (new Amiga option "Split movement
-calculation", ON by default), the Amiga options tab is a scrolling list, and the New
-Battle screen opens ~2× faster.
+Known problems and gaps:
 
-New in 0.7.2: **game startup ~2.7× faster** (040/40-class: ~6 min → ~2 min; 030/50:
-~15 min → ~5.5 min) — graphics loaders no longer read byte-by-byte, yaml rulesets get
-a binary cache (`.ybc`), transparency tables and fonts fixed; the system mouse pointer
-stays visible during loading. Earlier 0.6-0.7.1 (see releases): battlescape drawing
-reworked (idle ~35 fps on 040/40), alien turn 280 → ~84 s, mid-turn TRAPV crash fixed.
-
-## Older status (0.5.0)
-
-The whole game compiles and runs on the Amiga: main menu → new game → Geoscape → base
-→ battle briefing → inventory → Battlescape. Both rulesets (UFO and TFTD) load.
-**Zero guarantee that a full game plays through** — it has been tested for a few
-hours in an emulator, not played to the end. Expect crashes, expect them to be reported
-in `oxc.log` (every Guru is caught and logged with its PC).
-
-New in 0.5.0 (details in the release notes):
-
-- **Saving ~7x faster** (battle save 45-60 s → ~8 s) and **loading ~4x faster**
-  (~90 s → ~20-25 s) on an 040/40-class machine: yaml-cpp scalar conversion and
-  memory pooling fixed, a direct YAML writer replaces the emitter, the battle
-  state serializes without building a node tree, and a whole compiler-ICE
-  workaround put the save/load path back at -O1 after living at -O0.
-- **Globe 3D ~10x faster**: integer fixed-point geometry with precomputed vertex
-  trig, shadow tables precomputed at build time (`data/common/earthfix.dat` —
-  first zoom to any level used to stall ~5 s), half-resolution day/night shadow,
-  radar circles in pure vector math, fixed-point line drawing, dogfight zoom in
-  one jump (reaching a fight took 30-60 s), flat sun-shaded water polygons
-  (option `amigaFlatGlobe`, set 0 for the old textured look).
-- **Dirty rectangles** in the SDL shim: unchanged frames skip chunky-to-planar
-  entirely (groundwork for a future hi-res mode).
-- Boot detaches the game (`Run <NIL:`) so the CLI closes and Workbench stays
-  usable — the free-memory gauge shows the port needs ~50 MB right now.
-
-New in 0.3.0: playable battlescape (unit step ~6 s → ~0.3 s, map render
-~100 → ~10-16 ms), geoscape ~40 fps (was ~5), "Amiga" options tab.
-
-Known problems and gaps in this release, briefly:
-
-- **Load is still ~20 s** (yaml parse dominates) and the save-list dates show "????".
-- **~50 MB RAM required**; 32 MB machines will not load the game yet.
-- **Music is new in 0.9.0** and has had little testing; if it misbehaves, *Options →
-  Amiga → Music* turns it off.
-- **AGA only, 320×200, 8-bit.** An RTG build (`openxcom-rtg`) is compiled but untested;
-  the `-ask` build asks which one to use at start.
-- **No sound and no music yet** (built with `__NO_MUSIC`; the Paula/ADPCM path from the
-  OpenTTD port is not wired in).
-- **Keyboard text entry is broken** (every key types the same character) — the mouse
-  works, and the game is playable with it.
-- **RAM: needs a lot.** Tested with 256 MB of fast RAM in WinUAE; a 32 MB machine still
-  runs out of memory while loading. Memory reduction has not been started.
-- An FPS counter is drawn in the corner on purpose (measurement aid, stays for now).
-- Only tested in WinUAE (68020 no-FPU, no JIT). No report from real hardware yet.
-- Only Kickstart 3.1 / OS 3.1 tested; the game writes only to its own directory
-  (`PROGDIR:`).
+- **~50 MB of fast RAM required**; 32 MB machines still run out while loading.
+- **Music is new** and lightly tested. If it misbehaves, *Options → Amiga → Music*
+  turns it off.
+- **AGA, 320x200, 8-bit.** The RTG build (`openxcom-rtg`) compiles and has had far less
+  testing; the `-ask` build asks which to use at startup.
+- **Keyboard text entry is broken** (every key types the same character). The mouse
+  works and the game is playable with it.
+- Loading is still slow, and save-list dates show "????".
+- An FPS counter is drawn in the corner on purpose, as a measurement aid.
+- Developed in WinUAE. Real-hardware reports are welcome and have already fixed two
+  bugs no emulator here reproduces.
 
 ## Installing on the Amiga
 

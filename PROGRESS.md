@@ -2,6 +2,61 @@
 
 Newest first. Facts and measurements only; plans live in `PORT_RESEARCH.md`.
 
+## 2026-08-31 - 0.9.3: NTSC, wlasna matematyka double, i patch ktory nie trafial do binarki
+
+NTSC. `amiga_gfx.c` wymuszal `PAL_MONITOR_ID` na kazdym otwieranym ekranie, wiec
+maszyna NTSC dostawala obraz, ktorego nie da sie zsynchronizowac. Mode id nie ma
+juz bitow monitora - rozstrzyga sie na standardzie maszyny. Do tego dwie rzeczy,
+ktore po samej tej zmianie zepsulyby sie po cichu: klip overscanu liczyl sie z
+wymiarow PAL (256/512), teraz z `GfxBase->NormalDisplayRows`; oraz zegar Pauli
+byl zaszyty jako PAL w dwoch miejscach (SFX i okres muzyki), a to 3546895 vs
+3579545 Hz, czyli ~0.9% roznicy w stroju wszystkiego. Zweryfikowane na wlasnym
+configu NTSC: ekran wstaje, 59.8 fps, gra laduje sie do konca. Bonus: 320x200
+to natywna pelna wysokosc NTSC, wiec tam gra wypelnia ekran bez pasow.
+
+WLASNA MATEMATYKA DOUBLE (`native/fp_double.c`). Gracze zglaszali zawieszanie
+sie wersji non-FPU w geoscape w momencie zjechania kursorem z globusa - na 020,
+030 i 060, ale TYLKO na maszynach z FPU; wersja FPU zdrowa wszedzie. Powod jest
+w samej naturze buildu: `-msoft-float` nie moze wyemitowac instrukcji FPU, wiec
+kazde `sin`/`asin`/`atan2` bylo wywolaniem do `mathieee*.library` TEJ maszyny, a
+na maszynie z FPU to wersje uzywajace FPU - i ich zachowanie zalezy od tego, jaki
+kto ma Workbench, SetPatch i biblioteki 040/060. Wersja FPU jest odporna, bo gcc
+generuje wlasny kod i tych bibliotek w ogole nie otwiera. Zamiast scigac czyja
+biblioteka zawodzi, port przestal pytac: wlasne sin/cos/tan/asin/acos/atan/atan2/
+sqrt/log/exp/pow/floor/ceil/fabs/fmod/frexp/ldexp, linkowane przed `-lm`, tak jak
+`fp_single.c` robi to od dawna dla float. `asin` dodatkowo PRZYCINA argument do
++-1: `Globe::cartToPolar` wola `asin(rho/_radius)`, a poza globusem ten iloraz
+jest > 1, czyli poza dziedzina - a za horyzontem poprawna odpowiedzia jest
+horyzont, nie NaN zatruwajacy dalsze obliczenia.
+
+Weryfikacja przed wyslaniem na Amige: plik skompilowany na hoscie i porownany z
+libm na zakresach z gry - najgorszy blad wzgledny 2.7e-10. Test od razu zlapal
+dwa moje bledy: unia zakladala big-endian oraz `unsigned long` (na hoscie 8
+bajtow). Dlatego widok slowny doubla wybiera kolejnosc przez `__BYTE_ORDER__` i
+uzywa `unsigned int` - zeby ten plik dalo sie sprawdzac na PC przed kazda zmiana.
+Mapa linkera potwierdza, ze z libm wchodzi tylko arytmetyka kompilatora
+(`__adddf3` i spolka), a `sin.o`/`asin.o`/`sqrt.o` nie sa wciagane wcale.
+
+PATCH, KTORY NIGDY NIE TRAFIAL DO BINARKI (najwazniejsza lekcja tego dnia).
+Poprawka locale z 0.9.1 zostala WYDANA, ale nie byla skompilowana. `build.sh`
+rozpakowuje yaml-cpp raz i trzyma to drzewo miedzy buildami, a kazdy patch yamla
+jest idempotentny w stylu "moj blok juz tu jest, nic nie robie". Razem znaczy to,
+ze EDYCJA istniejacego patcha yamla nigdy nie dociera do builda - drzewo zostaje
+w wersji sprzed miesiaca, a patcher raportuje "already". W `convert.h` caly czas
+siedzialo stare `std::strtod`. Naprawione: build.sh przywraca patchowane pliki
+yaml-cpp z tarballa przed patchowaniem i kasuje `yaml_all.o`, dokladnie ta sama
+dyscyplina co restore zrodel OpenXcoma.
+
+JAK TO SPRAWDZAC, ZEBY SIE NIE POWTORZYLO: nie wystarczy zajrzec w zrodlo.
+`m68k-amigaos-nm -u obj/yaml_all.o | grep strtod` daje 0, czyli stara sciezka
+zniknela z OBIEKTU; do tego binarka musi byc nowsza od tego obiektu. Trzy
+poziomy: zrodlo, obiekt, binarka.
+
+STATUS BLEDU LOCALE: u zglaszajacego 0.9.1 dalej sie wysypywalo na 9% przy
+ustawieniu kraju na Polske (jezyk nie ma znaczenia, kraj ma) - co teraz wiadomo,
+bo poprawki tam po prostu nie bylo. 0.9.3 jest pierwsza wersja, ktora ja
+naprawde zawiera. Do potwierdzenia u niego.
+
 ## 2026-08-29 - 0.9.1: LOCALE ZABIJALO WCZYTYWANIE (zgloszenie od gracza)
 
 OBJAW. Gracz nie mogl uruchomic ani 0.8.0, ani 0.9.0 na trzech swoich Amigach

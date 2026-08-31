@@ -23,6 +23,15 @@
 extern "C" {
 #endif
 
+/* 1 when the machine runs NTSC. The port follows the machine's display
+ * standard instead of forcing PAL. */
+int amigagfx_is_ntsc(void);
+
+/* Paula's sample clock for this machine: 3546895 Hz PAL, 3579545 NTSC.
+ * Periods computed from the wrong one retune everything by ~0.9%. */
+unsigned long amigagfx_paula_clock(void);
+
+
 /* Event kinds handed back by amigagfx_poll(). */
 #define AMIGAGFX_EV_NONE      0
 #define AMIGAGFX_EV_MOUSEMOVE 1

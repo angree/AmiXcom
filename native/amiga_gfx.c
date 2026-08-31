@@ -483,6 +483,32 @@ static void cgx_close(void)
  * the planar path with no c2p behind it - garbage on screen. So the result is
  * checked three ways (is it a Cybergraphics id, is it 8 bits deep, is it one
  * byte per pixel) before it is believed. Returns INVALID_ID if not usable. */
+/* The machine's own display standard. GfxBase carries both the PAL/NTSC flag
+ * and the row count of a normal, non-interlaced screen for it: 256 on PAL,
+ * 200 on NTSC. Everything below derives from those rather than assuming PAL,
+ * which is what shut NTSC machines out - they were handed a PAL screen their
+ * display cannot lock onto. */
+int amigagfx_is_ntsc(void)
+{
+	if (GfxBase == NULL) return 0;
+	return (GfxBase->DisplayFlags & NTSC) ? 1 : 0;
+}
+
+/* Paula's sample clock, which is tied to the display standard. Getting this
+ * wrong retunes every sound effect and every note by about 0.9%. */
+unsigned long amigagfx_paula_clock(void)
+{
+	return amigagfx_is_ntsc() ? 3579545UL : 3546895UL;
+}
+
+/* Rows in a standard, non-interlaced screen: 256 PAL, 200 NTSC. */
+static int gfx_standard_rows(void)
+{
+	int rows = (GfxBase != NULL) ? (int)GfxBase->NormalDisplayRows : 256;
+	if (rows < 100) rows = amigagfx_is_ntsc() ? 200 : 256;
+	return rows;
+}
+
 static ULONG rtg_best_mode(int w, int h)
 {
 	ULONG id;
@@ -723,9 +749,14 @@ static int open_screen_aga(int w, int h, ULONG quiet, ULONG title, int depth)
 	 * EHB. The resolution list is what keeps that promise: it offers EHB at
 	 * lores widths only, so the OR below never produces an undefined mode. */
 	{
-		ULONG modeid = PAL_MONITOR_ID;
+		/* No monitor bits: the mode resolves on the machine's own display
+		 * standard. This used to say PAL_MONITOR_ID, which handed an NTSC
+		 * machine a 50 Hz screen it cannot display. 320x200 is NTSC's whole
+		 * screen and sits comfortably inside PAL's 256 lines, so neither
+		 * standard needs special treatment. */
+		ULONG modeid = 0;
 		int   lores  = (w <= 400);
-		int   lace   = (h > 300);
+		int   lace   = (h > gfx_standard_rows());
 		int   overscan;
 
 		modeid |= lores ? LORES_KEY : HIRES_KEY;
@@ -751,8 +782,12 @@ static int open_screen_aga(int w, int h, ULONG quiet, ULONG title, int depth)
 		 * origin out to the overscan corner, and there is no reason to pay that
 		 * for a mode that never needed it. */
 		{
-			int max_w = lores ? 320 : 640;   /* standard PAL width  for the mode */
-			int max_h = lace  ? 512 : 256;   /* standard PAL height for the mode */
+			/* Standard clip of THIS machine, not of PAL. An NTSC screen is 200
+			 * rows where PAL has 256, so a hardcoded 256 would have asked for a
+			 * size the display cannot hold and OpenScreen would refuse it. */
+			int rows  = gfx_standard_rows();
+			int max_w = lores ? 320 : 640;
+			int max_h = lace  ? rows * 2 : rows;
 			overscan = (w > max_w || h > max_h);
 		}
 
