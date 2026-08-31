@@ -52,10 +52,17 @@ JAK TO SPRAWDZAC, ZEBY SIE NIE POWTORZYLO: nie wystarczy zajrzec w zrodlo.
 zniknela z OBIEKTU; do tego binarka musi byc nowsza od tego obiektu. Trzy
 poziomy: zrodlo, obiekt, binarka.
 
-STATUS BLEDU LOCALE: u zglaszajacego 0.9.1 dalej sie wysypywalo na 9% przy
-ustawieniu kraju na Polske (jezyk nie ma znaczenia, kraj ma) - co teraz wiadomo,
-bo poprawki tam po prostu nie bylo. 0.9.3 jest pierwsza wersja, ktora ja
-naprawde zawiera. Do potwierdzenia u niego.
+STATUS BLEDU LOCALE: POTWIERDZONE U NAS. Nasz WB 3.1 ma 21 gotowych krajow
+(LOCALE:Countries), w tym Deutschland, France i Italia - wszystkie z przecinkiem,
+czyli do reprodukcji nie trzeba polskiego locale, ktorego 3.1 zreszta nigdy nie
+mial. Prefs/Locale -> Country: Deutschland -> Use (Save nie przejdzie, HDF jest
+read-only; Use pisze do ENV: w RAM, wiec ustawienie ginie po restarcie).
+Test A/B na tej samej maszynie 020+FPU: 0.9.1 wysypuje sie na 9% na armors.rul,
+0.9.3 wczytuje sie normalnie. To domyka temat i daje nam stala reprodukcje.
+
+Wniosek metodyczny: gdyby nie kontrola na starej wersji, "u nas dziala" nie
+znaczyloby nic - nie wiedzielibysmy, czy poprawka dziala, czy nasza maszyna po
+prostu nie odtwarza bledu. Kontrola byla pomyslem usera i byla konieczna.
 
 ## 2026-08-29 - 0.9.1: LOCALE ZABIJALO WCZYTYWANIE (zgloszenie od gracza)
 
