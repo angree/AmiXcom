@@ -1,6 +1,57 @@
-# LEFTOFF - hand-off for the next session (updated 2026-08-21)
+# LEFTOFF - hand-off for the next session (updated 2026-09-01)
 
 Read this, then `CLAUDE.md` (rules), then the top entry of `PROGRESS.md` (proofs).
+
+## STAN: 0.9.4 ZBUDOWANE - NAPRAWIONY ZWIS PRZY KAZDYM RUCHU W BITWIE
+
+0.9.3 zawieszalo sie przy PIERWSZEJ probie ruchu w kazdej misji (Guru
+`8000 0003` + reset maszyny), na kazdej konfiguracji i w obu wariantach
+(non-FPU i FPU). 0.9.1 bylo zdrowe. Winne bylo `native/fp_double.c` z 0.9.3:
+opakowania `floorf`/`sqrtf`/`ceilf` napisane jako `(float)floor((double)x)`,
+ktore gcc rozpoznaje jako tozsamosc zawezajaca i przepisuje na wywolanie TEJ
+SAMEJ funkcji - nieskonczona rekurencja, przepelniony stos, blad adresu.
+Naprawa: `fp_single.c`/`fp_double.c`/`fp_conv.c` z `-fno-builtin` (build.sh,
+`compile_c`). Pelny opis, dowod z objdumpa i metoda szukania: gora PROGRESS.md.
+
+Zweryfikowane samodzielnie na `oxc-aga-nojit-040-40.uae`: New Battle (misja
+podwodna, TRITON), trzy klikniecia w mape, jednostka chodzi, gra zyje minute
+pozniej, 50 fps. Wczesniej ten sam scenariusz zabijal maszyne w 0.2 s.
+
+DO ZROBIENIA ZANIM POJDZIE NA GITHUB
+- User ma przetestowac 0.9.4 u siebie (binarki juz sa w `Work:`, 02:17/02:22).
+- Spakowac zip + lha, notatki wydania, tag `v0.9.4`, wypchnac kod.
+- W notatkach napisac wprost, ze 0.9.3 nalezy pominac - w bitwie jest nie do
+  uzycia.
+
+CO ZOSTAJE OTWARTE
+- **Blad wspolrzednych bazy u zglaszajacego** (0.9.3, kraj = Polska): po
+  wczytaniu zapisu baza znika z globusa, przechwyt startuje z 0N 0E. U nas nie
+  reprodukuje sie ani z kropka, ani z przecinkiem; `fputest5` pokazal, ze
+  zapis i odczyt licz przez nasz wlasny parser i sa poprawne. Potrzebny JEGO
+  `.asav` + `openxcom.log`.
+- **Tolerancja przecinka przy ODCZYCIE** (`amiga_parse_double_c` przyjmujacy
+  ','): uratowalaby zapisy zrobione przez 0.9.0/0.9.1 na maszynie z przecinkiem.
+  Zaproponowane, nie zrobione.
+- Okienko wyboru trybu muzyki na starcie - patrz nizej, nadal nierozstrzygniete.
+- Sprzatanie w `Work:`: `aga071/aga072/aga080`, `openxcom-aga091`,
+  `openxcom-aga093`, `fputest3/4/5`, `mixbench2`, `musicbench` (+ .info).
+
+NARZEDZIA, KTORE POWSTALY PRZY TYM SLEDZTWIE (warto uzyc ponownie)
+- `AMIGA_WALK_PROBE=1` + `build.sh` - sekcja `patch_walk_probes` w patcherze
+  wstawia `SDLmini_Log` wzdluz sciezki klik->krok. Log flushuje kazda linie,
+  wiec ostatnia linia = ostatni osiagniety punkt.
+- `AMIGA_NO_PATCH=1 sh build.sh` - pomija patcher i restore yaml-cpp; jedyny
+  sposob na przyrostowy build po recznej zmianie w drzewie ORAZ na zbudowanie
+  wariantow FPU zaraz po `clean`.
+- `C:\temp\oxctest\keeplog.sh` - kopiuje `sdlmini.log` co sekunde i zamraza
+  ostatnia kopie, gdy plik sie skraca (czyli gdy maszyna sie zresetowala).
+  Bez tego log z padu ginie razem z maszyna.
+- `C:\temp\oxctest\autoinput_repro.txt` - cala droga menu -> New Battle ->
+  briefing -> ekwipunek -> tura -> krok, z czasami dla 040/40 bez JIT.
+  Pamietac o `Work:autoinput.on` (bez niego autoinput jest wylaczony) i o tym,
+  ze plik jest czytany raz przy starcie gry.
+
+## POPRZEDNIO
 
 ## STAN: v0.9.0 WYDANE (2026-08-21) - MUZYKA
 

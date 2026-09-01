@@ -1458,6 +1458,111 @@ def patch_yamlcpp_tick(yamldir):
     return "applied"
 
 
+def patch_walk_probes(src):
+    """Breadcrumbs along the click-to-step path (only with AMIGA_WALK_PROBE=1).
+
+    The battlescape dies on the first click on the map with no Guru record and
+    no further log line, so the only way to find the spot is to make the code
+    say how far it got. SDLmini_Log flushes every line, so the last line in
+    sdlmini.log is the last point reached. Diagnostic only."""
+    decl = 'extern "C" void SDLmini_Log(const char *msg);\n'
+    at_start = {
+        "Battlescape/BattlescapeState.cpp": [
+            ("void BattlescapeState::mapClick(Action *action)", "probe: mapClick"),
+        ],
+        "Battlescape/BattlescapeGame.cpp": [
+            ("void BattlescapeGame::primaryAction(const Position &pos)", "probe: primaryAction"),
+            ("void BattlescapeGame::statePushBack(BattleState *bs)", "probe: statePushBack"),
+            ("void BattlescapeGame::statePushFront(BattleState *bs)", "probe: statePushFront"),
+            ("bool BattlescapeGame::checkReservedTU(BattleUnit *bu, int tu, bool justChecking)", "probe: checkReservedTU"),
+        ],
+        "Battlescape/UnitWalkBState.cpp": [
+            ("void UnitWalkBState::init()", "probe: walk init"),
+            ("void UnitWalkBState::think()", "probe: walk think"),
+            ("void UnitWalkBState::playMovementSound()", "probe: walk sound"),
+        ],
+        "Battlescape/Pathfinding.cpp": [
+            ("void Pathfinding::calculate(BattleUnit *unit, Position endPosition, BattleUnit *target, int maxTUCost)",
+             "probe: pathfinding calculate"),
+            ("bool Pathfinding::aStarPath(const Position &startPosition, const Position &endPosition, BattleUnit *target, bool sneak, int maxTUCost)",
+             "probe: aStarPath"),
+        ],
+        "Battlescape/Map.cpp": [
+            ("void Map::cacheUnit(BattleUnit *unit)", "probe: cacheUnit"),
+        ],
+        "Battlescape/TileEngine.cpp": [
+            ("int TileEngine::unitOpensDoor(BattleUnit *unit, bool rClick, int dir)", "probe: unitOpensDoor"),
+        ],
+        "Savegame/BattleUnit.cpp": [
+            ("int BattleUnit::getActionTUs(BattleActionType actionType, BattleItem *item)", "probe: getActionTUs(item)"),
+            ("int BattleUnit::getActionTUs(BattleActionType actionType, RuleItem *item)", "probe: getActionTUs(rule)"),
+            ("BattleItem *BattleUnit::getMainHandWeapon(bool quickest) const", "probe: mainHandWeapon"),
+            ("void BattleUnit::startWalking(int direction, const Position &destination, Tile *tileBelowMe, bool cache)",
+             "probe: startWalking"),
+            ("void BattleUnit::keepWalking(Tile *tileBelowMe, bool cache)", "probe: keepWalking"),
+        ],
+    }
+    before = {
+        "Battlescape/UnitWalkBState.cpp": [
+            ("_unit->keepWalking(tileBelow, onScreenBoundary);", "probe: before keepWalking"),
+            ("dir = Pathfinding::DIR_DOWN;", "probe: got startDirection"),
+            ("int tu = _pf->getTUCost(_unit->getPosition(), dir, &destination, _unit, 0, false);", "probe: before getTUCost"),
+            ("int energy = tu;", "probe: after getTUCost"),
+            ("if (tu > _unit->getTimeUnits())", "probe: tu check"),
+            ("if (energy / 2 > _unit->getEnergy())", "probe: energy check"),
+            ("if (_parent->getPanicHandled() && _parent->checkReservedTU(_unit, tu) == false)", "probe: before checkReservedTU"),
+            ("_unit->lookAt(dir);", "probe: before lookAt"),
+            ("int door = _terrain->unitOpensDoor(_unit, false, dir);", "probe: before opensDoor"),
+        ],
+    }
+    n = 0
+    for rel in sorted(set(at_start) | set(before)):
+        path = os.path.join(src, rel)
+        if not os.path.isfile(path):
+            continue
+        with open(path, "r", encoding="utf-8", errors="surrogateescape") as f:
+            lines = f.readlines()
+        changed = False
+        if not any(l.startswith('extern "C" void SDLmini_Log') for l in lines):
+            last = 0
+            for i, l in enumerate(lines):
+                if l.startswith("#include"):
+                    last = i
+            lines.insert(last + 1, decl)
+            changed = True
+        for sig, text in at_start.get(rel, []):
+            if any(text in l for l in lines):
+                continue
+            hit = None
+            for i, l in enumerate(lines):
+                if l.strip() == sig.strip():
+                    hit = i
+                    break
+            if hit is None:
+                continue
+            j = hit + 1
+            while j < len(lines) and j <= hit + 3 and lines[j].strip() != "{":
+                j += 1
+            if j < len(lines) and lines[j].strip() == "{":
+                lines.insert(j + 1, '\tSDLmini_Log("%s");\n' % text)
+                changed = True
+                n += 1
+        for needle, text in before.get(rel, []):
+            if any(text in l for l in lines):
+                continue
+            for i, l in enumerate(lines):
+                if needle in l and "SDLmini_Log" not in l:
+                    ind = l[: len(l) - len(l.lstrip())]
+                    lines.insert(i, '%sSDLmini_Log("%s");\n' % (ind, text))
+                    changed = True
+                    n += 1
+                    break
+        if changed:
+            with open(path, "w", encoding="utf-8", errors="surrogateescape") as f:
+                f.writelines(lines)
+    return "%d probes" % n
+
+
 def main():
     if len(sys.argv) not in (2, 3):
         raise SystemExit(__doc__)
@@ -1566,11 +1671,11 @@ def main():
         '#define OPENXCOM_VERSION_LONG "1.0.0.0"\n'
         '#define OPENXCOM_VERSION_NUMBER 1,0,0,0\n',
         '#ifdef AMIGA_FPU_BUILD\n'
-        '#define OPENXCOM_VERSION_SHORT "0.9.3 FPU"\n'
+        '#define OPENXCOM_VERSION_SHORT "0.9.4 FPU"\n'
         '#else\n'
-        '#define OPENXCOM_VERSION_SHORT "0.9.3"\n'
+        '#define OPENXCOM_VERSION_SHORT "0.9.4"\n'
         '#endif\n'
-        '#define OPENXCOM_VERSION_LONG "0.9.3.0"\n'
+        '#define OPENXCOM_VERSION_LONG "0.9.4.0"\n'
         '#define OPENXCOM_VERSION_NUMBER 0,9,3,0\n'
         '#define OPENXCOM_VERSION_GIT ""\n',
         "port version")))
@@ -8560,6 +8665,9 @@ def main():
                 f.write(text)
             swapped.append(os.path.relpath(path, src))
     results.append(("file streams", "%d files" % len(swapped) if swapped else "already"))
+
+    if os.environ.get("AMIGA_WALK_PROBE"):
+        results.append(("walk probes", patch_walk_probes(src)))
 
     for name, state in results:
         print("  %-24s %s" % (name, state))

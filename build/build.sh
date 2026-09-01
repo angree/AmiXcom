@@ -87,6 +87,14 @@ cp -r "$REPO/native/." "$NATIVE/"
 # splash backgrounds/logo embedded in the binary (build/gen_splash.py)
 python3 "$REPO/build/gen_splash.py" "$REPO/intro" "$NATIVE/amiga_splash_data.c"
 
+# AMIGA_NO_PATCH=1 skips the patch step and the yaml restore. The tree is
+# already patched; re-running the patcher on it fails (some patches consume
+# text a later patch needs) and the yaml restore rewrites convert.h, which
+# by mtime invalidates every object. With it set, an edit made directly in
+# the tree - a probe, a one-line experiment - costs one file, not 305.
+if [ -n "$AMIGA_NO_PATCH" ]; then
+	log "skipping patches (AMIGA_NO_PATCH set)"
+else
 log "applying Amiga patches"
 # yaml restore: the yaml-cpp tree is unpacked once and kept, and every patch
 # below is written to be idempotent - "my block is already there, nothing to
@@ -111,6 +119,7 @@ if [ -n "$YAML_TGZ" ] && [ -d "$YAML" ]; then
 	log "yaml-cpp: patched files restored from the tarball"
 fi
 python3 "$REPO/build/apply-amiga-patches.py" "$SRC/src" "$YAML"
+fi
 
 # ------------------------------------------------------------------ build --
 
@@ -143,8 +152,21 @@ needs_build() {   # $1 = source, $2 = object
 
 compile_c() {
 	out="$OBJ/$(echo "$2" | tr / _).o"
+	# The soft-float files DEFINE library functions, so they must be compiled
+	# with -fno-builtin. Without it gcc recognises the body of
+	#     float floorf(float x) { return (float)floor((double)x); }
+	# as the narrowing identity it has a builtin for, and rewrites it into a
+	# call to floorf - the function being defined. sqrtf, floorf and ceilf all
+	# became infinite recursion that way in 0.9.3: the first one the
+	# battlescape reaches (the TU cost of a reserved shot, floor() on a float)
+	# blew the stack, which the 68020 reports as address error 8000 0003, and
+	# the machine died before the trap handler could log a thing.
+	extra=""
+	case "$2" in
+		fp_single.c|fp_double.c|fp_conv.c) extra="-fno-builtin" ;;
+	esac
 	if needs_build "$1/$2" "$out"; then
-		m68k-amigaos-gcc $CFLAGS -MMD -MP -MF "$out.d" -c "$1/$2" -o "$out" || exit 1
+		m68k-amigaos-gcc $CFLAGS $extra -MMD -MP -MF "$out.d" -c "$1/$2" -o "$out" || exit 1
 	fi
 	echo "$out"
 }

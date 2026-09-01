@@ -2,6 +2,76 @@
 
 Newest first. Facts and measurements only; plans live in `PORT_RESEARCH.md`.
 
+## 2026-09-01 - 0.9.4: gcc zamienil moje floorf/sqrtf/ceilf w rekurencje bez konca
+
+OBJAW. Kazda misja w 0.9.3, pierwsza proba ruchu jednostki: Guru `8000 0003`
+(blad adresu) i maszyna sie resetuje. Na 020+FPU, na 020 bez FPU, z JIT i bez,
+w wersji non-FPU i FPU - wszedzie tak samo. 0.9.1 chodzi normalnie. W logu ani
+jednej linii po kliknieciu i - co bylo najdziwniejsze - ZADNEGO wpisu `CPU TRAP`,
+mimo ze handler z `amiga_trap.c` byl uzbrojony.
+
+CO TO BYLO. `native/fp_double.c` (nowosc 0.9.3) definiuje opakowania float tak:
+
+    float floorf(float x) { return (float)floor((double)x); }
+    float sqrtf(float x)  { return (float)sqrt((double)x); }
+    float ceilf(float x)  { return (float)ceil((double)x); }
+
+To jest dokladnie tozsamosc zawezajaca, ktora gcc zna i optymalizuje: "double
+floor zawezony do float" przepisuje na wywolanie `floorf`. Czyli na wywolanie
+funkcji, ktora wlasnie definiuje. Dowod z obiektu:
+
+    _floorf:  19f8:  jsr %pc@(19f4 <_floorf>)
+    _sqrtf:   1974:  jsr %pc@(1970 <_sqrtf>)
+    _ceilf:   1a04:  jsr %pc@(1a00 <_ceilf>)
+
+Rekurencja bez warunku stopu zjada stos; na 68020 konczy sie to bledem adresu,
+a nie "stack overflow". Handler `tc_TrapCode` sam potrzebuje stosu, wiec nie ma
+jak sie wykonac - stad brak `CPU TRAP` i systemowy requester zamiast naszego
+logu. To odpowiada na pytanie, ktore przy tej klasie awarii zawsze wraca: gdy
+Guru NIE zostawil wpisu w logu, pierwszym podejrzanym jest przepelnienie stosu.
+
+DLACZEGO DOPIERO PIERWSZY KROK W BITWIE. Geoscape liczy na `double` (i po
+konwersji na stalopozycyjne w ogole niewiele wola), wiec `floorf`/`sqrtf` sie
+tam nie pojawiaja. Pierwsze `floor()` na floatach w calej rozgrywce to koszt TU
+zarezerwowanego strzalu: `BattleUnit::getActionTUs` liczy
+`(int)floor(getBaseStats()->tu * cost / 100.0f)`, wolane z
+`BattlescapeGame::checkReservedTU` przy pierwszej probie ruchu. Menu, ladowanie,
+geoscape, wejscie do misji - wszystko dziala, bo nic z tego tam nie trafia.
+
+NAPRAWA. `fp_single.c`, `fp_double.c` i `fp_conv.c` kompiluja sie z
+`-fno-builtin` (`build.sh`, `compile_c`). Tak kompiluje sie kazda implementacja
+libm i bez tego kompilator ZAWSZE bedzie mial prawo podmienic cialo funkcji
+bibliotecznej na wywolanie jej samej. Po przebudowie `objdump` na
+`fp_double.c.o` nie pokazuje juz zadnego samowywolania.
+
+JAK TO ZNALEZLISMY (metoda warta powtorzenia). Log ginal razem z maszyna, wiec
+najpierw poller po stronie hosta kopiowal `sdlmini.log` co sekunde i zamrazal
+ostatnia kopie w momencie, gdy plik sie skracal (restart). Potem sonda: sekcja
+`patch_walk_probes` w patcherze (wlaczana `AMIGA_WALK_PROBE=1`) wstawia
+`SDLmini_Log` wzdluz sciezki klik->krok. `SDLmini_Log` robi `fflush` po kazdej
+linii, wiec OSTATNIA linia w logu to ostatni punkt, ktory kod osiagnal. Trzy
+rundy zawezily to z "gdzies w grze" do jednej linijki:
+
+    mapClick -> primaryAction -> pathfinding calculate -> aStarPath ->
+    statePushBack -> walk init -> walk think -> getTUCost -> tu check ->
+    energy check -> checkReservedTU -> mainHandWeapon -> getActionTUs ->
+    "gat: tu=55" -> "gat: before floor" -> koniec
+
+DRUGI WNIOSEK, NARZEDZIOWY. `m68k-amigaos-nm` i `objdump` wywalaja sie
+("Floating point exception") na duzych obiektach tego projektu - na malych
+dzialaja. Wynik `nm` rowny zeru moze wiec znaczyc "narzedzie padlo", a nie
+"symbolu nie ma" - warto sprawdzic kod wyjscia. Do ogladania duzego pliku
+sluzy `g++ -S` (z `ulimit -s 65536`, inaczej cc1plus dostaje ICE pod WSL1).
+
+TRZECI WNIOSEK, BUDOWANIE. `build.sh` przyjmuje teraz `AMIGA_NO_PATCH=1`:
+pomija patcher i restore yaml-cpp. Drzewo jest juz zapatchowane, ponowne
+uruchomienie patchera na nim konczy sie PATCH FAILED (czesc patchow zjada tekst
+potrzebny pozniejszym), a restore yaml-cpp przepisuje `convert.h` i po dacie
+uniewaznia wszystkie 305 obiektow. Z tym przelacznikiem eksperyment w drzewie
+kosztuje jeden plik zamiast pelnego rebuildu - i to jest jedyny sposob, zeby
+zbudowac warianty FPU zaraz po `clean` (build FPU to drugi przebieg na tym
+samym, juz zapatchowanym drzewie).
+
 ## 2026-08-31 - 0.9.3: NTSC, wlasna matematyka double, i patch ktory nie trafial do binarki
 
 NTSC. `amiga_gfx.c` wymuszal `PAL_MONITOR_ID` na kazdym otwieranym ekranie, wiec

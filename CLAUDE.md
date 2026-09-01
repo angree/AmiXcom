@@ -50,7 +50,7 @@ Toolchain: bebbo amiga-gcc 6.5.0b at `/opt/amiga/bin` inside WSL (Ubuntu 22.04, 
 `/mnt/i` drops out of WSL regularly — every command starts with
 `ls /mnt/i/GITHUB >/dev/null 2>&1 || sudo -n mount -t drvfs I: /mnt/i`.
 
-Three toolchain defects shape this build; each one looks exactly like a bug in the game.
+Six toolchain defects shape this build; each one looks exactly like a bug in the game.
 They are documented with their proofs in `PROGRESS.md`:
 
 1. **Never strip.** `m68k-amigaos-strip` produces a Hunk executable that halts the machine
@@ -74,6 +74,17 @@ They are documented with their proofs in `PROGRESS.md`:
    Guru `#8000000B`). `native/fp_single.c` provides `__mulsf3`/`__divsf3` and is linked
    ahead of `-lm`; keep it there. Everything else in the IEEE path (SP add/sub, all DP,
    `sqrt`/`sin`/`pow`) is verified good. `#8000000B` is **Line-F**, not a bus error.
+
+6. **A file that DEFINES library functions must be compiled `-fno-builtin`.**
+   `native/fp_double.c` wrote `float floorf(float x) { return (float)floor((double)x); }`
+   and gcc, which knows that narrowing identity, rewrote the body into a call to
+   `floorf` - the function being defined. `sqrtf`, `floorf` and `ceilf` were all
+   infinite recursion in 0.9.3; the first one the battlescape reached (the TU cost
+   of a reserved shot, on the first attempt to move) blew the stack, and a blown
+   stack on the 68020 arrives as address error `#80000003` with the machine dead
+   before `amiga_trap.c` can log anything. **A Guru that left NO `CPU TRAP` line is
+   a stack overflow until proven otherwise.** `build.sh` compiles `fp_single.c`,
+   `fp_double.c` and `fp_conv.c` with `-fno-builtin`; keep it that way.
 
 Two things that make the next crash cheap instead of a day: every Guru is logged with its
 PC by `native/amiga_trap.c` (armed in `main.cpp`; look for `CPU TRAP` in `sdlmini.log`,
