@@ -50,7 +50,7 @@ Toolchain: bebbo amiga-gcc 6.5.0b at `/opt/amiga/bin` inside WSL (Ubuntu 22.04, 
 `/mnt/i` drops out of WSL regularly — every command starts with
 `ls /mnt/i/GITHUB >/dev/null 2>&1 || sudo -n mount -t drvfs I: /mnt/i`.
 
-Seven toolchain and platform defects shape this build; each one looks exactly like a bug in the game.
+Eight toolchain and platform defects shape this build; each one looks exactly like a bug in the game.
 They are documented with their proofs in `PROGRESS.md`:
 
 1. **Never strip.** `m68k-amigaos-strip` produces a Hunk executable that halts the machine
@@ -95,6 +95,21 @@ They are documented with their proofs in `PROGRESS.md`:
    Cancel with **`CMD_FLUSH` on the channel** - it aborts every request queued there,
    the one in progress included, and replies them all - and only then `WaitIO`.
    `native/amiga_audio.c` has no `AbortIO` left; keep it that way.
+
+8. **The C library takes the decimal separator from `locale.library`, and
+   `setlocale` cannot stop it.** Measured on 2026-09-01, one line after
+   `setlocale(LC_ALL, "C")`: `locale: snprintf gives 1,500, decimal_point .` -
+   `localeconv()` reports a dot while `snprintf` prints a comma in the same
+   breath. So on a Workbench whose country uses a decimal comma, every
+   `printf`/`snprintf`/`std::ostringstream`/`strtod` in the program is affected
+   and **there is no global switch that turns it off**. That is why the same bug
+   came back seven times between 0.9.1 and 0.9.8, each time in one more place:
+   ruleset parsing, then number writing, then `serializeDouble` - every base and
+   craft coordinate in every save, which is why bases vanished from the globe.
+   **Any float that goes to or comes from a file must be formatted and parsed by
+   hand** (`amiga_to_string`, `amiga_parse_double_c`, `serializeDouble`). A
+   `snprintf` followed by a comma-to-dot fixup is not paranoia - it is the only
+   thing that works, and code that does it is evidence someone met this before.
 
 Two things that make the next crash cheap instead of a day: every Guru is logged with its
 PC by `native/amiga_trap.c` (armed in `main.cpp`; look for `CPU TRAP` in `sdlmini.log`,

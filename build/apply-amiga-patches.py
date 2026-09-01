@@ -439,7 +439,11 @@ inline bool amiga_parse_double_c(const std::string& in, double& r) {
   int digits = 0;
   if (p < end && (*p == '+' || *p == '-')) { neg = (*p == '-'); ++p; }
   while (p < end && *p >= '0' && *p <= '9') { mant = mant * 10.0 + (*p - '0'); ++digits; ++p; }
-  if (p < end && *p == '.') {
+  /* A comma is accepted as a decimal separator when READING. Saves written
+   * by 0.9.0 to 0.9.8 on a machine whose country uses one are full of them
+   * (see 6amR); without this those bases are lost for good. Writing always
+   * produces a dot, so nothing new is ever ambiguous. */
+  if (p < end && (*p == '.' || *p == ',')) {
     ++p;
     while (p < end && *p >= '0' && *p <= '9') {
       mant = mant * 10.0 + (*p - '0'); ++digits; --exp10; ++p;
@@ -1671,11 +1675,11 @@ def main():
         '#define OPENXCOM_VERSION_LONG "1.0.0.0"\n'
         '#define OPENXCOM_VERSION_NUMBER 1,0,0,0\n',
         '#ifdef AMIGA_FPU_BUILD\n'
-        '#define OPENXCOM_VERSION_SHORT "0.9.7 FPU"\n'
+        '#define OPENXCOM_VERSION_SHORT "0.9.8 FPU"\n'
         '#else\n'
-        '#define OPENXCOM_VERSION_SHORT "0.9.7"\n'
+        '#define OPENXCOM_VERSION_SHORT "0.9.8"\n'
         '#endif\n'
-        '#define OPENXCOM_VERSION_LONG "0.9.7.0"\n'
+        '#define OPENXCOM_VERSION_LONG "0.9.8.0"\n'
         '#define OPENXCOM_VERSION_NUMBER 0,9,3,0\n'
         '#define OPENXCOM_VERSION_GIT ""\n',
         "port version")))
@@ -8362,6 +8366,155 @@ def main():
         "\tOptions::amigaLangAuto = false;\n"
         "#endif\n",
         "manual language turns auto off")))
+
+    # 6amQ. Nail the C locale to "C". See the long note in
+    #       build/fetch_translations.py's sibling script and PROGRESS 0.9.8:
+    #       Language.cpp switched LC_ALL to the system locale around two
+    #       filename conversions, and every number formatted or parsed inside
+    #       that window came out with the country's decimal separator. That is
+    #       where the "ruleset will not load" and "the base is missing after
+    #       loading a save" reports came from. The language chooser reads
+    #       locale.library directly and is unaffected.
+    results.append(("main.cpp (pin C locale)", edit(
+        os.path.join(src, "main.cpp"),
+        "int main(int argc, char *argv[])\n{\n",
+        "int main(int argc, char *argv[])\n{\n"
+        "#ifdef __AMIGA__\n"
+        "\t/* AMIGA-PORT 6amQ: numbers stay in the C locale, whatever the\n"
+        "\t * Workbench country says. Nothing below may change this. */\n"
+        "\tsetlocale(LC_ALL, \"C\");\n"
+        "\t/* Does pinning it actually decide anything on this libc? Print a\n"
+        "\t * number and find out - the answer is in sdlmini.log. */\n"
+        "\t{\n"
+        "\t\tchar lb_[64], nb_[32];\n"
+        "\t\tstd::snprintf(nb_, sizeof nb_, \"%.3f\", 1.5);\n"
+        "\t\tstd::snprintf(lb_, sizeof lb_, \"locale: snprintf gives %s, decimal_point %s\",\n"
+        "\t\t\tnb_, localeconv()->decimal_point);\n"
+        "\t\tSDLmini_Log(lb_);\n"
+        "\t}\n"
+        "#endif\n",
+        "pin C locale")))
+    results.append(("main.cpp (clocale include)", edit(
+        os.path.join(src, "main.cpp"),
+        "#include \"version.h\"\n",
+        "#include \"version.h\"\n"
+        "#ifdef __AMIGA__\n"
+        "#include <clocale>\n"
+        "#include <cstdio>\n"
+        "#endif\n",
+        "clocale include")))
+    results.append(("Language.cpp (no locale switch, wstrToFs)", edit(
+        os.path.join(src, "Engine", "Language.cpp"),
+        "\tconst int MAX = 500;\n"
+        "\tchar buffer[MAX];\n"
+        "\tsetlocale(LC_ALL, \"\");\n"
+        "\twcstombs(buffer, src.c_str(), MAX);\n"
+        "\tsetlocale(LC_ALL, \"C\");\n"
+        "\tstd::string str(buffer);\n"
+        "\treturn str;\n",
+        "#ifdef __AMIGA__\n"
+        "\t/* AMIGA-PORT 6amQ: no setlocale, and no wcstombs either. AmigaOS\n"
+        "\t * filenames are single bytes (ISO-8859-1), so the conversion is one\n"
+        "\t * character to one byte and needs no locale at all - which is the\n"
+        "\t * point: the locale switch that used to be here is what put decimal\n"
+        "\t * commas into everything the program printed or parsed while it was\n"
+        "\t * in force. Doing it by hand also beats wcstombs in the C locale,\n"
+        "\t * which would refuse every accented character in a save name. */\n"
+        "\tstd::string str;\n"
+        "\tstr.reserve(src.size());\n"
+        "\tfor (std::wstring::const_iterator i = src.begin(); i != src.end(); ++i)\n"
+        "\t{\n"
+        "\t\tstr += (*i < 256) ? (char)*i : '?';\n"
+        "\t}\n"
+        "\treturn str;\n"
+        "#else\n"
+        "\tconst int MAX = 500;\n"
+        "\tchar buffer[MAX];\n"
+        "\tsetlocale(LC_ALL, \"\");\n"
+        "\twcstombs(buffer, src.c_str(), MAX);\n"
+        "\tsetlocale(LC_ALL, \"C\");\n"
+        "\tstd::string str(buffer);\n"
+        "\treturn str;\n"
+        "#endif\n",
+        "no locale switch in wstrToFs")))
+    results.append(("Language.cpp (no locale switch, fsToWstr)", edit(
+        os.path.join(src, "Engine", "Language.cpp"),
+        "\tconst int MAX = 500;\n"
+        "\twchar_t buffer[MAX + 1];\n"
+        "\tsetlocale(LC_ALL, \"\");\n"
+        "\tsize_t len = mbstowcs(buffer, src.c_str(), MAX);\n"
+        "\tsetlocale(LC_ALL, \"C\");\n"
+        "\tif (len == (size_t)-1)\n"
+        "\t\treturn L\"?\";\n"
+        "\treturn std::wstring(buffer, len);\n",
+        "#ifdef __AMIGA__\n"
+        "\t/* AMIGA-PORT 6amQ: the other half of the same story - one byte to\n"
+        "\t * one character, no locale, no mbstowcs. See wstrToFs above. */\n"
+        "\tstd::wstring wstr;\n"
+        "\twstr.reserve(src.size());\n"
+        "\tfor (std::string::const_iterator i = src.begin(); i != src.end(); ++i)\n"
+        "\t{\n"
+        "\t\twstr += (wchar_t)(unsigned char)*i;\n"
+        "\t}\n"
+        "\treturn wstr;\n"
+        "#else\n"
+        "\tconst int MAX = 500;\n"
+        "\twchar_t buffer[MAX + 1];\n"
+        "\tsetlocale(LC_ALL, \"\");\n"
+        "\tsize_t len = mbstowcs(buffer, src.c_str(), MAX);\n"
+        "\tsetlocale(LC_ALL, \"C\");\n"
+        "\tif (len == (size_t)-1)\n"
+        "\t\treturn L\"?\";\n"
+        "\treturn std::wstring(buffer, len);\n"
+        "#endif\n",
+        "no locale switch in fsToWstr")))
+
+    # 6amR. serializeDouble: the last locale-dependent number in the port.
+    #       Every base and craft coordinate goes through it, it uses a C++
+    #       stream, and on this libstdc++ that does NOT follow the C locale -
+    #       so a comma country wrote "0,2038..." into every save and the
+    #       coordinates came back as 0.0 on load. Formatted by hand here.
+    results.append(("SerializationHelper.cpp (locale-proof double)", edit(
+        os.path.join(src, "Savegame", "SerializationHelper.cpp"),
+        "std::string serializeDouble(double value)\n"
+        "{\n"
+        "\tstd::ostringstream stream;\n"
+        "\tstream.precision(DBL_DIG + 2);\n"
+        "\tstream << value;\n"
+        "\treturn stream.str();\n"
+        "}\n",
+        "std::string serializeDouble(double value)\n"
+        "{\n"
+        "#ifdef __AMIGA__\n"
+        "\t/* AMIGA-PORT 6amR: a C++ stream here follows the machine's locale,\n"
+        "\t * not the C locale main() pins, so on a country with a decimal\n"
+        "\t * comma every coordinate in every save came out as \"0,2038...\".\n"
+        "\t * yaml then stored it as text, reading it back failed, and the\n"
+        "\t * coordinate fell to 0.0 - which is why bases vanished from the\n"
+        "\t * globe and craft launched from off the coast of Africa. Formatted\n"
+        "\t * by hand so that no country setting can reach it. */\n"
+        "\tchar buf[48];\n"
+        "\tchar *p;\n"
+        "\tstd::snprintf(buf, sizeof(buf), \"%.*g\", DBL_DIG + 2, value);\n"
+        "\tfor (p = buf; *p; ++p)\n"
+        "\t{\n"
+        "\t\tif (*p == ',') *p = '.';\n"
+        "\t}\n"
+        "\treturn std::string(buf);\n"
+        "#else\n"
+        "\tstd::ostringstream stream;\n"
+        "\tstream.precision(DBL_DIG + 2);\n"
+        "\tstream << value;\n"
+        "\treturn stream.str();\n"
+        "#endif\n"
+        "}\n",
+        "locale-proof serializeDouble")))
+    results.append(("SerializationHelper.cpp (cstdio)", edit(
+        os.path.join(src, "Savegame", "SerializationHelper.cpp"),
+        "#include <sstream>\n",
+        "#include <sstream>\n"
+        "#include <cstdio>\n",
+        "cstdio for serializeDouble")))
 
     # 6amO. Quit that quits. `delete game` frees the whole mod - tens of
     #       thousands of surfaces - and on a 68020 that takes so long that

@@ -2,6 +2,72 @@
 
 Newest first. Facts and measurements only; plans live in `PORT_RESEARCH.md`.
 
+## 2026-09-01 - 0.9.8: dlaczego przecinek wracal siedem razy
+
+POMIAR, KTORY TRZEBA BYLO ZROBIC DAWNO TEMU. Jedna linia w logu, zaraz po
+`setlocale(LC_ALL, "C")` w `main()`:
+
+    locale: snprintf gives 1,500, decimal_point .
+
+`localeconv()` mowi, ze separatorem jest KROPKA - czyli `setlocale` zadzialal -
+a `snprintf` w tej samej sekundzie drukuje `1,500`. **Ta biblioteka C ignoruje
+i `setlocale`, i wlasne `localeconv`**: separator bierze prosto z
+`locale.library` przy kazdym formatowaniu liczby.
+
+To wyjasnia cala serie. Od 0.9.1 lataliismy to siedem razy, za kazdym razem
+znajdujac JEDNO miejsce (parser rulesetow, zapis liczb, potem kolejne), bo
+kazda poprawka wygladala na skuteczna - do nastepnego zgloszenia. Nie bylo
+zadnego globalnego przelacznika do znalezienia. Nie ma go do dzis.
+
+WNIOSEK, KTORY OBOWIAZUJE OD TERAZ. Zadna liczba zmiennoprzecinkowa, ktora ma
+trafic do pliku albo z niego wrocic, nie moze przejsc przez `printf`/`snprintf`
+/`std::ostringstream`/`strtod` bez recznej obrobki separatora. To nie jest
+obejscie - to jedyna dostepna przyczyna. Sygnal ostrzegawczy: kod, ktory robi
+`snprintf` i ZARAZ POTEM zamienia przecinek na kropke (jak `amiga_to_string` od
+0.9.1), jest dowodem, ze ktos juz to odkryl i nie zapytal dlaczego.
+
+OSTATNIE TAKIE MIEJSCE. `Savegame/SerializationHelper.cpp`:
+
+    std::string serializeDouble(double value)
+    {
+        std::ostringstream stream;
+        stream.precision(DBL_DIG + 2);
+        stream << value;
+    }
+
+Przez to szly wspolrzedne KAZDEJ bazy i celu (`Target::save`), predkosci
+(`MovingTarget::save`) i pozycja globusa (`SavedGame::save`). Na maszynie z
+przecinkiem zapis wygladal tak:
+
+    bases:
+      - lon: '0,20387396260506496'
+
+W cudzyslowie, bo z przecinkiem to juz nie jest liczba. Przy wczytaniu
+`convert<double>` odrzucal to i wspolrzedna cicho spadala do 0.0 - stad "baza
+znika z globusa", a mysliwiec startuje z 0N 0E u wybrzezy Afryki. Teraz
+formatowane recznie przez `snprintf` + wymuszenie kropki (6amR).
+
+I DRUGA STRONA: ODCZYT WYBACZA PRZECINEK. `amiga_parse_double_c` przyjmuje
+teraz `,` jako separator dziesietny. Zapis zawsze produkuje kropke, wiec nic
+nowego nie jest niejednoznaczne - ale zapisy zrobione przez 0.9.0-0.9.8 na
+maszynie z przecinkiem sa ich pelne i bez tego ci gracze traca bazy
+bezpowrotnie. Zweryfikowane: zapis zrobiony dzis przez 0.9.8 na niemieckim
+locale (`lon: '0,2038...'`) wczytuje sie z baza na miejscu.
+
+PRZY OKAZJI (6amQ, i tak warte zachowania). `Language.cpp` przelaczal cale
+`LC_ALL` na systemowe wokol dwoch konwersji nazw plikow. To nic nie dawalo -
+libnix i tak czyta locale.library - a bylo kolejnym miejscem, gdzie stan
+globalny zmienial sie pod spodem. Konwersja nazw plikow jest teraz robiona
+recznie, jeden bajt na jeden znak (AmigaOS trzyma nazwy w ISO-8859-1), bez
+zadnego locale; to takze lepsze niz `wcstombs` w locale "C", ktore odrzucaloby
+kazdy polski znak w nazwie zapisu. `main()` przypina `LC_ALL` do "C" - nie
+dlatego, ze to wystarcza (nie wystarcza), tylko zeby nic nie zalezalo od tego,
+co ustawil gracz.
+
+ZWERYFIKOWANE. Na maszynie z krajem Deutschland: nowy zapis ma
+`lon: 0.012000672064860434` (kropka), wczytuje sie z baza na globusie, a
+wczesniejszy zapis z przecinkami tez sie wczytuje.
+
 ## 2026-09-01 - 0.9.7: 27 jezykow i wybor z locale.library
 
 SKAD JE BIERZEMY. Upstream trzyma w gicie tylko en-GB/en-US; reszta zyje na
