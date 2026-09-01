@@ -355,6 +355,9 @@ void SDL_GetClipRect(SDL_Surface *surface, SDL_Rect *rect)
 
 /* ------------------------------------------------------------- palettes -- */
 
+static unsigned char s_pal[256 * 3]; /* last palette, replayed after a reopen */
+static int s_pal_valid = 0;
+
 static void push_palette_to_screen(const SDL_Color *colors, int first, int n)
 {
 	unsigned char rgb[256 * 3];
@@ -390,6 +393,10 @@ static void push_palette_to_screen(const SDL_Color *colors, int first, int n)
 		}
 	}
 
+	if (first >= 0 && first + n <= 256) {
+		memcpy(s_pal + first * 3, rgb, (size_t)n * 3);
+		s_pal_valid = 1;
+	}
 	amigagfx_set_palette(rgb, first, n);
 }
 
@@ -791,6 +798,8 @@ empty:
 /* ------------------------------------------------------------ video mode -- */
 
 int SDLmini_show_bar = 0;          /* Options::amigaAppBar, set before SDL_SetVideoMode */
+int SDLmini_video_mode = 0;        /* Options::amigaVideoMode: 0 auto, 1 PAL, 2 NTSC */
+static int s_opened_once = 0;      /* the splash belongs to the FIRST open only */
 static int s_req_w = 0, s_req_h = 0; /* what the game asked for (the screen may be taller) */
 
 SDL_Surface *SDL_SetVideoMode(int width, int height, int bpp, Uint32 flags)
@@ -806,11 +815,17 @@ SDL_Surface *SDL_SetVideoMode(int width, int height, int bpp, Uint32 flags)
 	if (s_screen != NULL) {
 		/* Reopening the same geometry is what OpenXcom does on every options
 		 * change; there is nothing to do, and reopening the screen would
-		 * flash the display for no reason. */
-		if (s_req_w == width && s_req_h == height) return s_screen;
+		 * flash the display for no reason. The display standard is the one
+		 * exception: when the player changes PAL/NTSC on the Amiga tab, this
+		 * is the moment it takes effect - leaving the options screen calls
+		 * Screen::resetDisplay(), which lands here. It deliberately does NOT
+		 * happen while the row is being cycled. */
+		if (s_req_w == width && s_req_h == height &&
+		    amigagfx_video_mode() == SDLmini_video_mode) return s_screen;
 		SDLmini_VideoQuit();
 		s_video_ready = 1;
 	}
+	amigagfx_set_video_mode(SDLmini_video_mode);
 	s_req_w = width;
 	s_req_h = height;
 
@@ -832,10 +847,20 @@ SDL_Surface *SDL_SetVideoMode(int width, int height, int bpp, Uint32 flags)
 	}
 	s_screen->flags |= SDL_HWSURFACE | SDL_FULLSCREEN;
 	dirty_add(0, 0, s_screen->w, s_screen->h);   /* fresh screen: convert all */
-	AmigaSplash_Show();   /* loading splash, once, right after the screen opens */
+	if (!s_opened_once) {
+		s_opened_once = 1;
+		AmigaSplash_Show();   /* loading splash, once, right after the first open */
+	} else if (s_pal_valid) {
+		/* A reopen (the player switched PAL/NTSC) gets a brand new screen and
+		 * therefore a black palette; the game will not resend one until it
+		 * next changes state, so put the current one back straight away. */
+		amigagfx_set_palette(s_pal, 0, 256);
+	}
 
-	snprintf(msg, sizeof(msg), "SDLmini: video %ldx%ld 8bpp, backend %ld, pitch %ld",
-	        (long)s_screen->w, (long)s_screen->h, (long)amigagfx_backend(), (long)s_screen->pitch);
+	snprintf(msg, sizeof(msg), "SDLmini: video %ldx%ld 8bpp, backend %ld, pitch %ld, %s (%s)",
+	        (long)s_screen->w, (long)s_screen->h, (long)amigagfx_backend(), (long)s_screen->pitch,
+	        amigagfx_is_ntsc() ? "NTSC" : "PAL",
+	        SDLmini_video_mode == 0 ? "auto" : "forced");
 	SDLmini_Log(msg);
 	return s_screen;
 }

@@ -1671,11 +1671,11 @@ def main():
         '#define OPENXCOM_VERSION_LONG "1.0.0.0"\n'
         '#define OPENXCOM_VERSION_NUMBER 1,0,0,0\n',
         '#ifdef AMIGA_FPU_BUILD\n'
-        '#define OPENXCOM_VERSION_SHORT "0.9.4 FPU"\n'
+        '#define OPENXCOM_VERSION_SHORT "0.9.6 FPU"\n'
         '#else\n'
-        '#define OPENXCOM_VERSION_SHORT "0.9.4"\n'
+        '#define OPENXCOM_VERSION_SHORT "0.9.6"\n'
         '#endif\n'
-        '#define OPENXCOM_VERSION_LONG "0.9.4.0"\n'
+        '#define OPENXCOM_VERSION_LONG "0.9.6.0"\n'
         '#define OPENXCOM_VERSION_NUMBER 0,9,3,0\n'
         '#define OPENXCOM_VERSION_GIT ""\n',
         "port version")))
@@ -8246,7 +8246,8 @@ def main():
         "OPT bool amigaSplitWalk; /* spread the per-step FOV/light over the walk animation */\n",
         "OPT bool amigaSplitWalk; /* spread the per-step FOV/light over the walk animation */\n"
         "OPT int amigaMusic; /* 0 off, 1 mixed live, 2 pre-rendered to disk */\n"
-        "OPT int amigaMusicQuality; /* 0 low, 1 high (sample interpolation) */\n",
+        "OPT int amigaMusicQuality; /* 0 low, 1 high (sample interpolation) */\n"
+        "OPT int amigaVideoMode; /* 0 follow the machine, 1 PAL, 2 NTSC */\n",
         "music vars")))
     results.append(("Options.cpp (music info)", edit(
         os.path.join(src, "Engine", "Options.cpp"),
@@ -8254,7 +8255,8 @@ def main():
         "\t_info.push_back(OptionInfo(\"amigaSplitWalk\", &amigaSplitWalk, true));\n"
         "\t_info.push_back(OptionInfo(\"amigaMusic\", &amigaMusic, 2));\n"
         "\t_info.push_back(OptionInfo(\"amigaMusicQuality\", &amigaMusicQuality,\n"
-        "\t\tamigaMusicQualityDefault_()));\n",
+        "\t\tamigaMusicQualityDefault_()));\n"
+        "\t_info.push_back(OptionInfo(\"amigaVideoMode\", &amigaVideoMode, 0));\n",
         "music info")))
     results.append(("Options.cpp (cpu decl)", edit(
         os.path.join(src, "Engine", "Options.cpp"),
@@ -8298,8 +8300,64 @@ def main():
         "  STR_AMIGA_MUSIC_QUALITY_DESC: \"High interpolates between sample points: cleaner treble, about twice the mixing cost. The default follows your processor (High on 040/060, Low on 020/030). Ignored when music is pre-rendered, which always renders at high quality.\"\n"
         "  STR_AMIGA_QUALITY_LOW: \"Low\"\n"
         "  STR_AMIGA_QUALITY_HIGH: \"High\"\n"
+        "  STR_AMIGA_VIDEO: \"DISPLAY STANDARD\"\n"
+        "  STR_AMIGA_VIDEO_DESC: \"Which screen the game opens. Auto follows the machine, which is right on almost every Amiga; force PAL or NTSC if your monitor or flicker fixer disagrees with it. Takes effect when you leave this screen. Paula's sample clock follows the same setting.\"\n"
+        "  STR_AMIGA_VIDEO_AUTO: \"Auto\"\n"
+        "  STR_AMIGA_VIDEO_PAL: \"PAL\"\n"
+        "  STR_AMIGA_VIDEO_NTSC: \"NTSC\"\n"
         "  STR_AMIGA_SPLIT_WALK: \"SPLIT MOVEMENT CALCULATION\"\n",
         "music strings")))
+
+    # 6amO. Quit that quits. `delete game` frees the whole mod - tens of
+    #       thousands of surfaces - and on a 68020 that takes so long that
+    #       clicking Quit looks like it did nothing (measured: the loop ends,
+    #       the options save, and then nothing for ever). Upstream's own
+    #       comment on that line is "Comment this for faster exit". The memory
+    #       comes back when the process ends; what does not come back by itself
+    #       is the screen, the audio channels and the libraries, and SDL_Quit
+    #       hands those over.
+    results.append(("main.cpp (fast quit)", edit(
+        os.path.join(src, "main.cpp"),
+        "\tOptions::save();\n"
+        "\t// Comment this for faster exit.\n"
+        "\tdelete game;\n"
+        "\treturn EXIT_SUCCESS;\n",
+        "\tOptions::save();\n"
+        "#ifdef __AMIGA__\n"
+        "\tSDLmini_Log(\"main: shutting down\");\n"
+        "\tSDL_Quit();          /* screen, Paula, libraries - what the OS will not reclaim */\n"
+        "\tSDLmini_Log(\"main: bye\");\n"
+        "\treturn EXIT_SUCCESS;   /* the mod is NOT freed on purpose: see 6amO */\n"
+        "#else\n"
+        "\t// Comment this for faster exit.\n"
+        "\tdelete game;\n"
+        "\treturn EXIT_SUCCESS;\n"
+        "#endif\n",
+        "fast quit")))
+
+    # 6amN. Display standard (Options -> Amiga). sdlmini reads
+    #       SDLmini_video_mode when it opens the screen and reopens it when the
+    #       value changed, so setting it here - right before every
+    #       SDL_SetVideoMode - is what makes the choice take effect on the way
+    #       out of the options screen (btnOkClick calls Screen::resetDisplay)
+    #       and never while the row is being cycled.
+    results.append(("Screen.cpp (amiga video mode extern)", edit(
+        os.path.join(src, "Engine", "Screen.cpp"),
+        "namespace OpenXcom\n{\n",
+        "#ifdef __AMIGA__\n"
+        "extern \"C\" int SDLmini_video_mode;   /* 0 auto, 1 PAL, 2 NTSC */\n"
+        "#endif\n"
+        "\n"
+        "namespace OpenXcom\n{\n",
+        "amiga video mode extern")))
+    results.append(("Screen.cpp (amiga video mode)", edit(
+        os.path.join(src, "Engine", "Screen.cpp"),
+        "\t\t_screen = SDL_SetVideoMode(width, height, _bpp, _flags);\n",
+        "#ifdef __AMIGA__\n"
+        "\t\tSDLmini_video_mode = Options::amigaVideoMode;\n"
+        "#endif\n"
+        "\t\t_screen = SDL_SetVideoMode(width, height, _bpp, _flags);\n",
+        "amiga video mode")))
 
     # 6amK. Play the tunes (0.9.0). Upstream turns a GM.CAT entry into a MIDI
     #       file for SDL_mixer; there is no MIDI device here, so the raw stream

@@ -102,6 +102,13 @@ int SDL_InitSubSystem(Uint32 flags)
 
 void SDL_QuitSubSystem(Uint32 flags)
 {
+	/* Audio first: Paula is holding channels and audio.device requests, and
+	 * those are the ones the OS does not take back on its own. Closing the
+	 * screen first would leave them allocated for the rest of the session. */
+	if ((flags & SDL_INIT_AUDIO) && (s_initialised & SDL_INIT_AUDIO)) {
+		extern void Mix_CloseAudio(void);
+		Mix_CloseAudio();
+	}
 	if ((flags & SDL_INIT_VIDEO) && (s_initialised & SDL_INIT_VIDEO)) {
 		SDLmini_VideoQuit();
 	}

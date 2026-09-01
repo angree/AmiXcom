@@ -23,6 +23,12 @@
 extern "C" {
 #endif
 
+/* Force the display standard: 0 follow the machine, 1 PAL, 2 NTSC. Call
+ * before the screen is opened; sdlmini reopens the screen when this changes,
+ * which is what makes the setting take effect on leaving the options screen. */
+void amigagfx_set_video_mode(int mode);
+int  amigagfx_video_mode(void);
+
 /* 1 when the machine runs NTSC. The port follows the machine's display
  * standard instead of forcing PAL. */
 int amigagfx_is_ntsc(void);

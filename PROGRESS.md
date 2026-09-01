@@ -2,6 +2,113 @@
 
 Newest first. Facts and measurements only; plans live in `PORT_RESEARCH.md`.
 
+## 2026-09-01 - 0.9.6: standard obrazu jako opcja (Auto / PAL / NTSC)
+
+Gracze poprosili o mozliwosc wymuszenia standardu zamiast brania go z maszyny -
+monitory i flicker fixery bywaja innego zdania niz Amiga. `Options -> Amiga ->
+DISPLAY STANDARD`, wartosci Auto / PAL / NTSC, domyslnie Auto (czyli zachowanie
+sprzed zmiany: ekran otwierany bez bitow monitora).
+
+Wymuszenie zmienia trzy rzeczy naraz i wszystkie musza isc razem: id trybu
+(`PAL_MONITOR_ID` / `NTSC_MONITOR_ID`), liczbe linii standardowego ekranu
+(256 / 200 - `gfx_standard_rows` nie moze wtedy pytac maszyny, bo PAL-owa
+Amiga kazana otworzyc NTSC dalej odpowie 256) oraz zegar Pauli (3546895 /
+3579545 Hz; bez tego wymuszony NTSC gralby wszystko o ~0.9% obok).
+
+NIE PRZELACZA SIE NA ZYWO. Kregcenie wierszem tylko zapisuje wartosc. Ekran
+otwiera sie na nowo dopiero przy wyjsciu z ekranu opcji: `btnOkClick` wola
+`Screen::resetDisplay()`, ta `SDL_SetVideoMode`, a tam short-circuit "ta sama
+geometria, nic nie robimy" ma teraz drugi warunek - ten sam standard. Przy
+ponownym otwarciu odtwarzana jest ostatnia paleta (nowy ekran startuje czarny,
+a gra nie wysyla palety az do zmiany stanu) i pomijany jest splash.
+
+`sdlmini.log` pisze teraz przy otwarciu ekranu, jaki to standard i skad:
+`SDLmini: video 320x200 8bpp, backend 0, pitch 320, NTSC (forced)`.
+
+WYJSCIE Z GRY. "Quit w menu nic nie daje" - zgloszone przez autora i
+potwierdzone pomiarem: klik dochodzi (`game: quit() called`), petla sie konczy,
+opcje zapisuja sie dwa razy, i nic wiecej. Jedyna pozostala instrukcja to
+`delete game`, czyli zwalnianie calego moda - dziesiatki tysiecy powierzchni i
+dzwiekow, pojedynczo, na 68020. Upstream ma nad ta linia wlasny komentarz
+"Comment this for faster exit"; tutaj to nie jest "wolniej", tylko nie do
+odroznienia od zawieszenia. Teraz na Amidze mod NIE jest zwalniany (pamiec
+wraca przy koncu procesu), a oddawane jest to, czego system sam nie odbierze:
+ekran, kanaly Pauli i biblioteki - przez `SDL_Quit`, ktory dotad zamykal TYLKO
+ekran i zostawial dzwiek. Zmierzone po poprawce: `main: shutting down` ->
+`main: bye` w 40 ms.
+
+ZEGAR STARTOWAL OD NOWA PRZY KAZDYM OTWARCIU EKRANU. `g_epoch = raw_ticks()`
+siedzialo w `amigagfx_open()`, wiec przelaczenie PAL/NTSC cofalo czas widziany
+przez `SDL_GetTicks` - a wiec animacje, pompe muzyki i autoinput. Teraz epoka
+ustawia sie raz.
+
+BLAD W MOJEJ DIAGNOZIE, WARTY ZAPAMIETANIA. Skok znacznikow czasu w logu (653 s
+-> 0.1 s) wzialem za restart maszyny i zaczalem "naprawiac" dzialajace
+przelaczanie ekranu. Dowod, ze to byl JEDEN proces, lezal w tym samym pliku:
+`sdlmini.log` otwierany jest z "w", wiec nowy proces skasowalby go - a on rosl,
+wszystkie trzy przelaczenia jedno pod drugim. Zanim uznasz, ze maszyna wstala
+od nowa, sprawdz, czy log sie skrocil.
+
+OGRANICZENIE HARNESSU (zapisane, zeby nie tracic na to czasu drugi raz).
+Autoinput NIE potrafi klikac w listy opcji: `TextList` wybiera wiersz na
+podstawie zdarzen najechania, a wstrzykniete `move`+`click` (nawet z przerwa)
+nie ustawiaja `getSelectedRow()`, wiec `lstOptionsClick` wychodzi od razu.
+Klikniecia w przyciski dzialaja normalnie. Zakladke opcji trzeba testowac
+recznie.
+
+DRUGI TROP, NIEZBADANY. Po `key f12` (zrzut ekranu robiony przez gre) maszyna
+sie zresetowala. Nie sprawdzone, czy to powtarzalne - ale zanim ktos uzyje F12
+w tescie, warto to najpierw wyjasnic.
+
+## 2026-09-01 - 0.9.5: audio.device nie anuluje zapisu, ktory juz gra
+
+OBJAW (zgloszenie gracza + potwierdzone u nas). Gra zamiera przy KAZDEJ zmianie
+utworu: przejscie do przechwytu UFO, start misji, porzucenie gry. Im szybsze
+CPU, tym pewniej: na mocno zdlawionym prawie nie wystepuje, przy
+`cpu_throttle=2000` jego zapis wczytuje sie zawsze, przy 3500+ wiesza sie za
+kazdym razem. Na prawdziwym A1200/060 - losowo, ale tylko z wlaczona muzyka.
+Zgloszenie: 68030, bez JIT, OS 3.1, muzyka pre-rendered + high quality.
+
+CO TO BYLO. Zmiana utworu rozbiera kolejke `audio.device`: `AmigaAudio_MusicStop`
+przerywa 16 requestow (2 kanaly x 8 buforow) i zwalnia bufory Chip. Robil to
+`AbortIO()` + `WaitIO()`. Tyle ze **audio.device nie anuluje CMD_WRITE, ktory juz
+zaczal grac**. Zmierzone: stan requestu wypisany po obu stronach `AbortIO`:
+
+    aud: pre  mc0 p0 type5 flags10 err0 chk0
+    aud: post mc0 p0 type5 flags10 err0 chk0
+
+`ln_Type` 5 to NT_MESSAGE - wiadomosc dalej nalezy do urzadzenia, nie zostala
+odeslana; `CheckIO` zero przed i po. `AbortIO` nie zrobil nic, a nastepujace po
+nim `WaitIO` czeka na odpowiedz, ktora nigdy nie przyjdzie. Stad zamarcie bez
+Guru, bez wpisu w logu i bez zuzycia CPU.
+
+DLACZEGO SZYBKOSC CPU MA ZNACZENIE. Okno bledu to dokladnie czas, przez ktory
+urzadzenie gra bufor. Im szybciej CPU dochodzi do rozbiorki po decyzji o zmianie
+utworu, tym czesciej trafia w srodek tego okna. Na zdlawionej maszynie zdazy
+sie ono zwykle domknac (bufor dogra i request zostanie odeslany) zanim gra
+dojdzie do `AbortIO`.
+
+NAPRAWA. `CMD_FLUSH` na kanale - udokumentowany sposob kasowania kolejki w
+audio.device: anuluje wszystkie requesty kanalu, ten grajacy wlacznie, i odsyla
+je. Dopiero potem `WaitIO` ma na co czekac. `AbortIO` znikl z warstwy audio
+calkowicie, w trzech miejscach: zmiana utworu (`MusFreeReqs`), odbieranie
+kanalow 2/3 efektom przy starcie muzyki, i zamykanie audio. Przy okazji
+`AmigaAudio_MusicFinished` przegladal 2 z 8 buforow - zostalo po czasach, gdy
+kolejka byla podwojnym buforem; nikt tej funkcji dzis nie wola, ale zle
+liczyla.
+
+ZWERYFIKOWANE. Ten sam scenariusz (wczytanie zapisu bitewnego, 234 KB) na
+maszynie ustawionej jak u zglaszajacego - 68030, bez JIT, `cpu_throttle=5000`,
+muzyka pre-rendered + high quality: przed poprawka zamarcie 2 razy na 2, log
+konczyl sie na `aud: abort sent, waiting`; po poprawce zapis wczytuje sie do
+konca, gra chodzi dalej (31 fps), krok w bitwie dziala.
+
+METODA. Ta sama co przy 0.9.4: sonda `SDLmini_Log` w podejrzanej sciezce (tu:
+wokol kazdego `AbortIO`/`WaitIO`/`BeginIO` w `amiga_audio.c`), host kopiuje
+`sdlmini.log` co sekunde, a detektor zamarcia liczy dopiero 90 sekund bezruchu
+- pierwsza wersja z progiem 12 s dala falszywy alarm, bo przy podkreconym CPU
+emulator nie nadaza i przerwy w logu bywaja dlugie same z siebie.
+
 ## 2026-09-01 - 0.9.4: gcc zamienil moje floorf/sqrtf/ceilf w rekurencje bez konca
 
 OBJAW. Kazda misja w 0.9.3, pierwsza proba ruchu jednostki: Guru `8000 0003`

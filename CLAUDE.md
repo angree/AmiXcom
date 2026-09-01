@@ -50,7 +50,7 @@ Toolchain: bebbo amiga-gcc 6.5.0b at `/opt/amiga/bin` inside WSL (Ubuntu 22.04, 
 `/mnt/i` drops out of WSL regularly — every command starts with
 `ls /mnt/i/GITHUB >/dev/null 2>&1 || sudo -n mount -t drvfs I: /mnt/i`.
 
-Six toolchain defects shape this build; each one looks exactly like a bug in the game.
+Seven toolchain and platform defects shape this build; each one looks exactly like a bug in the game.
 They are documented with their proofs in `PROGRESS.md`:
 
 1. **Never strip.** `m68k-amigaos-strip` produces a Hunk executable that halts the machine
@@ -85,6 +85,16 @@ They are documented with their proofs in `PROGRESS.md`:
    before `amiga_trap.c` can log anything. **A Guru that left NO `CPU TRAP` line is
    a stack overflow until proven otherwise.** `build.sh` compiles `fp_single.c`,
    `fp_double.c` and `fp_conv.c` with `-fno-builtin`; keep it that way.
+
+7. **`AbortIO()` does not cancel an `audio.device` CMD_WRITE that is already
+   playing.** The request stays NT_MESSAGE with `CheckIO()` returning 0 across the
+   AbortIO (measured, 2026-09-01), so the `WaitIO()` after it waits for a reply that
+   never comes and the machine sits there with no Guru, no log line and no CPU load.
+   That was the freeze on every music change, and it got likelier the faster the CPU
+   ran, because the window is exactly the time the device spends playing a buffer.
+   Cancel with **`CMD_FLUSH` on the channel** - it aborts every request queued there,
+   the one in progress included, and replies them all - and only then `WaitIO`.
+   `native/amiga_audio.c` has no `AbortIO` left; keep it that way.
 
 Two things that make the next crash cheap instead of a day: every Guru is logged with its
 PC by `native/amiga_trap.c` (armed in `main.cpp`; look for `CPU TRAP` in `sdlmini.log`,

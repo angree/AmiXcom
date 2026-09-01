@@ -120,6 +120,8 @@ fail:
     return 0;
 }
 
+static void AudFlush(ULONG unitmask);   /* defined below, see the comment there */
+
 void AmigaAudio_Close(void)
 {
     int i;
@@ -129,10 +131,10 @@ void AmigaAudio_Close(void)
     /* Stop music first: aborts channels 2 & 3 and frees their buffers. */
     AmigaAudio_MusicStop();
 
-    /* Abort and dequeue any outstanding write before freeing its request. */
+    /* Cancel and dequeue any outstanding write before freeing its request. */
+    AudFlush(15UL);                      /* all four channels */
     for (i = 0; i < AMIGA_AUDIO_CHANNELS; i++) {
         if (aa_req[i] != NULL && aa_busy[i]) {
-            AbortIO((struct IORequest *)aa_req[i]);
             WaitIO((struct IORequest *)aa_req[i]);
             aa_busy[i] = 0;
         }
@@ -222,6 +224,30 @@ int AmigaAudio_Play(int ch, void *chipdata, unsigned long bytes,
 /* Queue one CMD_WRITE of buffer 'ping' on logical music channel 'mc'. It is
  * sent while the other ping is still playing, so the device plays them
  * back-to-back with no CPU gap. */
+/* Cancel everything queued on the given channels.
+ *
+ * audio.device does NOT cancel a CMD_WRITE it has already begun: AbortIO
+ * leaves the request neither aborted nor replied, and the WaitIO that follows
+ * never returns. Measured on 2026-09-01 with the request state logged either
+ * side of the AbortIO: ln_Type 5 (NT_MESSAGE) before and after, CheckIO 0 both
+ * times. That was the freeze on every music change, and the reason it got
+ * likelier the faster the CPU ran - the window is exactly the time the device
+ * spends playing a buffer.
+ *
+ * CMD_FLUSH is the documented way: it aborts every request queued on the
+ * channel, the one in progress included, and replies them all. Only then is
+ * WaitIO safe. Never replace this with AbortIO again. */
+static void AudFlush(ULONG unitmask)
+{
+    struct IOAudio flush;
+    if (!aa_devopen || aa_opener == NULL) return;
+    flush = *aa_opener;
+    flush.ioa_Request.io_Command = CMD_FLUSH;
+    flush.ioa_Request.io_Flags   = 0;          /* reply through the port */
+    flush.ioa_Request.io_Unit    = (struct Unit *)unitmask;
+    DoIO((struct IORequest *)&flush);
+}
+
 static void MusWrite(int mc, int ping)
 {
     struct IOAudio *io = aa_mus_req[mc][ping];
@@ -241,11 +267,13 @@ static void MusWrite(int mc, int ping)
 static void MusFreeReqs(void)
 {
     int mc, p;
+    /* Flush both music channels FIRST - see AudFlush. Waiting on a write the
+     * device is still playing is what froze the game on every tune change. */
+    AudFlush((1UL << aa_mus_chan[0]) | (1UL << aa_mus_chan[1]));
     for (mc = 0; mc < 2; mc++) {
         for (p = 0; p < AA_MUS_BUFS; p++) {
             if (aa_mus_req[mc][p] == NULL) continue;
             if (aa_mus_busy[mc][p]) {
-                AbortIO((struct IORequest *)aa_mus_req[mc][p]);
                 WaitIO((struct IORequest *)aa_mus_req[mc][p]);
                 aa_mus_busy[mc][p] = 0;
             }
@@ -289,11 +317,13 @@ int AmigaAudio_MusicStart(int period, int chunk_samples,
     aa_mus_ud     = ud;
     aa_mus_ended  = 0;
 
-    /* Reclaim channels 2 & 3 from any in-flight SFX write. */
+    /* Reclaim channels 2 & 3 from any in-flight SFX write. Flush, then wait:
+     * an SFX the device has already begun ignores AbortIO exactly as a music
+     * write does. */
+    AudFlush((1UL << aa_mus_chan[0]) | (1UL << aa_mus_chan[1]));
     for (mc = 0; mc < 2; mc++) {
         int ch = aa_mus_chan[mc];
         if (aa_req[ch] != NULL && aa_busy[ch]) {
-            AbortIO((struct IORequest *)aa_req[ch]);
             WaitIO((struct IORequest *)aa_req[ch]);
             aa_busy[ch] = 0;
         }
@@ -388,7 +418,7 @@ int AmigaAudio_MusicFinished(void)
     /* Reap completed writes so a drained stream is reported finished even if
      * MusicService did not run this frame. */
     for (mc = 0; mc < 2; mc++) {
-        for (p = 0; p < 2; p++) {
+        for (p = 0; p < AA_MUS_BUFS; p++) {
             if (aa_mus_busy[mc][p] &&
                 CheckIO((struct IORequest *)aa_mus_req[mc][p]) != NULL) {
                 WaitIO((struct IORequest *)aa_mus_req[mc][p]);
@@ -397,7 +427,7 @@ int AmigaAudio_MusicFinished(void)
         }
     }
     for (mc = 0; mc < 2; mc++)
-        for (p = 0; p < 2; p++)
+        for (p = 0; p < AA_MUS_BUFS; p++)
             if (aa_mus_busy[mc][p]) return 0;
     return 1;
 }

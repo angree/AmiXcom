@@ -10,7 +10,7 @@ for **real classic hardware**: 68020+ without FPU, AGA chipset. Not PiStorm-, Va
 or Emu68-only. No SDL: the SDL 1.2 API the game expects is a small shim
 (`native/sdlmini/`) on top of a bare-metal Amiga graphics/audio layer.
 
-## Status: 0.9.4 — alpha
+## Status: 0.9.6 — alpha
 
 The whole game runs on the Amiga: main menu, Geoscape, bases, Battlescape, and both
 rulesets (UFO and TFTD). It has been tested for hours, not played to the end, so expect

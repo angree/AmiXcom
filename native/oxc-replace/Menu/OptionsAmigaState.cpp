@@ -13,6 +13,7 @@
  *   Map reveal                    Fast/Accurate/Test  Options::amigaAccurateFov
  *   Battle animation speed        Normal / Half       Options::amigaAnimMs
  *   Split movement calculation    Off / On            Options::amigaSplitWalk
+ *   Display standard              Auto/PAL/NTSC       Options::amigaVideoMode
  */
 #include "OptionsAmigaState.h"
 #include "../Engine/Game.h"
@@ -35,6 +36,7 @@ enum
 	AMIGA_ROW_SPLITWALK,
 	AMIGA_ROW_MUSIC,
 	AMIGA_ROW_MUSICQ,
+	AMIGA_ROW_VIDEO,
 	AMIGA_ROW_COUNT
 };
 
@@ -46,7 +48,8 @@ static const char *amigaRowLabel_[AMIGA_ROW_COUNT] =
 	"STR_AMIGA_ANIM",
 	"STR_AMIGA_SPLIT_WALK",
 	"STR_AMIGA_MUSIC",
-	"STR_AMIGA_MUSIC_QUALITY"
+	"STR_AMIGA_MUSIC_QUALITY",
+	"STR_AMIGA_VIDEO"
 };
 
 static const char *amigaRowDesc_[AMIGA_ROW_COUNT] =
@@ -57,11 +60,12 @@ static const char *amigaRowDesc_[AMIGA_ROW_COUNT] =
 	"STR_AMIGA_ANIM_DESC",
 	"STR_AMIGA_SPLIT_WALK_DESC",
 	"STR_AMIGA_MUSIC_DESC",
-	"STR_AMIGA_MUSIC_QUALITY_DESC"
+	"STR_AMIGA_MUSIC_QUALITY_DESC",
+	"STR_AMIGA_VIDEO_DESC"
 };
 
 /* how many values each row cycles through */
-static const int amigaRowVals_[AMIGA_ROW_COUNT] = { 2, 2, 3, 2, 2, 3, 2 };
+static const int amigaRowVals_[AMIGA_ROW_COUNT] = { 2, 2, 3, 2, 2, 3, 2, 3 };
 
 /* pre-rendered music always renders at high quality: the switch is dead */
 static bool amigaRowDisabled_(size_t row)
@@ -80,6 +84,7 @@ static int amigaRowGet_(size_t row)
 	case AMIGA_ROW_SPLITWALK: return Options::amigaSplitWalk ? 1 : 0;
 	case AMIGA_ROW_MUSIC:     return Options::amigaMusic;
 	case AMIGA_ROW_MUSICQ:    return Options::amigaMusicQuality ? 1 : 0;
+	case AMIGA_ROW_VIDEO:     return Options::amigaVideoMode;
 	}
 	return 0;
 }
@@ -95,6 +100,10 @@ static void amigaRowSet_(size_t row, int v)
 	case AMIGA_ROW_SPLITWALK: Options::amigaSplitWalk = (v == 1); break;
 	case AMIGA_ROW_MUSIC:     Options::amigaMusic = v; break;
 	case AMIGA_ROW_MUSICQ:    Options::amigaMusicQuality = v; break;
+	/* Only stored here. The screen is reopened on the way out of the
+	 * options screen (Screen::resetDisplay -> SDL_SetVideoMode), never
+	 * while the row is being cycled. */
+	case AMIGA_ROW_VIDEO:     Options::amigaVideoMode = v; break;
 	}
 }
 
@@ -113,6 +122,9 @@ static const char *amigaRowValue_(size_t row, int v)
 		     : (v == 1 ? "STR_AMIGA_MUSIC_LIVE" : "STR_AMIGA_MUSIC_OFF");
 	case AMIGA_ROW_MUSICQ:
 		return v == 1 ? "STR_AMIGA_QUALITY_HIGH" : "STR_AMIGA_QUALITY_LOW";
+	case AMIGA_ROW_VIDEO:
+		return v == 2 ? "STR_AMIGA_VIDEO_NTSC"
+		     : (v == 1 ? "STR_AMIGA_VIDEO_PAL" : "STR_AMIGA_VIDEO_AUTO");
 	default:
 		return v == 1 ? "STR_AMIGA_ON" : "STR_AMIGA_OFF";
 	}

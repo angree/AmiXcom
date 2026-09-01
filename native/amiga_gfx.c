@@ -192,6 +192,7 @@ static int    g_yoff;                     /* first game-area line: 0, or the
                                            * bar is left visible */
 static ULONG  g_planesize;
 static ULONG  g_epoch;
+static int    g_epoch_set = 0;   /* the clock starts ONCE, see below */
 static unsigned long g_blits;
 static ULONG g_want_modeid;
 static int   g_used_fallback;
@@ -488,8 +489,23 @@ static void cgx_close(void)
  * 200 on NTSC. Everything below derives from those rather than assuming PAL,
  * which is what shut NTSC machines out - they were handed a PAL screen their
  * display cannot lock onto. */
+/* 0 = follow the machine, 1 = force PAL, 2 = force NTSC. Players run this
+ * port on monitors and flicker fixers that disagree with what the Amiga thinks
+ * it is wired to, so the standard is a setting (Options -> Amiga), with the
+ * machine's own answer as the default. Set before the screen is opened. */
+static int s_video_mode = 0;
+
+void amigagfx_set_video_mode(int mode)
+{
+	s_video_mode = (mode >= 0 && mode <= 2) ? mode : 0;
+}
+
+int amigagfx_video_mode(void) { return s_video_mode; }
+
 int amigagfx_is_ntsc(void)
 {
+	if (s_video_mode == 1) return 0;          /* forced PAL  */
+	if (s_video_mode == 2) return 1;          /* forced NTSC */
 	if (GfxBase == NULL) return 0;
 	return (GfxBase->DisplayFlags & NTSC) ? 1 : 0;
 }
@@ -504,7 +520,11 @@ unsigned long amigagfx_paula_clock(void)
 /* Rows in a standard, non-interlaced screen: 256 PAL, 200 NTSC. */
 static int gfx_standard_rows(void)
 {
-	int rows = (GfxBase != NULL) ? (int)GfxBase->NormalDisplayRows : 256;
+	int rows;
+	/* A forced standard must not read the machine's row count: on a PAL
+	 * Amiga told to open NTSC that would still say 256. */
+	if (s_video_mode != 0) return amigagfx_is_ntsc() ? 200 : 256;
+	rows = (GfxBase != NULL) ? (int)GfxBase->NormalDisplayRows : 256;
 	if (rows < 100) rows = amigagfx_is_ntsc() ? 200 : 256;
 	return rows;
 }
@@ -754,7 +774,9 @@ static int open_screen_aga(int w, int h, ULONG quiet, ULONG title, int depth)
 		 * machine a 50 Hz screen it cannot display. 320x200 is NTSC's whole
 		 * screen and sits comfortably inside PAL's 256 lines, so neither
 		 * standard needs special treatment. */
-		ULONG modeid = 0;
+		ULONG modeid = (s_video_mode == 1) ? (ULONG)PAL_MONITOR_ID
+		             : (s_video_mode == 2) ? (ULONG)NTSC_MONITOR_ID
+		             : 0UL;
 		int   lores  = (w <= 400);
 		int   lace   = (h > gfx_standard_rows());
 		int   overscan;
@@ -1385,7 +1407,11 @@ int amigagfx_open(int w, int h, int show_bar, int backend)
 	g_bpr = 0;
 	g_planesize = 0;
 	g_win_mode = 0;
-	g_epoch  = raw_ticks();
+	/* Once, and only once. Reopening the screen (the PAL/NTSC setting)
+	 * used to restart the millisecond clock, so everything paced by
+	 * SDL_GetTicks saw time jump backwards - and the log looked as if
+	 * the machine had rebooted when it had not. */
+	if (!g_epoch_set) { g_epoch = raw_ticks(); g_epoch_set = 1; }
 
 	/* Window mode is handled entirely on its own: there is no screen to open,
 	 * no title bar to subtract, no mode id to report and no backdrop window to

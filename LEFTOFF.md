@@ -2,6 +2,56 @@
 
 Read this, then `CLAUDE.md` (rules), then the top entry of `PROGRESS.md` (proofs).
 
+## STAN: 0.9.6 ZBUDOWANE - audio + standard obrazu
+
+Dwie rzeczy od poprzedniego wydania:
+
+1. **Zamarcie przy KAZDEJ zmianie muzyki** (zgloszenie gracza: przechwyt UFO,
+   start misji, porzucenie gry; u niego takze przy wczytywaniu konkretnego
+   zapisu). Przyczyna: `audio.device` nie anuluje `CMD_WRITE`, ktory juz gra,
+   wiec `AbortIO` + `WaitIO` przy rozbiorce kolejki czekalo w nieskonczonosc.
+   Teraz `CMD_FLUSH` na kanale. Odtworzone u nas 2/2 przed poprawka i 2/2
+   czysto po niej, na jego ustawieniach (68030, bez JIT, `cpu_throttle=5000`,
+   muzyka pre-rendered + high). Dowod i pomiar: gora PROGRESS.md.
+2. **Options -> Amiga -> DISPLAY STANDARD: Auto / PAL / NTSC**, domyslnie Auto.
+   Przelacza sie po zatwierdzeniu opcji, nie na zywo.
+
+DO ZROBIENIA
+- Potwierdzenie od uzytkownika: geoscape po poprawce audio, i czy wymuszony
+  NTSC faktycznie wstaje (log mowi teraz `NTSC (forced)` / `PAL (auto)`).
+- Spakowac i wydac 0.9.6 (`C:\temp\oxctest\pack095.sh` - podmienic numer),
+  notatki gotowe w `release/notes-0.9.6.md`.
+- **Przywrocic uzytkownikowi ustawienia**: pod test podmienilem w
+  `work/user/options.cfg` glosnosci na 128 i `amigaMusicQuality` na 1; jego
+  kopia lezy jako `options.cfg.pre-freezetest`. `amigaVideoMode` zostawil na 2
+  (NTSC) swiadomie - o to zapytac.
+- Usunac diagnostyczny config `winuae/oxc-aga-fast.uae` albo zostawic z
+  komentarzem, ze to NIGDY nie jest maszyna do pomiarow.
+
+OTWARTE Z WCZESNIEJ
+- **Blad wspolrzednych bazy u zglaszajacego** (0.9.3, kraj Polska): po wczytaniu
+  zapisu baza znika z globusa. U nas nie reprodukuje sie; potrzebny JEGO `.asav`
+  + `openxcom.log`.
+- **Tolerancja przecinka przy ODCZYCIE** liczb - uratowalaby zapisy zrobione
+  przez 0.9.0/0.9.1 na maszynie z przecinkiem. Zaproponowane, nie zrobione.
+- Okienko wyboru trybu muzyki na starcie - nadal nierozstrzygniete.
+- Sprzatanie w `Work:`: `aga071/aga072/aga080`, `openxcom-aga091/093`,
+  `fputest3/4/5`, `mixbench2`, `musicbench` (+ .info).
+
+NARZEDZIA (uzywane w tej sesji, warto siegnac ponownie)
+- `AMIGA_NO_PATCH=1 sh build.sh` - pomija patcher i restore yaml-cpp: jedyny
+  sposob na przyrostowy build po recznej zmianie w drzewie i na zbudowanie
+  wariantow FPU zaraz po `clean`.
+- `AMIGA_WALK_PROBE=1` - sondy `SDLmini_Log` wzdluz sciezki klik->krok.
+- `C:\temp\oxctest\keeplog.sh` - kopiuje `sdlmini.log` co sekunde i zamraza
+  ostatnia kopie, gdy plik sie skraca (maszyna sie zresetowala).
+- `C:\temp\oxctest\freezewatch.sh` - odroznia zamarcie od "wolno": liczy
+  dopiero 90 s bez przyrostu logu. Prog 12 s dawal falszywe alarmy.
+- **Autoinput nie klika w listy opcji** (patrz PROGRESS 0.9.6) - zakladke Amiga
+  testowac recznie.
+
+## POPRZEDNIO
+
 ## STAN: 0.9.4 ZBUDOWANE - NAPRAWIONY ZWIS PRZY KAZDYM RUCHU W BITWIE
 
 0.9.3 zawieszalo sie przy PIERWSZEJ probie ruchu w kazdej misji (Guru
