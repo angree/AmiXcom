@@ -2,6 +2,57 @@
 
 Newest first. Facts and measurements only; plans live in `PORT_RESEARCH.md`.
 
+## 2026-09-01 - 0.9.7: 27 jezykow i wybor z locale.library
+
+SKAD JE BIERZEMY. Upstream trzyma w gicie tylko en-GB/en-US; reszta zyje na
+Transifexie i jest sciagana przez WLASNY workflow OpenXcoma
+(`.github/workflows/tx.yml`, codzienny `tx pull`), ktory publikuje ja jako
+artefakt `tx-translations`. Nightly pakuje te same pliki (`bin/common`,
+`bin/standard`) do wydawanych archiwow razem z `LICENSE.txt`. Czyli: pliki
+OpenXcoma, wydawane przez OpenXcom, na licencji OpenXcoma - GPL-3.0, tej samej
+co nasza. Dolozenie ich niczego w licencji nie zmienia. Pobiera je
+`build/fetch_translations.py`, `build.sh` wyklada je przy deployu.
+
+KTORE I DLACZEGO TYLKO TE. Dwa filtry, oba mierzone:
+
+  glify   - port rysuje tekst z `Font.dat`, a litera ktorej tam nie ma wychodzi
+            pusta. Japonski, koreanski, chinski (3 warianty), arabski, tajski,
+            wietnamski, lotewski, serbski, tatarski i chorwacki (brakuje
+            jednego `d` z kreska) odpadaja: dziury w tekscie sa gorsze niz
+            angielski.
+  pokrycie - tlumaczenia ida za dzisiejszym masterem, my stoimy na commicie z
+            2016. Zostaja jezyki majace >=60% kluczy naszego en-US; te ktore
+            zostaly maja 91-92%, reszta linii spada na angielski. Odpadl
+            irlandzki (28%), indonezyjski (19%) i slowenski (13%).
+
+Wegierski odpadal poczatkowo przez DWA znaki: cudzyslowy typograficzne. Zamiast
+go wyrzucac, `fetch_translations.py` mapuje taka interpunkcje na ASCII
+(tylko znaki przestankowe, nigdy litery) - i wchodzi. Razem 27 jezykow, 78
+plikow, 4.8 MB.
+
+AUTO Z LOCALE.LIBRARY. `native/amiga_locale.c` pyta `locale.library` o
+`loc_PrefLanguages` i mapuje nazwe katalogowa ("polski", "deutsch",
+"francais") na nasz kod, dopasowujac PREFIKS ASCII - dzieki temu nie trzeba sie
+przejmowac tym, w jakim kodowaniu przychodza akcenty. Gdy nic nie pasuje,
+drugim podejsciem jest `loc_CountryCode` (cztery spakowane znaki, nie napis -
+na tym wywalil sie pierwszy build). Gdy i to nic nie da, zostaje wybor gracza.
+Surowa nazwa idzie do logu (`lang: Workbench says 'english' -> en-US`), bo to
+jedyny sposob, zeby zdalnie zobaczyc, czemu czyjas maszyna nie zostala
+rozpoznana.
+
+Wybor reczny w `Options -> Video` (lista OpenXcoma, teraz widzi wszystkie
+zainstalowane) WYLACZA tryb auto - inaczej nastepny start cicho by go cofnal.
+
+ZWERYFIKOWANE. Na maszynie: `lang: Workbench says 'english' -> en-US` i jezyk
+wczytany; z `language: pl` w options.cfg gra startuje i laduje polski
+(`Language loaded successfully`). Sama tablica mapowania przetestowana osobno na
+hoscie: 32 przypadki (polski, deutsch, francais, portugues, brasileiro,
+islenska...), zero bledow, przy czym `japanese` i `hebrew` slusznie NIE lapia,
+bo tych tlumaczen nie wysylamy.
+
+IRONIA. To ten sam `Prefs/Locale`, ktory w 0.9.1 rozwalil wczytywanie kazdego
+rulesetu (przecinek jako separator dziesietny). Teraz robi cos pozytecznego.
+
 ## 2026-09-01 - 0.9.6: standard obrazu jako opcja (Auto / PAL / NTSC)
 
 Gracze poprosili o mozliwosc wymuszenia standardu zamiast brania go z maszyny -

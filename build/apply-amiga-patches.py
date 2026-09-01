@@ -1671,11 +1671,11 @@ def main():
         '#define OPENXCOM_VERSION_LONG "1.0.0.0"\n'
         '#define OPENXCOM_VERSION_NUMBER 1,0,0,0\n',
         '#ifdef AMIGA_FPU_BUILD\n'
-        '#define OPENXCOM_VERSION_SHORT "0.9.6 FPU"\n'
+        '#define OPENXCOM_VERSION_SHORT "0.9.7 FPU"\n'
         '#else\n'
-        '#define OPENXCOM_VERSION_SHORT "0.9.6"\n'
+        '#define OPENXCOM_VERSION_SHORT "0.9.7"\n'
         '#endif\n'
-        '#define OPENXCOM_VERSION_LONG "0.9.6.0"\n'
+        '#define OPENXCOM_VERSION_LONG "0.9.7.0"\n'
         '#define OPENXCOM_VERSION_NUMBER 0,9,3,0\n'
         '#define OPENXCOM_VERSION_GIT ""\n',
         "port version")))
@@ -8247,7 +8247,8 @@ def main():
         "OPT bool amigaSplitWalk; /* spread the per-step FOV/light over the walk animation */\n"
         "OPT int amigaMusic; /* 0 off, 1 mixed live, 2 pre-rendered to disk */\n"
         "OPT int amigaMusicQuality; /* 0 low, 1 high (sample interpolation) */\n"
-        "OPT int amigaVideoMode; /* 0 follow the machine, 1 PAL, 2 NTSC */\n",
+        "OPT int amigaVideoMode; /* 0 follow the machine, 1 PAL, 2 NTSC */\n"
+        "OPT bool amigaLangAuto; /* take the language from locale.library */\n",
         "music vars")))
     results.append(("Options.cpp (music info)", edit(
         os.path.join(src, "Engine", "Options.cpp"),
@@ -8256,7 +8257,8 @@ def main():
         "\t_info.push_back(OptionInfo(\"amigaMusic\", &amigaMusic, 2));\n"
         "\t_info.push_back(OptionInfo(\"amigaMusicQuality\", &amigaMusicQuality,\n"
         "\t\tamigaMusicQualityDefault_()));\n"
-        "\t_info.push_back(OptionInfo(\"amigaVideoMode\", &amigaVideoMode, 0));\n",
+        "\t_info.push_back(OptionInfo(\"amigaVideoMode\", &amigaVideoMode, 0));\n"
+        "\t_info.push_back(OptionInfo(\"amigaLangAuto\", &amigaLangAuto, true));\n",
         "music info")))
     results.append(("Options.cpp (cpu decl)", edit(
         os.path.join(src, "Engine", "Options.cpp"),
@@ -8305,8 +8307,61 @@ def main():
         "  STR_AMIGA_VIDEO_AUTO: \"Auto\"\n"
         "  STR_AMIGA_VIDEO_PAL: \"PAL\"\n"
         "  STR_AMIGA_VIDEO_NTSC: \"NTSC\"\n"
+        "  STR_AMIGA_LANG_AUTO: \"LANGUAGE FROM WORKBENCH\"\n"
+        "  STR_AMIGA_LANG_AUTO_DESC: \"On start, use the language your Workbench prefers (Prefs/Locale) when this port has a translation for it. Picking a language by hand in the Video tab turns this off. Takes effect at the next start.\"\n"
         "  STR_AMIGA_SPLIT_WALK: \"SPLIT MOVEMENT CALCULATION\"\n",
         "music strings")))
+
+    # 6amP. Language from the Workbench. locale.library knows which language
+    #       this machine prefers; if the port ships that translation, use it.
+    #       Choosing a language by hand in Options -> Video switches Auto off,
+    #       otherwise the next start would override the choice.
+    results.append(("Game.cpp (locale include)", edit(
+        os.path.join(src, "Engine", "Game.cpp"),
+        '#include "Options.h"\n',
+        '#include "Options.h"\n'
+        '#ifdef __AMIGA__\n'
+        '#include "amiga_locale.h"\n'
+        '#endif\n',
+        "locale include")))
+    results.append(("Game.cpp (language from locale)", edit(
+        os.path.join(src, "Engine", "Game.cpp"),
+        "\tloadLanguage(defaultLang);\n",
+        "#ifdef __AMIGA__\n"
+        "\t/* AMIGA-PORT 6amP: the Workbench's own preference, when the player\n"
+        "\t * has not overridden it. The raw locale name is logged because it is\n"
+        "\t * the only way to see why a machine was not recognised. */\n"
+        "\tif (Options::amigaLangAuto)\n"
+        "\t{\n"
+        "\t\tchar rawname_[64];\n"
+        "\t\tconst char *code_ = AmigaLocale_Language(rawname_, sizeof(rawname_));\n"
+        "\t\tchar msg_[160];\n"
+        "\t\tsnprintf(msg_, sizeof msg_, \"lang: Workbench says '%s' -> %s\",\n"
+        "\t\t\trawname_, code_ ? code_ : \"(nie mamy, zostaje wybor gracza)\");\n"
+        "\t\tSDLmini_Log(msg_);\n"
+        "\t\tif (code_ != 0)\n"
+        "\t\t{\n"
+        "\t\t\tstd::string path_ = defaultPath;\n"
+        "\t\t\tLanguage::replace(path_, defaultLang, std::string(code_));\n"
+        "\t\t\tif (CrossPlatform::fileExists(path_))\n"
+        "\t\t\t{\n"
+        "\t\t\t\tcurrentLang = code_;\n"
+        "\t\t\t}\n"
+        "\t\t}\n"
+        "\t}\n"
+        "#endif\n"
+        "\tloadLanguage(defaultLang);\n",
+        "language from locale")))
+    results.append(("OptionsVideoState.cpp (manual language turns Auto off)", edit(
+        os.path.join(src, "Menu", "OptionsVideoState.cpp"),
+        "void OptionsVideoState::cbxLanguageChange(Action *)\n{\n",
+        "void OptionsVideoState::cbxLanguageChange(Action *)\n{\n"
+        "#ifdef __AMIGA__\n"
+        "\t/* AMIGA-PORT 6amP: a language picked by hand wins over the Workbench\n"
+        "\t * setting - otherwise the next start would quietly undo it. */\n"
+        "\tOptions::amigaLangAuto = false;\n"
+        "#endif\n",
+        "manual language turns auto off")))
 
     # 6amO. Quit that quits. `delete game` frees the whole mod - tens of
     #       thousands of surfaces - and on a 68020 that takes so long that

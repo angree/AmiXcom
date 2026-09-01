@@ -14,6 +14,7 @@
  *   Battle animation speed        Normal / Half       Options::amigaAnimMs
  *   Split movement calculation    Off / On            Options::amigaSplitWalk
  *   Display standard              Auto/PAL/NTSC       Options::amigaVideoMode
+ *   Language from Workbench       Off / On            Options::amigaLangAuto
  */
 #include "OptionsAmigaState.h"
 #include "../Engine/Game.h"
@@ -37,6 +38,7 @@ enum
 	AMIGA_ROW_MUSIC,
 	AMIGA_ROW_MUSICQ,
 	AMIGA_ROW_VIDEO,
+	AMIGA_ROW_LANGAUTO,
 	AMIGA_ROW_COUNT
 };
 
@@ -49,7 +51,8 @@ static const char *amigaRowLabel_[AMIGA_ROW_COUNT] =
 	"STR_AMIGA_SPLIT_WALK",
 	"STR_AMIGA_MUSIC",
 	"STR_AMIGA_MUSIC_QUALITY",
-	"STR_AMIGA_VIDEO"
+	"STR_AMIGA_VIDEO",
+	"STR_AMIGA_LANG_AUTO"
 };
 
 static const char *amigaRowDesc_[AMIGA_ROW_COUNT] =
@@ -61,11 +64,12 @@ static const char *amigaRowDesc_[AMIGA_ROW_COUNT] =
 	"STR_AMIGA_SPLIT_WALK_DESC",
 	"STR_AMIGA_MUSIC_DESC",
 	"STR_AMIGA_MUSIC_QUALITY_DESC",
-	"STR_AMIGA_VIDEO_DESC"
+	"STR_AMIGA_VIDEO_DESC",
+	"STR_AMIGA_LANG_AUTO_DESC"
 };
 
 /* how many values each row cycles through */
-static const int amigaRowVals_[AMIGA_ROW_COUNT] = { 2, 2, 3, 2, 2, 3, 2, 3 };
+static const int amigaRowVals_[AMIGA_ROW_COUNT] = { 2, 2, 3, 2, 2, 3, 2, 3, 2 };
 
 /* pre-rendered music always renders at high quality: the switch is dead */
 static bool amigaRowDisabled_(size_t row)
@@ -85,6 +89,7 @@ static int amigaRowGet_(size_t row)
 	case AMIGA_ROW_MUSIC:     return Options::amigaMusic;
 	case AMIGA_ROW_MUSICQ:    return Options::amigaMusicQuality ? 1 : 0;
 	case AMIGA_ROW_VIDEO:     return Options::amigaVideoMode;
+	case AMIGA_ROW_LANGAUTO:  return Options::amigaLangAuto ? 1 : 0;
 	}
 	return 0;
 }
@@ -104,6 +109,9 @@ static void amigaRowSet_(size_t row, int v)
 	 * options screen (Screen::resetDisplay -> SDL_SetVideoMode), never
 	 * while the row is being cycled. */
 	case AMIGA_ROW_VIDEO:     Options::amigaVideoMode = v; break;
+	/* Takes effect at the next start, like the display standard: the
+	 * language is chosen while the game is loading its data. */
+	case AMIGA_ROW_LANGAUTO:  Options::amigaLangAuto = (v == 1); break;
 	}
 }
 

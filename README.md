@@ -10,7 +10,7 @@ for **real classic hardware**: 68020+ without FPU, AGA chipset. Not PiStorm-, Va
 or Emu68-only. No SDL: the SDL 1.2 API the game expects is a small shim
 (`native/sdlmini/`) on top of a bare-metal Amiga graphics/audio layer.
 
-## Status: 0.9.6 — alpha
+## Status: 0.9.7 — alpha
 
 The whole game runs on the Amiga: main menu, Geoscape, bases, Battlescape, and both
 rulesets (UFO and TFTD). It has been tested for hours, not played to the end, so expect
@@ -45,6 +45,23 @@ Known problems and gaps:
 - An FPS counter is drawn in the corner on purpose, as a measurement aid.
 - Developed in WinUAE. Real-hardware reports are welcome and have already fixed two
   bugs no emulator here reproduces.
+
+### Languages
+
+The port ships 27 translations besides English - Polish, German, French,
+Spanish, Italian, Dutch, Portuguese, Russian, Ukrainian, Czech, Slovak,
+Hungarian, Romanian, Bulgarian, Greek, Turkish and the Nordic ones among them.
+Pick one in *Options -> Video*, or leave *Options -> Amiga -> LANGUAGE FROM
+WORKBENCH* on and the game follows `Prefs/Locale`. Choosing by hand turns the
+automatic mode off; either way it applies at the next start.
+
+They are OpenXcom's own translations, pulled from Transifex by OpenXcom's daily
+workflow and shipped in its own builds - same project, same licence. The
+languages left out are the ones whose letters are not in the fonts this port
+draws with (Japanese, Korean, Chinese, Arabic, Thai, Vietnamese, Latvian,
+Serbian, Tatar, Croatian), plus three that are barely started. Refresh or
+re-pick the set with `build/fetch_translations.py` (`--list` just prints what it
+would keep and why).
 
 ## Installing on the Amiga
 

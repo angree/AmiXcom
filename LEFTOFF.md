@@ -2,7 +2,7 @@
 
 Read this, then `CLAUDE.md` (rules), then the top entry of `PROGRESS.md` (proofs).
 
-## STAN: 0.9.6 ZBUDOWANE - audio + standard obrazu
+## STAN: 0.9.7 - jezyki; 0.9.6 wydane (audio + standard obrazu)
 
 Dwie rzeczy od poprzedniego wydania:
 
@@ -49,6 +49,21 @@ NARZEDZIA (uzywane w tej sesji, warto siegnac ponownie)
   dopiero 90 s bez przyrostu logu. Prog 12 s dawal falszywe alarmy.
 - **Autoinput nie klika w listy opcji** (patrz PROGRESS 0.9.6) - zakladke Amiga
   testowac recznie.
+
+## 0.9.7 - jezyki
+
+27 dodatkowych jezykow (razem 29 plikow z angielskimi) + tryb "LANGUAGE FROM
+WORKBENCH" (Options -> Amiga, domyslnie wlaczony), ktory czyta
+`locale.library`. Reczny wybor jest tam, gdzie zawsze: Options -> Video.
+
+- `build/fetch_translations.py` - pobiera artefakt `tx-translations` z repo
+  OpenXcoma (`gh`), odsiewa jezyki bez glifow w `Font.dat` i ponizej 60%
+  pokrycia, mapuje interpunkcje typograficzna na ASCII, instaluje do
+  `data/Language/`. Artefakt zyje 7 dni, wiec skrypt bierze najnowszy; mozna
+  tez podac gotowy plik: `--zip tx.zip`, a `--list` tylko pokazuje decyzje.
+- `data/` jest w .gitignore (jak `music.bnk`), wiec tlumaczen NIE ma w repo -
+  odswieza sie je skryptem przed wydaniem.
+- Licencja: pliki OpenXcoma, GPL-3.0, ta sama co nasza. Nic nie wymaga zmian.
 
 ## POPRZEDNIO
 

@@ -247,7 +247,7 @@ done
 # libnix_fixes.c: libc routines libnix gets wrong (wmemcpy copies half of a
 # wide string; that garbled every std::wstring in the game).
 for f in amiga_gfx.c amiga_audio.c amiga_adpcm.c amiga_startup.c amiga_stack.c \
-         fp_conv.c fp_single.c fp_double.c amiga_trap.c libnix_fixes.c amiga_splash.c amiga_splash_data.c amiga_uclock.c \
+         fp_conv.c fp_single.c fp_double.c amiga_trap.c amiga_locale.c libnix_fixes.c amiga_splash.c amiga_splash_data.c amiga_uclock.c \
          amiga_music.c; do
 	NATIVE_OBJS="$NATIVE_OBJS $(compile_c "$NATIVE" "$f")"
 done
@@ -349,6 +349,28 @@ if [ -f "$REPO/data/music.bnk" ]; then
 	cp "$REPO/data/FluidR3_License.txt" "$DEPLOY/data/common/FluidR3_License.txt" 2>/dev/null || true
 else
 	log "note: data/music.bnk missing - music will stay silent"
+fi
+
+# Translations. OpenXcom keeps only English in git and pulls the rest from
+# Transifex when it packages a build, so they are fetched separately - see
+# build/fetch_translations.py, which also drops the languages whose letters
+# are not in the fonts we ship. Same project, same licence (GPL-3.0), so this
+# changes nothing about what may be redistributed.
+if [ -d "$REPO/data/Language/common" ]; then
+	nlang=0
+	for l in "$REPO"/data/Language/common/*.yml; do
+		[ -f "$l" ] || continue
+		cp "$l" "$DEPLOY/data/common/Language/" && nlang=$((nlang + 1))
+	done
+	for r in xcom1 xcom2; do
+		if [ -d "$REPO/data/Language/$r" ] && [ -d "$DEPLOY/data/standard/$r/Language" ]; then
+			cp "$REPO"/data/Language/$r/*.yml "$DEPLOY/data/standard/$r/Language/" 2>/dev/null || true
+		fi
+	done
+	cp "$REPO/data/Language/SOURCE.txt" "$DEPLOY/data/common/Language/SOURCE.txt" 2>/dev/null || true
+	log "deployed $nlang extra languages"
+else
+	log "note: data/Language missing - English only (build/fetch_translations.py)"
 fi
 
 log "deployed to $DEPLOY"
