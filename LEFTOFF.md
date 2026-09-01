@@ -1,54 +1,84 @@
-# LEFTOFF - hand-off for the next session (updated 2026-09-01)
+# LEFTOFF - hand-off for the next session (updated 2026-09-02)
 
 Read this, then `CLAUDE.md` (rules), then the top entry of `PROGRESS.md` (proofs).
 
-## STAN: 0.9.7 - jezyki; 0.9.6 wydane (audio + standard obrazu)
+## STAN: 0.9.8 WYDANE. Piec wydan w jednej sesji, wszystkie z pomiarem.
 
-Dwie rzeczy od poprzedniego wydania:
+https://github.com/angree/AmiXcom/releases - kod `3c4522c`.
 
-1. **Zamarcie przy KAZDEJ zmianie muzyki** (zgloszenie gracza: przechwyt UFO,
-   start misji, porzucenie gry; u niego takze przy wczytywaniu konkretnego
-   zapisu). Przyczyna: `audio.device` nie anuluje `CMD_WRITE`, ktory juz gra,
-   wiec `AbortIO` + `WaitIO` przy rozbiorce kolejki czekalo w nieskonczonosc.
-   Teraz `CMD_FLUSH` na kanale. Odtworzone u nas 2/2 przed poprawka i 2/2
-   czysto po niej, na jego ustawieniach (68030, bez JIT, `cpu_throttle=5000`,
-   muzyka pre-rendered + high). Dowod i pomiar: gora PROGRESS.md.
-2. **Options -> Amiga -> DISPLAY STANDARD: Auto / PAL / NTSC**, domyslnie Auto.
-   Przelacza sie po zatwierdzeniu opcji, nie na zywo.
+0.9.4  gcc przepisal nasze `floorf`/`sqrtf`/`ceilf` na wywolania samych siebie
+       (`(float)floor((double)x)` to tozsamosc zawezajaca, ktora zna). Kazda
+       misja gineła przy pierwszej probie ruchu. Naprawa: `-fno-builtin` dla
+       `fp_*.c`. **0.9.3 jest nie do uzycia, nie polecac.**
+0.9.6  `audio.device` nie anuluje `CMD_WRITE`, ktory juz gra - `AbortIO` nic nie
+       robi, `WaitIO` po nim czeka wiecznie. Stad zamarcie przy kazdej zmianie
+       muzyki, tym pewniejsze im szybszy procesor. Teraz `CMD_FLUSH`.
+       Do tego: Quit faktycznie wychodzi (40 ms zamiast wiszenia w
+       `delete game`), opcja PAL/NTSC/Auto, zegar nie zeruje sie przy
+       otwieraniu ekranu.
+0.9.7  27 jezykow + tryb "LANGUAGE FROM WORKBENCH" czytajacy locale.library.
+0.9.8  **Przecinek dziesietny, tym razem u zrodla.** Ta biblioteka C bierze
+       separator z locale.library przy KAZDYM formatowaniu i `setlocale` tego
+       nie wylacza - zmierzone: `snprintf gives 1,500, decimal_point .`.
+       Ostatnie miejsce, ktore szlo przez libc, to `serializeDouble` - a przez
+       nie wspolrzedne kazdej bazy. Odczyt wybacza przecinek, wiec stare zapisy
+       sie ratuja.
 
-DO ZROBIENIA
-- Potwierdzenie od uzytkownika: geoscape po poprawce audio, i czy wymuszony
-  NTSC faktycznie wstaje (log mowi teraz `NTSC (forced)` / `PAL (auto)`).
-- Spakowac i wydac 0.9.6 (`C:\temp\oxctest\pack095.sh` - podmienic numer),
-  notatki gotowe w `release/notes-0.9.6.md`.
-- **Przywrocic uzytkownikowi ustawienia**: pod test podmienilem w
-  `work/user/options.cfg` glosnosci na 128 i `amigaMusicQuality` na 1; jego
-  kopia lezy jako `options.cfg.pre-freezetest`. `amigaVideoMode` zostawil na 2
-  (NTSC) swiadomie - o to zapytac.
-- Usunac diagnostyczny config `winuae/oxc-aga-fast.uae` albo zostawic z
-  komentarzem, ze to NIGDY nie jest maszyna do pomiarow.
+## CO ZOSTAWIONE NA MASZYNIE UZYTKOWNIKA (do uporzadkowania)
 
-OTWARTE Z WCZESNIEJ
-- **Blad wspolrzednych bazy u zglaszajacego** (0.9.3, kraj Polska): po wczytaniu
-  zapisu baza znika z globusa. U nas nie reprodukuje sie; potrzebny JEGO `.asav`
-  + `openxcom.log`.
-- **Tolerancja przecinka przy ODCZYCIE** liczb - uratowalaby zapisy zrobione
-  przez 0.9.0/0.9.1 na maszynie z przecinkiem. Zaproponowane, nie zrobione.
-- Okienko wyboru trybu muzyki na starcie - nadal nierozstrzygniete.
-- Sprzatanie w `Work:`: `aga071/aga072/aga080`, `openxcom-aga091/093`,
-  `fputest3/4/5`, `mixbench2`, `musicbench` (+ .info).
+- `Work:user/options.cfg` ma podmienione pod testy: glosnosci 128 (bylo 84),
+  `amigaMusicQuality: 1`, `amigaVideoMode: 2` (wymuszony NTSC - jego wybor,
+  ale warto zapytac czy zostawia), `language` zalezy od ostatniego testu.
+  Jego kopia sprzed testow: `Work:user/options.cfg.pre-freezetest`.
+- **`Prefs/Locale` bywa ustawiony na Deutschland** - to zyje tylko w RAM, wiec
+  reset maszyny je kasuje. Do testow przecinka trzeba ustawiac za kazdym razem
+  recznie (Prefs -> Locale -> kraj -> Use).
+- Smieci w `Work:`: `aga071/aga072/aga080`, `openxcom-aga091`,
+  `openxcom-aga093`, `fputest3/4/5`, `mixbench2`, `musicbench` (+ .info),
+  `sdlmini.crash*.log`, `sdlmini.snap.log`.
+- `winuae/oxc-aga-fast.uae` - CPU podkrecone, **diagnostyka, nigdy nie do
+  pomiarow**. Zostawione swiadomie: to na nim odtworzylo sie zamarcie audio.
 
-NARZEDZIA (uzywane w tej sesji, warto siegnac ponownie)
-- `AMIGA_NO_PATCH=1 sh build.sh` - pomija patcher i restore yaml-cpp: jedyny
-  sposob na przyrostowy build po recznej zmianie w drzewie i na zbudowanie
-  wariantow FPU zaraz po `clean`.
-- `AMIGA_WALK_PROBE=1` - sondy `SDLmini_Log` wzdluz sciezki klik->krok.
-- `C:\temp\oxctest\keeplog.sh` - kopiuje `sdlmini.log` co sekunde i zamraza
-  ostatnia kopie, gdy plik sie skraca (maszyna sie zresetowala).
-- `C:\temp\oxctest\freezewatch.sh` - odroznia zamarcie od "wolno": liczy
-  dopiero 90 s bez przyrostu logu. Prog 12 s dawal falszywe alarmy.
-- **Autoinput nie klika w listy opcji** (patrz PROGRESS 0.9.6) - zakladke Amiga
-  testowac recznie.
+## OTWARTE
+
+- **Guru przy 1. kroku w misji podwodnej** (zgloszone przed 0.9.4, nigdy nie
+  odtworzone po naprawie `-fno-builtin`). Prawdopodobnie to byl ten sam blad -
+  ale nikt tego nie potwierdzil. Jesli wroci: log, `trapmap.py`, i przede
+  wszystkim sprawdzic, czy log sie SKROCIL (patrz nizej).
+- **F12 (zrzut ekranu robiony przez gre) zresetowal maszyne.** Raz, niezbadane.
+  Zanim ktos uzyje F12 w tescie - wyjasnic.
+- 8% linii w tlumaczeniach spada na angielski (klucze z naszej bazy 2016,
+  ktorych upstream juz nie ma). Rozwazane recznie uzupelnienie - odrzucone bez
+  sprawdzenia, ile z tych kluczy gra w ogole wyswietla. To pierwszy krok, gdyby
+  ktos chcial do tego wrocic.
+
+## CZEGO SIE NAUCZYLISMY O TESTOWANIU (kosztowalo czas, nie powtarzac)
+
+- **Skok czasu w logu to NIE restart maszyny.** `sdlmini.log` otwierany jest z
+  "w", wiec nowy proces by go SKROCIL. Jesli plik rosnie, a znaczniki czasu
+  wrocily do zera - to ten sam proces (do 0.9.7 zegar zerowal sie przy kazdym
+  otwarciu ekranu). Wzialem to za reset i "naprawialem" dzialajaca funkcje.
+- **Prog wykrywania zamarcia: 90 s bez przyrostu logu, nie 12.** Przy
+  podkreconym CPU emulator nie nadaza i przerwy sa naturalnie dlugie;
+  `C:\temp\oxctest\freezewatch.sh`.
+- **Log ginie razem z maszyna** - `C:\temp\oxctest\keeplog.sh` kopiuje go co
+  sekunde i zamraza ostatnia kopie, gdy plik sie skroci.
+- **Autoinput nie klika w listy opcji.** `TextList` wybiera wiersz ze zdarzen
+  najechania, a wstrzykniete `move`+`click` tego nie ustawiaja. Przyciski
+  dzialaja. Zakladke opcji testowac recznie.
+- **Zrzuty ekranu sa czarne, gdy okno WinUAE jest zminimalizowane** -
+  `PrintWindow` nic z niego nie bierze. To nie jest objaw awarii gry; sprawdzic
+  fps w pasku stanu, zanim sie cokolwiek orzeknie.
+- **Sonda `SDLmini_Log` + `fflush` po kazdej linii** = ostatnia linia w logu to
+  ostatni osiagniety punkt. Tym znaleziono i 0.9.4, i 0.9.6, i 0.9.8.
+  Wlacznik sond sciezki chodzenia: `AMIGA_WALK_PROBE=1`.
+- **`AMIGA_NO_PATCH=1 sh build.sh`** - pomija patcher i restore yaml-cpp:
+  jedyny sposob na przyrostowy build po recznej zmianie w drzewie ORAZ na
+  zbudowanie wariantow FPU zaraz po `clean`.
+- **Nigdy heredoc do skryptow lataczy** - zjada backslashe. W tej sesji
+  wywrocilo mnie to trzy razy. Write/Edit i `ast.parse`.
+
+## POPRZEDNIO
 
 ## 0.9.7 - jezyki
 

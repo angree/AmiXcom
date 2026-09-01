@@ -4,25 +4,33 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project state
 
-0.5.0 released (2026-08-18): **github.com/angree/AmiXcom** - code (no ROM/HDF/
-CGX headers/game data) + release zips (no X-COM data). The game calls itself
-AmiXcom; the ONE version source is the version.h patch in the patch script.
-Playable end to end with TFTD data (`data/UFO/` holds TFTD files, ruleset
-xcom2). On the 040/40 reference machine (no JIT, -70%): battle save ~8 s (was
-45-60), battle load ~20-25 s (was ~90), globe 3D ~10x (integer geometry,
-`data/common/earthfix.dat` precomputed shadow tables - MUST ship in releases),
-geoscape idle 50 fps, battle step ~0.3 s. Numbers/proofs: top of `PROGRESS.md`.
-Remaining: `LISTA-ROBOT.txt` (load parse ~11 s, TEMP probe cleanup, sound,
-RTG, ~50 MB RAM floor). Rules unchanged: **backup zip before every step
-(winuae/harness/backup.ps1), one change per build, test it yourself** - when
-alone ALWAYS on `oxc-aga-nojit-040-40.uae` (JIT configs only when the user
-sits at the emulator). run-oxc.ps1 needs `-KeepRunning` or it kills the
-emulator after printing the log. Before each build restore heavily-patched
-files from the tarball (restore_file.sh) - overlapping patches stack
-duplicates on an already-patched tree; `build.sh clean` is always safe.
-Mod.cpp MUST stay -O0 (gcc miscompiles it at -O1: black palettes).
-Never leave `Work:autoinput.txt` behind (boot-replay incident, PROGRESS.md).
-**Read `LEFTOFF.md` first** - it is the hand-off.
+0.9.8 released (2026-09-02): **github.com/angree/AmiXcom** - code (no ROM/HDF/
+CGX headers/game data) + release archives, `.zip` and `.lha` (no X-COM data).
+The game calls itself AmiXcom; the ONE version source is the version.h patch in
+the patch script. Playable end to end with TFTD data (`data/UFO/` holds TFTD
+files, ruleset xcom2). Music from the player's own GM.CAT through a software
+mixer, pre-rendered to disk by default (~36 MB, `data/common/music.bnk` MUST
+ship). 27 translations besides English, fetched by `build/fetch_translations.py`
+from OpenXcom's own Transifex artifact; the language follows Prefs/Locale unless
+the player picks one. Screen standard is a setting (Auto/PAL/NTSC).
+On the 040/40 reference machine (no JIT, -70%): battle save ~8 s, battle load
+~20-25 s, geoscape idle 50 fps, battle step ~0.3 s,
+`data/common/earthfix.dat` precomputed shadow tables - MUST ship in releases.
+Numbers/proofs: top of `PROGRESS.md`, newest first.
+
+Rules unchanged: **backup zip before every step (winuae/harness/backup.ps1),
+one change per build, test it yourself** - when alone ALWAYS on
+`oxc-aga-nojit-040-40.uae` (JIT configs only when the user sits at the
+emulator; `oxc-aga-fast.uae` has the CPU throttled UP and is diagnostics only,
+never a measurement). run-oxc.ps1 needs `-KeepRunning` or it kills the emulator
+after printing the log. Before each build restore heavily-patched files from the
+tarball (restore_file.sh) - overlapping patches stack duplicates on an
+already-patched tree; `build.sh clean` is always safe, and
+`AMIGA_NO_PATCH=1 sh build.sh` skips the patcher for an incremental rebuild
+after editing the tree by hand (and is the only way to build the FPU variants
+straight after a clean build). Mod.cpp MUST stay -O0 (gcc miscompiles it at -O1:
+black palettes). Never leave `Work:autoinput.txt` behind (boot-replay incident,
+PROGRESS.md). **Read `LEFTOFF.md` first** - it is the hand-off.
 
 ## Layout and build
 
