@@ -62,6 +62,84 @@ def depunct(text):
     return text
 
 
+# A quote is not just a character here: it is what ENDS a YAML scalar. Folding
+# a typographic quote to ASCII inside a double-quoted value therefore cuts the
+# value in half, and the file stops parsing - which is exactly how 0.9.7 and
+# 0.9.8 shipped an xcom2/de.yml that killed the game on the loading screen
+# (line 706: `... unhandlich, aber "aeusserst wirksam ...`). So fold inside the
+# scalar, and escape the quote the fold produced - only that one; quotes that
+# upstream already escaped are left alone.
+SCALAR = re.compile(r'^(\s*[^\s:#][^:]*:[ \t]+)(["\'])(.*)\2([ \t\r]*)$')
+PLAIN = re.compile(r'^(\s*[^\s:#][^:]*:[ \t]+)(\S.*?)([ \t\r]*)$')
+
+
+def fold_inner(inner, quote):
+    """Fold punctuation inside a quoted scalar, keeping the scalar quoted."""
+    out = []
+    for ch in inner:
+        rep = PUNCT.get(ch, ch)
+        if rep == '"' and quote == '"':
+            rep = '\\"'
+        elif rep == "'" and quote == "'":
+            rep = "''"
+        out.append(rep)
+    return "".join(out)
+
+
+def escape_quotes(inner):
+    """Escape every unescaped `"` in the body of a double-quoted scalar."""
+    out, i = [], 0
+    while i < len(inner):
+        c = inner[i]
+        if c == "\\" and i + 1 < len(inner):
+            out.append(inner[i:i + 2])
+            i += 2
+        elif c == '"':
+            out.append('\\"')
+            i += 1
+        else:
+            out.append(c)
+            i += 1
+    return "".join(out)
+
+
+def fold_yaml(text):
+    """depunct(), but aware that it is editing YAML and not prose."""
+    lines = text.split("\n")
+    for n, line in enumerate(lines):
+        m = SCALAR.match(line)
+        if m:
+            lines[n] = m.group(1) + m.group(2) + fold_inner(m.group(3), m.group(2)) \
+                + m.group(2) + m.group(4)
+            continue
+        m = PLAIN.match(line)
+        if m:
+            v = depunct(m.group(2))
+            # A plain scalar may hold a quote anywhere but at the front, where
+            # it would turn the value into a quoted one that never ends.
+            if v[:1] in ('"', "'"):
+                v = '"' + escape_quotes(v) + '"'
+            lines[n] = m.group(1) + v + m.group(3)
+            continue
+        lines[n] = depunct(line)
+    return "\n".join(lines)
+
+
+def check_yaml(path):
+    """Parse what we just wrote. A translation that does not load is a crash."""
+    try:
+        import yaml
+    except ImportError:
+        sys.stderr.write("UWAGA: brak PyYAML - pliki NIE sa sprawdzane\n")
+        return
+    try:
+        yaml.safe_load(open(path, encoding="utf-8").read())
+    except Exception as e:
+        mark = getattr(e, "problem_mark", None)
+        where = " (linia %d, kolumna %d)" % (mark.line + 1, mark.column + 1) if mark else ""
+        sys.exit("BLAD: %s nie jest poprawnym YAML-em%s: %s" % (path, where, e))
+
+
 def run(cmd):
     p = subprocess.run(cmd, shell=True, capture_output=True, text=True)
     if p.returncode != 0:
@@ -182,7 +260,8 @@ def main():
                     txt = open(s, encoding="utf-8", errors="replace").read()
                     with open(os.path.join(d, lang + ".yml"), "w",
                               encoding="utf-8", newline="") as out:
-                        out.write(depunct(txt))
+                        out.write(fold_yaml(txt))
+                    check_yaml(os.path.join(d, lang + ".yml"))
                     n += 1
         with open(os.path.join(OUT, "SOURCE.txt"), "w", encoding="utf-8") as f:
             f.write("OpenXcom translations, pulled from Transifex by OpenXcom's own\n"

@@ -1675,11 +1675,11 @@ def main():
         '#define OPENXCOM_VERSION_LONG "1.0.0.0"\n'
         '#define OPENXCOM_VERSION_NUMBER 1,0,0,0\n',
         '#ifdef AMIGA_FPU_BUILD\n'
-        '#define OPENXCOM_VERSION_SHORT "0.9.8 FPU"\n'
+        '#define OPENXCOM_VERSION_SHORT "0.9.9 FPU"\n'
         '#else\n'
-        '#define OPENXCOM_VERSION_SHORT "0.9.8"\n'
+        '#define OPENXCOM_VERSION_SHORT "0.9.9"\n'
         '#endif\n'
-        '#define OPENXCOM_VERSION_LONG "0.9.8.0"\n'
+        '#define OPENXCOM_VERSION_LONG "0.9.9.0"\n'
         '#define OPENXCOM_VERSION_NUMBER 0,9,3,0\n'
         '#define OPENXCOM_VERSION_GIT ""\n',
         "port version")))

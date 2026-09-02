@@ -2,7 +2,7 @@
 
 Read this, then `CLAUDE.md` (rules), then the top entry of `PROGRESS.md` (proofs).
 
-## STAN: 0.9.8 WYDANE. Piec wydan w jednej sesji, wszystkie z pomiarem.
+## STAN: 0.9.9 WYDANE. Szesc wydan w jednej sesji, wszystkie z pomiarem.
 
 https://github.com/angree/AmiXcom/releases - kod `3c4522c`.
 
@@ -23,6 +23,14 @@ https://github.com/angree/AmiXcom/releases - kod `3c4522c`.
        Ostatnie miejsce, ktore szlo przez libc, to `serializeDouble` - a przez
        nie wspolrzedne kazdej bazy. Odczyt wybacza przecinek, wiec stare zapisy
        sie ratuja.
+0.9.9  **Nasze wlasne tlumaczenia zabijaly gre po niemiecku i po szwedzku.**
+       Skladanie typograficznej punktacji na ASCII robilo z `"` znak KONCZACY
+       skalar YAML; `xcom2/de.yml:706` i `xcom2/sv.yml:178` przestaly sie
+       parsowac i gra wywalala sie na ekranie ladowania. Zgloszone z A1200 /
+       OS 3.2.3 DE. Naprawione w generatorze (sklada wewnatrz skalara i
+       zabezpiecza to, co sam wyprodukowal) i w danych; kazdy zapisany plik
+       jest teraz parsowany, a zly przerywa fetch. Zmierzone: zepsute byly
+       DWA pliki z 78.
 
 ## CO ZOSTAWIONE NA MASZYNIE UZYTKOWNIKA (do uporzadkowania)
 

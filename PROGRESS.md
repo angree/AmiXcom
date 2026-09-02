@@ -2,6 +2,57 @@
 
 Newest first. Facts and measurements only; plans live in `PORT_RESEARCH.md`.
 
+## 2026-09-02 - 0.9.9: cudzyslow, ktory konczyl nie to, co trzeba
+
+ZGLOSZENIE. A1200 / OS 3.2.3 DE / IceDrake V4: gra rusza, ekran ladowania, po
+chwili wyrzuca do Workbencha z
+
+    OpenXcom has crashed: yaml-cpp _ error at line 706, column 70:
+    end of map not found
+
+a `openxcom.log` konczy sie na `Amiga: options migrated to cfg version 2`.
+
+PRZYCZYNA - NASZA, Z 0.9.7. `data/Language/xcom2/de.yml`, linia 706:
+
+    STR_HEAVY_GAUSS_UFOPEDIA: "Die schwere Gauss ist unhandlich, aber "aeusserst
+
+Cudzyslow w srodku cudzyslowu. Wziel sie stad, ze `fetch_translations.py`
+skladalo typograficzne znaki na ASCII (`PUNCT`/`depunct`) na CALYM tekscie
+pliku, jak na prozie - a w YAML-u `"` nie jest znakiem, tylko KONCEM skalara.
+Niemiecki oryginal ma w tym zdaniu niesparowany cudzyslow otwierajacy; po
+zlozeniu skalar konczyl sie w polowie zdania, reszta linii stawala sie skladnia
+i parser gubil mape. Kolumna 70 z komunikatu to dokladnie to miejsce.
+
+SKALA - ZMIERZONA, NIE ZGADNIETA. Wszystkie 78 zainstalowanych plikow przepuszczone
+przez parser YAML: zepsute byly DWA, `xcom2/de.yml` (2 linie) i `xcom2/sv.yml`
+(19 linii, w tym `STR_INTRO_14`, ktore zaczyna sie od cudzyslowu). Pozostale 76
+sa poprawne, bo cudzyslowy, ktore upstream tam ma, byly juz zapisane jako `\"`.
+Czyli: gra padala kazdemu, kto gral po niemiecku albo po szwedzku - i nikomu
+innemu.
+
+NAPRAWA W DWOCH MIEJSCACH.
+1. `fetch_translations.py` sklada teraz punktacje ze SWIADOMOSCIA, ze edytuje
+   YAML: rozbija linie na klucz i skalar (`SCALAR`/`PLAIN`), sklada wnetrze
+   skalara i cudzyslow, ktory z tego skladania powstal, od razu zabezpiecza
+   (`\"` w skalarze podwojnym, `''` w pojedynczym). Cudzyslowy, ktore upstream
+   juz zabezpieczyl, zostaja nietkniete.
+2. Kazdy zapisany plik jest zaraz potem PARSOWANY (`check_yaml`), a nierozparzalny
+   przerywa caly fetch. Generator, ktory nie sprawdza wlasnego wyjscia, wyda
+   plik zabijajacy gre - i wlasnie to zrobil.
+
+Zainstalowane pliki naprawione ta sama regula, wiec ponowne pobranie z
+Transifeksa da bajt w bajt to samo.
+
+ZWERYFIKOWANE NA MASZYNIE (oxc-aga-nojit-040-40, bez JIT). `language: de`:
+`Loading language... / Language loaded successfully. / OpenXcom started
+successfully!`, potem stabilne 50 fps w menu. To samo dla `language: sv`.
+Wszystkie 84 pliki jezykowe we wdrozeniu parsuja sie.
+
+WNIOSEK NA PRZYSZLOSC. Tekst przeznaczony do pliku strukturalnego nie jest
+proza. Kazde `replace()` na calym pliku YAML/XML/JSON jest bledem, dopoki nie
+udowodni sie, ze nie dotyka skladni - a dowodem jest parser uruchomiony na
+wyjsciu, nie przeczytanie kodu.
+
 ## 2026-09-01 - 0.9.8: dlaczego przecinek wracal siedem razy
 
 POMIAR, KTORY TRZEBA BYLO ZROBIC DAWNO TEMU. Jedna linia w logu, zaraz po

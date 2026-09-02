@@ -4,14 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project state
 
-0.9.8 released (2026-09-02): **github.com/angree/AmiXcom** - code (no ROM/HDF/
+0.9.9 released (2026-09-02): **github.com/angree/AmiXcom** - code (no ROM/HDF/
 CGX headers/game data) + release archives, `.zip` and `.lha` (no X-COM data).
 The game calls itself AmiXcom; the ONE version source is the version.h patch in
 the patch script. Playable end to end with TFTD data (`data/UFO/` holds TFTD
 files, ruleset xcom2). Music from the player's own GM.CAT through a software
 mixer, pre-rendered to disk by default (~36 MB, `data/common/music.bnk` MUST
 ship). 27 translations besides English, fetched by `build/fetch_translations.py`
-from OpenXcom's own Transifex artifact; the language follows Prefs/Locale unless
+from OpenXcom's own Transifex artifact (which folds typographic punctuation to
+ASCII **inside** the YAML scalar and re-parses every file it writes - folding
+blind broke German and Swedish in 0.9.7); the language follows Prefs/Locale unless
 the player picks one. Screen standard is a setting (Auto/PAL/NTSC).
 On the 040/40 reference machine (no JIT, -70%): battle save ~8 s, battle load
 ~20-25 s, geoscape idle 50 fps, battle step ~0.3 s,
