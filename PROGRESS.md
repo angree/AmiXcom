@@ -2,6 +2,61 @@
 
 Newest first. Facts and measurements only; plans live in `PORT_RESEARCH.md`.
 
+## 2026-09-08 - 0.9.10: "zaloz katalog UFOINTRO, inaczej sie nie wczyta"
+
+ZGLOSZENIE. Wersja GOG dziala, ale trzeba recznie utworzyc katalog `UFOINTRO`
+w danych; bez niego gra staje na ekranie ladowania i pasek postepu ani drgnie.
+
+PRZYCZYNA - UPSTREAM, `Engine/Options.cpp`:
+
+    static bool _gameIsInstalled(const std::string &gameName)
+    {
+        return (CrossPlatform::folderExists(dataGameFolder)
+            && CrossPlatform::getFolderContents(dataGameFolder).size() > 8)
+            || ...
+    }
+
+Gra rozpoznaje zainstalowane dane **liczac pozycje w katalogu** i wymagajac
+WIECEJ NIZ OSMIU. Czysta kopia danych DOS/GOG to dokladnie osiem katalogow:
+GEODATA GEOGRAPH MAPS ROUTES SOUND TERRAIN UFOGRAPH UNITS. Osiem to nie
+"wiecej niz osiem", wiec test nie przechodzi o jeden - i dowolna dziewiata
+pozycja go przepycha. `UFOINTRO` nie ma tu nic do rzeczy; pusty katalog o
+dowolnej nazwie zadziala tak samo. Nasz deploy ma dziesiec (MISSDAT i
+README.txt), dlatego u nas to nigdy nie wyszlo.
+
+ODTWORZONE (oxc-aga-nojit-040-40, bez JIT, binarka 0.9.9). Po przycieciu
+`data/UFO` i `data/TFTD` do dokladnie osmiu pozycji:
+
+    [INFO]  removing references to missing mod: xcom2
+    [INFO]  removing references to missing mod: xcom1
+    [ERROR] no mod masters available
+    [ERROR] No X-COM installations found
+
+i plansza startowa stoi z zamrozonym paskiem - dokladnie to, co zglosil.
+
+NAPRAWA 1 (6amS). `_gameIsInstalled` szuka teraz katalogow, ktore gra
+naprawde czyta, zamiast je liczyc: cztery z osmiu nazw wystarcza, zeby uznac
+folder za dane gry. Zachowany jest stary warunek `size() > 8` jako druga
+sciezka, wiec nietypowy uklad, ktory dzialal wczesniej, dziala nadal.
+Zweryfikowane: te same osiem katalogow daje teraz `no master already active;
+activating xcom1` i dalej `OpenXcom started successfully!`.
+
+NAPRAWA 2 (6amT) - I TO JEST WAZNIEJSZE. "Pasek ani drgnie" znaczylo, ze gra
+NIE POWIEDZIALA, co jest nie tak. A powiedziala: `StartState::think()` w
+stanie LOADING_FAILED wypisuje na ekran `ERROR: <powod>` plus dwie linie
+podpowiedzi. Tylko ze nasza plansza startowa (`AmigaSplash`) wciaz wisi na
+wierzchu i tlumi palete oraz klatke, a zdejmowana byla WYLACZNIE przy sukcesie.
+Czyli kazdy blad ladowania - brak danych, zly katalog, cokolwiek - wygladal u
+nas jak zawieszenie. `SDLmini_SplashFinish()` jest teraz wolane takze na
+sciezce bledu. Zweryfikowane na maszynie z odsunietymi katalogami danych:
+ekran pokazuje `ERROR: No X-COM installations found / Make sure you installed
+OpenXcom correctly. / Press any key to continue.` (zrzut w tej sesji).
+
+WNIOSEK. Heurystyka "policz pliki, powinno byc duzo" jest bledem, ktory czeka
+na uzytkownika z najczystsza mozliwa instalacja. A obsluga bledu, ktorej
+komunikat nikt nie zobaczy, jest gorsza niz jej brak - zamienia opisany blad w
+"zawiesza sie".
+
 ## 2026-09-02 - 0.9.9: cudzyslow, ktory konczyl nie to, co trzeba
 
 ZGLOSZENIE. A1200 / OS 3.2.3 DE / IceDrake V4: gra rusza, ekran ladowania, po

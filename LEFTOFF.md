@@ -2,7 +2,7 @@
 
 Read this, then `CLAUDE.md` (rules), then the top entry of `PROGRESS.md` (proofs).
 
-## STAN: 0.9.9 WYDANE. Szesc wydan w jednej sesji, wszystkie z pomiarem.
+## STAN: 0.9.10 WYDANE. Siedem wydan, wszystkie z pomiarem.
 
 https://github.com/angree/AmiXcom/releases - kod `3c4522c`.
 
@@ -31,6 +31,12 @@ https://github.com/angree/AmiXcom/releases - kod `3c4522c`.
        zabezpiecza to, co sam wyprodukowal) i w danych; kazdy zapisany plik
        jest teraz parsowany, a zly przerywa fetch. Zmierzone: zepsute byly
        DWA pliki z 78.
+0.9.10 **Gra rozpoznawala dane LICZAC pozycje w katalogu** (`> 8`), a czysta
+       kopia DOS/GOG ma ich dokladnie osiem. Stad rada krazaca miedzy graczami
+       "zaloz pusty katalog UFOINTRO" - dziewiata pozycja przepychala prog.
+       Teraz szuka nazw katalogow, ktore gra czyta. Drugie, wazniejsze: przy
+       KAZDYM bledzie ladowania nasza plansza zaslaniala komunikat, wiec bledy
+       wygladaly jak zwis; splash jest teraz zdejmowany takze na sciezce bledu.
 
 ## CO ZOSTAWIONE NA MASZYNIE UZYTKOWNIKA (do uporzadkowania)
 

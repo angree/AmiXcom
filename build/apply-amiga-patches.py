@@ -1675,11 +1675,11 @@ def main():
         '#define OPENXCOM_VERSION_LONG "1.0.0.0"\n'
         '#define OPENXCOM_VERSION_NUMBER 1,0,0,0\n',
         '#ifdef AMIGA_FPU_BUILD\n'
-        '#define OPENXCOM_VERSION_SHORT "0.9.9 FPU"\n'
+        '#define OPENXCOM_VERSION_SHORT "0.9.10 FPU"\n'
         '#else\n'
-        '#define OPENXCOM_VERSION_SHORT "0.9.9"\n'
+        '#define OPENXCOM_VERSION_SHORT "0.9.10"\n'
         '#endif\n'
-        '#define OPENXCOM_VERSION_LONG "0.9.9.0"\n'
+        '#define OPENXCOM_VERSION_LONG "0.9.10.0"\n'
         '#define OPENXCOM_VERSION_NUMBER 0,9,3,0\n'
         '#define OPENXCOM_VERSION_GIT ""\n',
         "port version")))
@@ -8515,6 +8515,87 @@ def main():
         "#include <sstream>\n"
         "#include <cstdio>\n",
         "cstdio for serializeDouble")))
+
+    # 6amT. The other half of the GOG report: "the loading bar never moves".
+    #       It never moved because upstream writes the reason onto the screen
+    #       as text - "ERROR: No X-COM installations found" - and our splash
+    #       is still up, suppressing the palette and the frame, so the player
+    #       gets a frozen progress bar and no message at all. Verified on the
+    #       machine (screenshot, 2026-09-08): the log said what was wrong, the
+    #       screen said nothing. Drop the splash on failure exactly as on
+    #       success, and the text underneath becomes visible.
+    results.append(("StartState.cpp (show the failure)", edit(
+        os.path.join(src, "Menu", "StartState.cpp"),
+        "\tcase LOADING_FAILED:\n"
+        "\t\tCrossPlatform::flashWindow();\n",
+        "\tcase LOADING_FAILED:\n"
+        "#ifdef __AMIGA__\n"
+        "\t\t/* the splash hides the text that says what went wrong */\n"
+        "\t\tSDLmini_SplashFinish();\n"
+        "#endif\n"
+        "\t\tCrossPlatform::flashWindow();\n",
+        "loading failure visible on Amiga")))
+
+    # 6amS. "Create a UFOINTRO folder or the loading bar never moves."
+    #       Reported from a GOG install (2026-09-08), and the folder name is a
+    #       red herring: upstream decides a game is installed by COUNTING the
+    #       entries in data/UFO and asking for more than eight. A data-only
+    #       copy of the DOS or GOG game holds exactly the eight directories the
+    #       engine reads - GEODATA GEOGRAPH MAPS ROUTES SOUND TERRAIN UFOGRAPH
+    #       UNITS - so it fails by one, and ANY ninth entry fixes it. Ours has
+    #       ten (MISSDAT and a README), which is why this never showed up here.
+    #       Measured on oxc-aga-nojit-040-40 with both folders trimmed to eight:
+    #       "removing references to missing mod: xcom1 / no mod masters
+    #       available / No X-COM installations found", and the splash sits
+    #       there with the progress bar frozen. So look for the directories the
+    #       game actually reads.
+    results.append(("Engine/Options.cpp (find game data, do not count it)", edit(
+        os.path.join(src, "Engine", "Options.cpp"),
+        "static bool _gameIsInstalled(const std::string &gameName)\n"
+        "{\n"
+        "\t// look for game data in either the data or user directories\n"
+        "\tstd::string dataGameFolder = CrossPlatform::searchDataFolder(gameName);\n"
+        "\tstd::string userGameFolder = _userFolder + gameName;\n"
+        "\treturn (CrossPlatform::folderExists(dataGameFolder)\n"
+        "\t\t&& CrossPlatform::getFolderContents(dataGameFolder).size() > 8)\n"
+        "\t    || (CrossPlatform::folderExists(userGameFolder)\n"
+        "\t\t&& CrossPlatform::getFolderContents(userGameFolder).size() > 8);\n"
+        "}\n",
+        "/* AMIGA-PORT: counting entries rejects a clean install. A data-only\n"
+        "   copy of the DOS/GOG game is exactly these eight directories, and\n"
+        "   upstream asks for a ninth; players were told to create an empty\n"
+        "   UFOINTRO folder to get past it. Look for the data instead. */\n"
+        "static bool _hasGameData(const std::string &folder)\n"
+        "{\n"
+        "\tstatic const char *const wanted[] = {\n"
+        "\t\t\"GEODATA\", \"GEOGRAPH\", \"MAPS\", \"ROUTES\",\n"
+        "\t\t\"SOUND\", \"TERRAIN\", \"UFOGRAPH\", \"UNITS\" };\n"
+        "\tconst size_t nwanted = sizeof(wanted) / sizeof(wanted[0]);\n"
+        "\tif (!CrossPlatform::folderExists(folder)) return false;\n"
+        "\tstd::vector<std::string> contents = CrossPlatform::getFolderContents(folder);\n"
+        "\tsize_t found = 0;\n"
+        "\tfor (std::vector<std::string>::const_iterator i = contents.begin(); i != contents.end(); ++i)\n"
+        "\t{\n"
+        "\t\tstd::string name = *i;\n"
+        "\t\tstd::transform(name.begin(), name.end(), name.begin(), ::toupper);\n"
+        "\t\tfor (size_t w = 0; w < nwanted; ++w)\n"
+        "\t\t{\n"
+        "\t\t\tif (name == wanted[w]) { ++found; break; }\n"
+        "\t\t}\n"
+        "\t}\n"
+        "\t/* Four of the eight: enough to tell game data from a stray folder,\n"
+        "\t   and forgiving of an install that is missing one or two. */\n"
+        "\tif (found >= 4) return true;\n"
+        "\treturn contents.size() > 8;\n"
+        "}\n"
+        "\n"
+        "static bool _gameIsInstalled(const std::string &gameName)\n"
+        "{\n"
+        "\t// look for game data in either the data or user directories\n"
+        "\treturn _hasGameData(CrossPlatform::searchDataFolder(gameName))\n"
+        "\t    || _hasGameData(_userFolder + gameName);\n"
+        "}\n",
+        "game data found by name, not by entry count")))
 
     # 6amO. Quit that quits. `delete game` frees the whole mod - tens of
     #       thousands of surfaces - and on a 68020 that takes so long that

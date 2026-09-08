@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project state
 
-0.9.9 released (2026-09-02): **github.com/angree/AmiXcom** - code (no ROM/HDF/
+0.9.10 released (2026-09-08): **github.com/angree/AmiXcom** - code (no ROM/HDF/
 CGX headers/game data) + release archives, `.zip` and `.lha` (no X-COM data).
 The game calls itself AmiXcom; the ONE version source is the version.h patch in
 the patch script. Playable end to end with TFTD data (`data/UFO/` holds TFTD
