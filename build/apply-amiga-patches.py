@@ -1675,11 +1675,11 @@ def main():
         '#define OPENXCOM_VERSION_LONG "1.0.0.0"\n'
         '#define OPENXCOM_VERSION_NUMBER 1,0,0,0\n',
         '#ifdef AMIGA_FPU_BUILD\n'
-        '#define OPENXCOM_VERSION_SHORT "0.9.10 FPU"\n'
+        '#define OPENXCOM_VERSION_SHORT "0.9.11 FPU"\n'
         '#else\n'
-        '#define OPENXCOM_VERSION_SHORT "0.9.10"\n'
+        '#define OPENXCOM_VERSION_SHORT "0.9.11"\n'
         '#endif\n'
-        '#define OPENXCOM_VERSION_LONG "0.9.10.0"\n'
+        '#define OPENXCOM_VERSION_LONG "0.9.11.0"\n'
         '#define OPENXCOM_VERSION_NUMBER 0,9,3,0\n'
         '#define OPENXCOM_VERSION_GIT ""\n',
         "port version")))
@@ -4423,7 +4423,8 @@ def main():
         "\t\t\t\tBattleUnit *bu_ = (*us_)[i_];\n"
         "\t\t\t\t_fcUnitPos[i_] = bu_->getPosition();\n"
         "\t\t\t\t_fcUnitState[i_] = bu_->getDirection() * 64 + (int)bu_->getStatus() * 8\n"
-        "\t\t\t\t\t+ bu_->getWalkingPhase() + (bu_->getVisible() ? 4096 : 0);\n"
+        "\t\t\t\t\t+ bu_->getWalkingPhase() + (bu_->getVisible() ? 4096 : 0)\n"
+        "\t\t\t\t\t+ (bu_->isKneeled() ? 8192 : 0); /* kneeling redraws the sprite in place */\n"
         "\t\t\t}\n"
         "\t\t\t_fcSelX = _selectorX; _fcSelY = _selectorY;\n"
         "\t\t\t_fcCurType = (int)_cursorType; _fcCurSize = _cursorSize;\n"
@@ -4546,7 +4547,8 @@ def main():
         "\t\t\t{\n"
         "\t\t\t\tBattleUnit *bu_ = (*us_)[i_];\n"
         "\t\t\t\tint st_ = bu_->getDirection() * 64 + (int)bu_->getStatus() * 8\n"
-        "\t\t\t\t\t+ bu_->getWalkingPhase() + (bu_->getVisible() ? 4096 : 0);\n"
+        "\t\t\t\t\t+ bu_->getWalkingPhase() + (bu_->getVisible() ? 4096 : 0)\n"
+        "\t\t\t\t\t+ (bu_->isKneeled() ? 8192 : 0); /* kneeling redraws the sprite in place */\n"
         "\t\t\t\tif (st_ == _fcUnitState[i_] && bu_->getPosition() == _fcUnitPos[i_]) continue;\n"
         "\t\t\t\t++AmCp_whyUnits;\n"
         "\t\t\t\tint sz_ = bu_->getArmor()->getSize();\n"
@@ -8515,6 +8517,92 @@ def main():
         "#include <sstream>\n"
         "#include <cstdio>\n",
         "cstdio for serializeDouble")))
+
+    # 6amU. Mouse offset at 640x480 (reported from a PiStorm/RTG machine:
+    #       "to press the bottom buttons you must click BELOW them", the
+    #       kneel button lights up while the pointer sits on the rank badge).
+    #       At 640x480 the picture is drawn 2x with 40-line black bands, but
+    #       upstream maps the pointer through 480/200 = 2.4 with no band
+    #       unless `cursorInBlackBands` - an option for windowed PCs where
+    #       the OS pointer cannot enter the bands. On the Amiga the screen IS
+    #       the display and the pointer roams all of it, so the pointer must
+    #       be mapped like the picture: same scale, band subtracted. At the
+    #       bottom of the screen the old mapping was 17 game lines too high -
+    #       exactly one button row.
+    results.append(("Screen.cpp (pointer maps like the picture)", edit(
+        os.path.join(src, "Engine", "Screen.cpp"),
+        "\t\tcursorInBlackBands = Options::cursorInBlackBandsInBorderlessWindow;\n"
+        "\t}\n",
+        "\t\tcursorInBlackBands = Options::cursorInBlackBandsInBorderlessWindow;\n"
+        "\t}\n"
+        "#ifdef __AMIGA__\n"
+        "\t/* AMIGA-PORT: the screen is the whole display and the pointer roams\n"
+        "\t   all of it, bands included, so map it exactly like the picture. */\n"
+        "\tcursorInBlackBands = true;\n"
+        "#endif\n",
+        "pointer in black bands on Amiga")))
+
+    # 6amV. Save names: FFS filenames are 30 characters. sanitizeFilename()
+    #       (native/oxc-replace/Engine/CrossPlatform.cpp) keeps the base to
+    #       26 so ".sav" fits; the uniqueness suffix ListSaveState adds must
+    #       stay inside that too, or the name grows past the limit again and
+    #       the save "succeeds" without ever appearing in the list.
+    results.append(("ListSaveState.cpp (suffix helper)", edit(
+        os.path.join(src, "Menu", "ListSaveState.cpp"),
+        "namespace OpenXcom\n"
+        "{\n",
+        "#ifdef __AMIGA__\n"
+        "#include <cstdio>\n"
+        "#include <cstdlib>\n"
+        "#include <cctype>\n"
+        "#endif\n"
+        "namespace OpenXcom\n"
+        "{\n"
+        "#ifdef __AMIGA__\n"
+        "/* AMIGA-PORT: next candidate for a save name that is already taken,\n"
+        "   never longer than the 26 characters that leave room for \".sav\":\n"
+        "   name_2, name_3, ... (upstream appends \"_\" without limit; mixing\n"
+        "   the two schemes cycled back to an existing name - measured). */\n"
+        "static void amigaNextName_(std::string &name)\n"
+        "{\n"
+        "\tint n = 1;\n"
+        "\tsize_t us = name.find_last_of('_');\n"
+        "\tif (us != std::string::npos && us + 1 < name.size())\n"
+        "\t{\n"
+        "\t\tbool digits = true;\n"
+        "\t\tfor (size_t i = us + 1; i < name.size(); ++i)\n"
+        "\t\t\tif (!isdigit((unsigned char)name[i])) { digits = false; break; }\n"
+        "\t\tif (digits) { n = atoi(name.c_str() + us + 1); name.erase(us); }\n"
+        "\t}\n"
+        "\tif (name.size() > 22) name.erase(22);\n"
+        "\tchar buf[8];\n"
+        "\tsnprintf(buf, sizeof buf, \"_%d\", n + 1);\n"
+        "\tname += buf;\n"
+        "}\n"
+        "#endif\n",
+        "save-name suffix helper")))
+    results.append(("ListSaveState.cpp (rename suffix)", edit(
+        os.path.join(src, "Menu", "ListSaveState.cpp"),
+        "\t\t\t{\n"
+        "\t\t\t\tnewFilename += \"_\";\n",
+        "\t\t\t{\n"
+        "#ifdef __AMIGA__\n"
+        "\t\t\t\tamigaNextName_(newFilename);\n"
+        "#else\n"
+        "\t\t\t\tnewFilename += \"_\";\n"
+        "#endif\n",
+        "save rename suffix within 26")))
+    results.append(("ListSaveState.cpp (new-save suffix)", edit(
+        os.path.join(src, "Menu", "ListSaveState.cpp"),
+        "\t\t{\n"
+        "\t\t\tnewFilename += \"_\";\n",
+        "\t\t{\n"
+        "#ifdef __AMIGA__\n"
+        "\t\t\tamigaNextName_(newFilename);\n"
+        "#else\n"
+        "\t\t\tnewFilename += \"_\";\n"
+        "#endif\n",
+        "new save suffix within 26")))
 
     # 6amT. The other half of the GOG report: "the loading bar never moves".
     #       It never moved because upstream writes the reason onto the screen

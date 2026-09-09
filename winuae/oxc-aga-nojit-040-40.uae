@@ -59,7 +59,7 @@ input.mouse_speed=100
 ; --- Boot straight into emulation ---
 use_gui=no
 show_leds=true
-sound_output=normal
+sound_output=interrupts
 sound_channels=stereo
 sound_frequency=44100
 sound_interpol=none

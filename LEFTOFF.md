@@ -2,7 +2,7 @@
 
 Read this, then `CLAUDE.md` (rules), then the top entry of `PROGRESS.md` (proofs).
 
-## STAN: 0.9.10 WYDANE. Siedem wydan, wszystkie z pomiarem.
+## STAN: 0.9.11 WYDANE. Osiem wydan, wszystkie z pomiarem.
 
 https://github.com/angree/AmiXcom/releases - kod `3c4522c`.
 
@@ -37,6 +37,15 @@ https://github.com/angree/AmiXcom/releases - kod `3c4522c`.
        Teraz szuka nazw katalogow, ktore gra czyta. Drugie, wazniejsze: przy
        KAZDYM bledzie ladowania nasza plansza zaslaniala komunikat, wiec bledy
        wygladaly jak zwis; splash jest teraz zdejmowany takze na sciezce bledu.
+0.9.11 Piec zgloszen: mysz w 640x480 (kursor mapowany bez pasa), kleknieciecie
+       bez przerysowania (stan jednostki w cache nie mial isKneeled), zapisy
+       >26 znakow znikaly (FFS: 30 znakow z ".sav"), za dlugie nazwy modow w
+       archiwum (build/amiga_shortnames.py), i splash. Nowe w harnessie:
+       autoinput `reboot` - reset od srodka goscia, jeden start WinUAE na
+       cala sesje testow. NIE odtworzone: "minuty po OK w ekwipunku" na
+       PiStormie - trzeba logow zglaszajacego. Otwarte: czerwone szesciany
+       kubatury lazika (czeka na feedback autora), 640x480 na AGA (lowres,
+       uciete, nikt nie zglosil).
 
 ## CO ZOSTAWIONE NA MASZYNIE UZYTKOWNIKA (do uporzadkowania)
 

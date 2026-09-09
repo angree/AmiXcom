@@ -2,6 +2,67 @@
 
 Newest first. Facts and measurements only; plans live in `PORT_RESEARCH.md`.
 
+## 2026-09-09 - 0.9.11: piec zgloszen od trzech graczy
+
+Kazde odtworzone na oxc-aga-nojit-040-40 (bez JIT) i sprawdzone po poprawce,
+z jednego uruchomienia WinUAE - resety robione OD SRODKA goscia (nowa komenda
+autoinput `reboot`: usuwa skrypt, `ColdReboot()`), zeby nie zabierac
+uzytkownikowi myszy.
+
+1. MYSZ PRZESUNIETA W 640x480 (PiStorm/RTG: "dolne przyciski trzeba klikac
+   pod nimi", ikona Kleknij swieci, gdy kursor jest na stopniu zolnierza).
+   Obraz w 640x480 jest rysowany 2x z pasami po 40 linii, a upstream mapuje
+   kursor przez 480/200 = 2.4 bez pasa, chyba ze `cursorInBlackBands` - opcja
+   dla okienkowych PC, gdzie kursor systemowy nie wchodzi w pasy. Na Amidze
+   ekran JEST wyswietlaczem, kursor chodzi po calosci. Na dole ekranu stare
+   mapowanie bylo o 17 linii gry za wysoko - dokladnie jeden rzad przyciskow.
+   Poprawka (6amU): `cursorInBlackBands = true` na Amidze. Zmierzone: klik OK
+   generatora misji na wspolrzednych ekranu (116,408) - stare mapowanie dawalo
+   y=170 (przycisk 176..192, pudlo), nowe (408-40)/2 = 184; odprawa sie
+   otworzyla. To samo zalatwia pkt 3 i 4 zgloszenia (ikona liczby obcych,
+   panel misji) - ten sam blad.
+
+2. KLEKNIECIE NIE PRZERYSOWUJE ZOLNIERZA (dwoch graczy: TU odjete, sprite
+   stoi, dopiero przesuniecie mapy go zmienia). Nasz cache brudnych prostokatow
+   (Map::draw) wykrywa zmiane jednostki po pozycji, kierunku, statusie, fazie
+   kroku i widocznosci - `_fcUnitState` - a kleknieciecie nie zmienia zadnej
+   z nich; `BattleUnit::kneel()` uniewaznia tylko cache sprite'a. Poprawka:
+   `isKneeled()` w sygnaturze stanu. Zmierzone: klik Kleknij, TU 62->58,
+   zolnierz pod strzalka narysowany na klecząco w tej samej klatce, mapa
+   nieruszona (zrzut).
+
+3. ZAPISY Z NAZWA POWYZEJ ~28 ZNAKOW ZNIKAJA ("stan sie zapisal", ale nie ma
+   go na liscie). Nazwa pliku na FFS ma 30 znakow; gra dokleja ".sav", wiec
+   nazwa 27+ znakow traci rozszerzenie na dysku i `getFolderContents(...,
+   "sav")` jej nie widzi. Poprawka: `sanitizeFilename()` (nasz
+   CrossPlatform.cpp) tnie do 26; sufiks unikalnosci w `ListSaveState`
+   zostaje w tych 26 (`amigaNextName_`: name_2, name_3...). Pierwsza wersja
+   helpera mieszala doklejanie "_" z licznikiem i po trzech krokach WRACALA
+   do istniejacej nazwy - petla `while (fileExists)` bez konca; wykryte
+   testem na hoscie (`C:\temp\oxctest\nametest.cpp`, 41 kolizji z rzedu),
+   zanim trafilo do gry. Zmierzone w grze: 30 liter -> plik
+   `aaaaaaaaaaaaaaaaaaaaaaaaaa.sav`, 30 znakow.
+
+4. ZA DLUGIE NAZWY W ARCHIWUM (DOpus5 pyta "zastapic?" przy rozpakowaniu).
+   Opcjonalne mody upstreamu maja katalogi do 46 znakow, a dwa z nich dziela
+   pierwsze 30 (`XcomUtil_Starting_Defensive_Improved_Base` i `..._TFTD`), wiec
+   FFS je zlewa. Silnik bierze id moda z `metadata.yml`, gdy tam jest, inaczej
+   z nazwy katalogu - wiec `build/amiga_shortnames.py` skraca katalogi i pliki
+   .rul (XcomUtil_ -> XU_, Starting_ -> Start_ ...), dopisuje `id: <stara
+   nazwa>` i usuwa shadery OpenGL (31 znakow, bezuzyteczne). Wywolywane z
+   build.sh na zrodle i na deployu, idempotentne; 53 zmiany, potem 0. Wpisy
+   w options.cfg graczy pozostaja wazne.
+
+5. "PO OK W EKWIPUNKU MINUTY CZYTANIA DYSKU" (PiStorm) - NIE ODTWORZONE.
+   U nas: OK generatora 24-35 s (zapis configu 11 s + generowanie 10 s),
+   OK odprawy 1.5 s, OK ekwipunku -> ekran tury 4.5 s. Muzyka renderowana w
+   calosci przy starcie (`amigaPrerenderMusic` w StartState), nie w bitwie.
+   Potrzebne logi zglaszajacego (openxcom.log, sdlmini.log, options.cfg).
+
+PRZY OKAZJI ZAUWAZONE, NIE NAPRAWIONE: 640x480 na AGA otwiera sie jako ekran
+lowres (obraz 4x, uciety, 1-3 fps) - ten tryb ma sens tylko na RTG; na AGA
+powinien odmawiac albo otwierac hires-laced. Nikt tego nie zglosil.
+
 ## 2026-09-08 - 0.9.10: "zaloz katalog UFOINTRO, inaczej sie nie wczyta"
 
 ZGLOSZENIE. Wersja GOG dziala, ale trzeba recznie utworzyc katalog `UFOINTRO`

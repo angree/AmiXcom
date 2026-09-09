@@ -330,7 +330,13 @@ link_variant ask -1    # Intuition requester at startup
 # data/TFTD are never touched by a build.
 log "deploying game data (no overwrite)"
 mkdir -p "$DEPLOY/data"
+# Amiga filesystems stop at 30 characters per name; upstream's optional mods
+# do not (build/amiga_shortnames.py). Shorten the source first, so what is
+# copied is already right, and the deploy after, for long names left by
+# earlier builds.
+python3 "$REPO/build/amiga_shortnames.py" "$SRC/bin"
 cp -rn "$SRC/bin/." "$DEPLOY/data/" 2>/dev/null || true
+python3 "$REPO/build/amiga_shortnames.py" "$DEPLOY/data"
 # the port adds strings to the common language file - always refresh that one
 cp "$SRC/bin/common/Language/en-US.yml" "$DEPLOY/data/common/Language/en-US.yml"
 # precomputed globe shadow normals (see build/gen_earthfix.py) - regenerated

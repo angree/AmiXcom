@@ -28,6 +28,9 @@
 #include <string.h>
 #include <ctype.h>
 
+#include <proto/exec.h>   /* ColdReboot() */
+#include <proto/dos.h>    /* Delay() */
+
 #include "SDL.h"
 #include "sdlmini.h"
 
@@ -123,6 +126,17 @@ static Uint32 run_line(char *line)
 		memset(&ev, 0, sizeof(ev));
 		ev.type = SDL_QUIT;
 		SDL_PushEvent(&ev);
+		return 0;
+	}
+	if (strcmp(cmd, "reboot") == 0) {
+		/* Cold reset from INSIDE the guest, so a test cycle never touches
+		 * WinUAE (restarting the emulator grabs the host mouse). The script
+		 * file is removed first: a `reboot` that survived the reset would
+		 * fire again at the next start, for ever. */
+		SDLmini_Log("autoinput: reboot - script removed, ColdReboot()");
+		finish_script();
+		Delay(25);            /* half a second for the log line to land on disk */
+		ColdReboot();
 		return 0;
 	}
 	SDLmini_Log("autoinput: unknown command");

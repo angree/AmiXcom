@@ -225,6 +225,15 @@ std::string sanitizeFilename(const std::string &filename)
 			*i = '_';
 		}
 	}
+	/* AMIGA-PORT: a filename on FFS is 30 characters, and every caller of
+	 * this appends ".sav". A longer name is not refused - the save "succeeds"
+	 * and then is not in the list, because the name on disk lost its
+	 * extension (reported: any save named with more than ~28 characters
+	 * vanished). Keep 26 for the name so the extension always fits. */
+	if (newFilename.size() > 26)
+	{
+		newFilename.erase(26);
+	}
 	return newFilename;
 }
 

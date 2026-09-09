@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project state
 
-0.9.10 released (2026-09-08): **github.com/angree/AmiXcom** - code (no ROM/HDF/
+0.9.11 released (2026-09-09): **github.com/angree/AmiXcom** - code (no ROM/HDF/
 CGX headers/game data) + release archives, `.zip` and `.lha` (no X-COM data).
 The game calls itself AmiXcom; the ONE version source is the version.h patch in
 the patch script. Playable end to end with TFTD data (`data/UFO/` holds TFTD
@@ -32,7 +32,8 @@ already-patched tree; `build.sh clean` is always safe, and
 after editing the tree by hand (and is the only way to build the FPU variants
 straight after a clean build). Mod.cpp MUST stay -O0 (gcc miscompiles it at -O1:
 black palettes). Never leave `Work:autoinput.txt` behind (boot-replay incident,
-PROGRESS.md). **Read `LEFTOFF.md` first** - it is the hand-off.
+PROGRESS.md); autoinput `reboot` resets the guest from inside, so one WinUAE
+launch serves a whole test session. **Read `LEFTOFF.md` first** - it is the hand-off.
 
 ## Layout and build
 
