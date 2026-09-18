@@ -17,6 +17,7 @@
 #include "SDL_syswm.h"
 #include "sdlmini.h"
 #include "amiga_gfx.h"
+#include "amiga_watchdog.h"
 
 /* ------------------------------------------------------------ key table -- */
 
@@ -247,6 +248,7 @@ void SDLmini_PumpEvents(void)
 	AmigaGfxEvent ae;
 	Uint32 pT_ = SDL_GetTicks();
 
+	amiga_watchdog_beat++;     /* the game is alive: one pump per frame */
 	SDLmini_AutoinputPoll();
 	SDLmini_ProfAuto += SDL_GetTicks() - pT_;
 	++SDLmini_ProfPolls;

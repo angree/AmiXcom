@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project state
 
-0.9.11 released (2026-09-09): **github.com/angree/AmiXcom** - code (no ROM/HDF/
+0.9.12 released (2026-09-17): **github.com/angree/AmiXcom** - code (no ROM/HDF/
 CGX headers/game data) + release archives, `.zip` and `.lha` (no X-COM data).
 The game calls itself AmiXcom; the ONE version source is the version.h patch in
 the patch script. Playable end to end with TFTD data (`data/UFO/` holds TFTD
@@ -121,6 +121,13 @@ They are documented with their proofs in `PROGRESS.md`:
    hand** (`amiga_to_string`, `amiga_parse_double_c`, `serializeDouble`). A
    `snprintf` followed by a comma-to-dot fixup is not paranoia - it is the only
    thing that works, and code that does it is evidence someone met this before.
+
+A hang is covered too: `native/amiga_watchdog.c` appends the game task's state and
+4 KB of its stack to `PROGDIR:hang.log` after 30 s without a frame (and
+`resumed after N s` when it moves again); `trapmap.py hang.log` names the functions.
+Autoinput `stall N` makes a deliberate one to test it. **`Work:run` must be written
+with LF only** - a CRLF from PowerShell redirects to `oxc.log\r`, `Run` fails, and
+the log says only `boot ok`.
 
 Two things that make the next crash cheap instead of a day: every Guru is logged with its
 PC by `native/amiga_trap.c` (armed in `main.cpp`; look for `CPU TRAP` in `sdlmini.log`,

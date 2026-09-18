@@ -23,17 +23,20 @@ NM = "/opt/amiga/bin/m68k-amigaos-nm"
 CXXFILT = "/opt/amiga/bin/m68k-amigaos-c++filt"
 
 text = open(log, errors="replace").read()
-reports = [m.start() for m in re.finditer(r"CPU TRAP \d+", text)]
+reports = [m.start() for m in re.finditer(r"CPU TRAP \d+|HANG \d+ s", text)]
 if not reports:
-    sys.exit("no CPU TRAP report in " + log)
+    sys.exit("no CPU TRAP / HANG report in " + log)
 rep = text[reports[-1]:]
 rep = rep[:rep.find("\n\n")] if "\n\n" in rep else rep
+# HANG reports come from native/amiga_watchdog.c (PROGDIR:hang.log) and carry
+# 4 KB of stack instead of 512 bytes - keep all of it.
+is_hang = rep.startswith("HANG")
 # The report may be echoed twice (SDLmini_Log and Log()); take one copy.
 lines = []
 for l in rep.splitlines():
     l = re.sub(r"^\S+:\s", "", l) if l.startswith("amiga:") else l
     lines.append(l)
-    if l.startswith("  usp+") and int(l.split(":")[0].split("+")[1], 16) >= 0x1f8:
+    if not is_hang and l.startswith("  usp+") and int(l.split(":")[0].split("+")[1], 16) >= 0x1f8:
         break
 rep = "\n".join(lines)
 print(rep)
@@ -88,6 +91,20 @@ for l in rep.splitlines():
         o = int(mm.group(1), 16)
         for i, w in enumerate(mm.group(2).split()):
             hits.append(("usp+%03x" % (o + 4 * i), int(w, 16)))
+
+if is_hang:
+    # A switched-out task's stack starts with exec's saved context, which
+    # includes a 16-bit SR, so the frames above it sit 2 bytes off the
+    # longword grid. Read the dump as bytes and try every even offset.
+    raw = bytearray()
+    for l in rep.splitlines():
+        mm = re.match(r"\s*usp\+([0-9a-f]+):(.*)", l)
+        if mm:
+            for w in mm.group(2).split():
+                raw += int(w, 16).to_bytes(4, "big")
+    hits = [h for h in hits if not h[0].startswith("usp+")]
+    for o in range(0, len(raw) - 3, 2):
+        hits.append(("sp+%03x" % o, int.from_bytes(raw[o:o + 4], "big")))
 
 resolved = [(tag, v, lookup(v)) for tag, v in hits]
 names = [r[2][0] for r in resolved if r[2]]

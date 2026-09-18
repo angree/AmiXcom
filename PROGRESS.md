@@ -2,6 +2,98 @@
 
 Newest first. Facts and measurements only; plans live in `PORT_RESEARCH.md`.
 
+## 2026-09-18 - 0.9.12 (cd.): styl ekranu ładowania, obrazy poza binarką
+
+RETRO. Gracz przysłał 8-bitowe przeróbki sześciu obrazów ładowania (NEWGFX/,
+nie w repo). Pary po scenie, zapisane W NAZWIE PLIKU: intro/retro/X.png to
+retro-wersja intro/X.png (build/prep_retro_intro.py). Jego pliki 320x196 to
+zwykłe zmniejszenie dużych oryginałów (Lanczos 4x z 1280x784, średni błąd 2,2
+na 255), więc są PRZYCINANE do naszych 320x184 (po 6 wierszy z góry i z dołu,
+morze 8), a nie skalowane drugi raz. Sztab nie miał wersji małej - zrobiony
+jego metodą z full-res (3). Podgląd w kwantyzacji gry (224 kolory, bez
+ditheringu) pokazany użytkownikowi przed podpięciem; zaakceptowany.
+
+OPCJA. Options -> Amiga -> LOADING SCREEN: Modern (domyślnie) / Retro
+(`amigaSplashStyle`, 6amW). Ustawiany w Screen.cpp przed pierwszym
+SDL_SetVideoMode, obok standardu ekranu, bo splash otwiera się razem z ekranem.
+Działa od następnego startu. Zweryfikowane na maszynie: Modern domyślnie,
+wiersz się przełącza, options.cfg dostaje `amigaSplashStyle: 1`, po resecie
+ładowanie pokazuje retro.
+
+OBRAZY POZA BINARKĄ. Do 0.9.11 sześć teł było wkompilowanych w plik
+wykonywalny - czyli w RAM przez całą grę (~355 KB). Drugi zestaw by to
+podwoił. Teraz build/gen_splash.py pisze data/common/splash/<styl>_<n>.spl
+(ten sam format), a amiga_splash.c czyta JEDEN wylosowany plik prosto do
+bufora obrazu i zwalnia go na końcu ładowania. Binarka 14,20 -> 13,84 MB.
+Brak pliku retro -> obraz modern; brak obu -> logo i pasek na czarnym.
+
+DEPLOY URYWAŁ SIĘ W POŁOWIE OD 0.9.11. build.sh ma `set -e`, a
+amiga_shortnames.py na deployu natrafiał na stare długie pliki .rul obok
+świeżo skopiowanych krótkich i kończył się błędem - więc wszystko PO nim w
+deployu (odświeżenie en-US.yml, tłumaczenia, music.bnk) po cichu się nie
+wykonywało. Wyszło, bo nowe napisy nie pojawiły się w grze (en-US.yml z 8.09).
+Wydanym paczkom nie zaszkodziło (0.9.11 nie miało nowych napisów, reszta
+danych bez zmian), ale 0.9.12 wyszłaby bez nich. Teraz identyczny duplikat
+jest usuwany jako martwy, a różny zatrzymuje build z opisem.
+
+HARNESS. Gra kasuje Work:autoinput.txt po skończeniu skryptu - jeśli nowy
+skrypt zostanie zapisany, zanim poprzedni się domknie (tu: 11 s zapisu opcji
+po kliknięciu OK), gra usuwa ten nowy nieprzeczytany. Czekać na
+`script done`, nie na ostatnią komendę.
+
+## 2026-09-17 - 0.9.12: strażnik zawieszeń i zegar, który przeżywa północ
+
+ZDARZENIE. Na maszynie testowej (0.9.11, oxc-aga-nojit-040-40) gra stanęła o
+00:06:54: log przestał rosnąć, mysz i klawiatura bez reakcji, działał tylko
+gadżet głębi ekranu (to Intuition, nie gra). Ostatnie zdarzenie w logu to
+wciśnięcie klawisza - ok. 96 wciśnięć po północy pochodziło z tekstu, który
+użytkownik pisał w innym oknie, bo WinUAE uruchomione przez harness przejęło
+fokus klawiatury.
+
+DWA ZNALEZISKA, JEDNO NAPRAWIONE, JEDNO NIE.
+
+1. ZEGAR (naprawione). `raw_ticks()` w amiga_gfx.c brał z DateStamp tylko
+   minuty i tiki DOBY. O północy wracał do zera, a `SDL_GetTicks()` (różnica
+   bez znaku) skakał o 49 dni - w logu `100 frames in 4208569376 ms`.
+   Teraz `ds_Days * 4320000` wchodzi do sumy; iloczyn przepełnia 32 bity, ale
+   używane są tylko różnice bez znaku, które to przeżywają. Zmierzone: zegar
+   gościa ustawiony na 23:56 (`Date` w Work:run), gra na ekranie TRYTON-1,
+   12 minut przez północ - zero skoków, najdłuższe 100 klatek 2020 ms.
+
+2. ZAWIESZENIE (nie odtworzone). Wykluczone pomiarem, na 0.9.11:
+   - sama północ, 10 min bez dotykania - gra działa;
+   - te same 96 klawiszy wstrzyknięte po północy na tym samym ekranie - działa;
+   - te same klawisze bez przejścia przez północ - działa;
+   - 0.9.12, 30 min, ten sam tekst co 90 s na ekranie statku (20 rund) -
+     działa, strażnik nie zgłosił ani jednego przestoju >= 30 s.
+   Skok zegara ma identyczny podpis jak w sesji z zawieszeniem, ale go nie
+   wywołuje. Przyczyna nieznana.
+
+STRAŻNIK (native/amiga_watchdog.c). Skoro zawieszenie się nie powtarza,
+następne musi przynieść dane. Osobny proces DOS (priorytet 1, budzi się co
+sekundę) patrzy na licznik podbijany w `SDLmini_PumpEvents` raz na klatkę.
+Po 30 s bez zmian na chwilę `Forbid()`, kopiuje stan zadania gry i 4 KB jego
+stosu, i dopisuje raport do `PROGDIR:hang.log` w kształcie raportu CPU TRAP;
+gdy licznik ruszy - `resumed after N s` (długi zapis czy generowanie bitwy to
+przestój, nie zawieszenie). Tylko dos.library, żadnego stdio (libnix nie
+dzieli go między procesami), i nic z DOS pod Forbid. Uzbrajany w
+`SDLmini_SplashFinish` (koniec ładowania), zatrzymywany w `SDL_QuitSubSystem`.
+`trapmap.py` czyta teraz także raporty HANG i sprawdza każde parzyste
+przesunięcie, bo stos wyłączonego zadania zaczyna się od kontekstu exec z
+16-bitowym SR i ramki leżą 2 bajty obok siatki długich słów.
+
+Zweryfikowane komendą autoinput `stall 45` (zadanie gry śpi 45 s w pompie
+zdarzeń): raport po 30 s, `task state 4 (WAITING) sigwait 0x00000100` (timer,
+czyli Delay), `resumed after 44 s`, a trapmap podaje żywy łańcuch
+`SDLmini_AutoinputPoll` <- `SDLmini_PumpEvents` <- `SDL_PollEvent` <-
+`OpenXcom::Game::run()`.
+
+WPADKA HARNESSU, DO ZAPAMIĘTANIA. `Work:run` zapisany PowerShellem
+(`Set-Content`) kończy się CRLF: ostatnia linia przekierowuje wyjście do
+`oxc.log\r`, takiego pliku nie da się utworzyć na dysku hosta i `Run` nie
+startuje gry - w logu jest tylko `boot ok`. Wyglądało jak zawieszenie nowej
+binarki. `Work:run` pisać wyłącznie z LF (printf w bash).
+
 ## 2026-09-09 - 0.9.11: piec zgloszen od trzech graczy
 
 Kazde odtworzone na oxc-aga-nojit-040-40 (bez JIT) i sprawdzone po poprawce,

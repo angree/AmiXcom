@@ -10,7 +10,7 @@ for **real classic hardware**: 68020+ without FPU, AGA chipset. Not PiStorm-, Va
 or Emu68-only. No SDL: the SDL 1.2 API the game expects is a small shim
 (`native/sdlmini/`) on top of a bare-metal Amiga graphics/audio layer.
 
-## Status: 0.9.11 — alpha
+## Status: 0.9.12 — alpha
 
 The whole game runs on the Amiga: main menu, Geoscape, bases, Battlescape, and both
 rulesets (UFO and TFTD). It has been tested for hours, not played to the end, so expect
@@ -141,4 +141,5 @@ included or distributed here — including the music, which is rendered on your 
 machine from your own `GM.CAT`. The c2p routines are Mikael Kalms'; the graphics/audio
 platform layer comes from the author's OpenTTD Amiga port (MIT). The instrument samples
 in `data/common/music.bnk` come from Frank Wen's FluidR3 soundfont, MIT licensed — see
-`data/common/FluidR3_License.txt`.
+`data/common/FluidR3_License.txt`. The "Retro" loading pictures (Options → Amiga →
+Loading screen) are 8-bit style redraws of the port's own by **Banter** — thank you.

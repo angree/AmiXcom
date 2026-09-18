@@ -39,6 +39,7 @@ enum
 	AMIGA_ROW_MUSICQ,
 	AMIGA_ROW_VIDEO,
 	AMIGA_ROW_LANGAUTO,
+	AMIGA_ROW_SPLASH,
 	AMIGA_ROW_COUNT
 };
 
@@ -52,7 +53,8 @@ static const char *amigaRowLabel_[AMIGA_ROW_COUNT] =
 	"STR_AMIGA_MUSIC",
 	"STR_AMIGA_MUSIC_QUALITY",
 	"STR_AMIGA_VIDEO",
-	"STR_AMIGA_LANG_AUTO"
+	"STR_AMIGA_LANG_AUTO",
+	"STR_AMIGA_SPLASH"
 };
 
 static const char *amigaRowDesc_[AMIGA_ROW_COUNT] =
@@ -65,11 +67,12 @@ static const char *amigaRowDesc_[AMIGA_ROW_COUNT] =
 	"STR_AMIGA_MUSIC_DESC",
 	"STR_AMIGA_MUSIC_QUALITY_DESC",
 	"STR_AMIGA_VIDEO_DESC",
-	"STR_AMIGA_LANG_AUTO_DESC"
+	"STR_AMIGA_LANG_AUTO_DESC",
+	"STR_AMIGA_SPLASH_DESC"
 };
 
 /* how many values each row cycles through */
-static const int amigaRowVals_[AMIGA_ROW_COUNT] = { 2, 2, 3, 2, 2, 3, 2, 3, 2 };
+static const int amigaRowVals_[AMIGA_ROW_COUNT] = { 2, 2, 3, 2, 2, 3, 2, 3, 2, 2 };
 
 /* pre-rendered music always renders at high quality: the switch is dead */
 static bool amigaRowDisabled_(size_t row)
@@ -90,6 +93,7 @@ static int amigaRowGet_(size_t row)
 	case AMIGA_ROW_MUSICQ:    return Options::amigaMusicQuality ? 1 : 0;
 	case AMIGA_ROW_VIDEO:     return Options::amigaVideoMode;
 	case AMIGA_ROW_LANGAUTO:  return Options::amigaLangAuto ? 1 : 0;
+	case AMIGA_ROW_SPLASH:    return Options::amigaSplashStyle ? 1 : 0;
 	}
 	return 0;
 }
@@ -112,6 +116,9 @@ static void amigaRowSet_(size_t row, int v)
 	/* Takes effect at the next start, like the display standard: the
 	 * language is chosen while the game is loading its data. */
 	case AMIGA_ROW_LANGAUTO:  Options::amigaLangAuto = (v == 1); break;
+	/* Read by the splash, which only exists while the game loads: the
+	 * next start shows the other set. */
+	case AMIGA_ROW_SPLASH:    Options::amigaSplashStyle = v; break;
 	}
 }
 
@@ -130,6 +137,8 @@ static const char *amigaRowValue_(size_t row, int v)
 		     : (v == 1 ? "STR_AMIGA_MUSIC_LIVE" : "STR_AMIGA_MUSIC_OFF");
 	case AMIGA_ROW_MUSICQ:
 		return v == 1 ? "STR_AMIGA_QUALITY_HIGH" : "STR_AMIGA_QUALITY_LOW";
+	case AMIGA_ROW_SPLASH:
+		return v == 1 ? "STR_AMIGA_SPLASH_RETRO" : "STR_AMIGA_SPLASH_MODERN";
 	case AMIGA_ROW_VIDEO:
 		return v == 2 ? "STR_AMIGA_VIDEO_NTSC"
 		     : (v == 1 ? "STR_AMIGA_VIDEO_PAL" : "STR_AMIGA_VIDEO_AUTO");

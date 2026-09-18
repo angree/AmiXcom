@@ -128,6 +128,15 @@ static Uint32 run_line(char *line)
 		SDL_PushEvent(&ev);
 		return 0;
 	}
+	if (strcmp(cmd, "stall") == 0 && n >= 2) {
+		/* A deliberate hang of N seconds on the game task, inside the event
+		 * pump: the test for native/amiga_watchdog.c, whose report must then
+		 * name this function in its stack. */
+		SDLmini_Log("autoinput: stall - the game task sleeps now");
+		Delay((ULONG)atoi(arg1) * 50UL);
+		SDLmini_Log("autoinput: stall over");
+		return 0;
+	}
 	if (strcmp(cmd, "reboot") == 0) {
 		/* Cold reset from INSIDE the guest, so a test cycle never touches
 		 * WinUAE (restarting the emulator grabs the host mouse). The script

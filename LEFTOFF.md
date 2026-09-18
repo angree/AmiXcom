@@ -2,7 +2,7 @@
 
 Read this, then `CLAUDE.md` (rules), then the top entry of `PROGRESS.md` (proofs).
 
-## STAN: 0.9.11 WYDANE. Osiem wydan, wszystkie z pomiarem.
+## STAN: 0.9.12 WYDANE. Dziewiec wydan, wszystkie z pomiarem.
 
 https://github.com/angree/AmiXcom/releases - kod `3c4522c`.
 
@@ -46,6 +46,16 @@ https://github.com/angree/AmiXcom/releases - kod `3c4522c`.
        PiStormie - trzeba logow zglaszajacego. Otwarte: czerwone szesciany
        kubatury lazika (czeka na feedback autora), 640x480 na AGA (lowres,
        uciete, nikt nie zglosil).
+0.9.12 Straznik zawieszen (native/amiga_watchdog.c -> PROGDIR:hang.log, trapmap
+       go czyta) i zegar z ds_Days (o polnocy skakal o 49 dni). Powod: gra
+       stanela 17.09 o 00:06:54 na maszynie testowej; NIE odtworzone mimo
+       przejscia przez polnoc, tych samych klawiszy i 30 min obciazenia.
+       Jesli sie powtorzy: hang.log, `trapmap.py hang.log`.
+       Zgloszenie "dodanie marynarza zdejmuje tego wyzej" - to strzalki
+       zmiany kolejnosci (funkcja OpenXcom), nie blad; potwierdzone w grze.
+       HARNESS: WinUAE uruchomione przez run-oxc.ps1 przejmuje fokus
+       klawiatury - tekst pisany przez uzytkownika w innym oknie trafia do
+       gry. Work:run tylko z LF.
 
 ## CO ZOSTAWIONE NA MASZYNIE UZYTKOWNIKA (do uporzadkowania)
 

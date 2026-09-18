@@ -19,6 +19,7 @@
 #include "SDL.h"
 #include "sdlmini.h"
 #include "amiga_gfx.h"
+#include "amiga_watchdog.h"
 
 static SDL_Surface *s_screen;
 
@@ -425,6 +426,7 @@ int SDL_SetColors(SDL_Surface *surface, SDL_Color *colors, int firstcolor, int n
 void SDLmini_SplashFinish(void)
 {
 	AmigaSplash_End();
+	amiga_watchdog_start();   /* loading is over: from here a long silence is news */
 	if (s_screen != NULL && s_screen->format->palette != NULL) {
 		SDL_SetColors(s_screen, s_screen->format->palette->colors, 0,
 		              s_screen->format->palette->ncolors);

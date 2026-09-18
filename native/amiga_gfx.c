@@ -722,7 +722,11 @@ static ULONG raw_ticks(void)
 {
 	struct DateStamp ds;
 	DateStamp(&ds);
-	return (ULONG)ds.ds_Minute * 3000UL + (ULONG)ds.ds_Tick;
+	/* ds_Days too: without it the clock went back to zero at midnight and
+	 * SDL_GetTicks() jumped by 49 days (measured 2026-09-17, "100 frames in
+	 * 4208569376 ms"). The product overflows 32 bits long before today, but
+	 * only differences are ever used, and unsigned differences survive that. */
+	return (ULONG)ds.ds_Days * 4320000UL + (ULONG)ds.ds_Minute * 3000UL + (ULONG)ds.ds_Tick;
 }
 
 unsigned long amigagfx_millis(void)

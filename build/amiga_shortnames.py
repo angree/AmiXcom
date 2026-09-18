@@ -105,7 +105,18 @@ def main():
             new = stem + ext
             target = os.path.join(dirpath, new)
             if os.path.exists(target):
-                sys.exit("%s: %s already exists" % (f, new))
+                # A deploy that predates the shortening holds the old long
+                # file next to the freshly copied short one. Same bytes: the
+                # long one is a stale duplicate (and the engine would load the
+                # ruleset twice). Different bytes: a real clash - stop.
+                with open(os.path.join(dirpath, f), "rb") as a, open(target, "rb") as b:
+                    same = a.read() == b.read()
+                if not same:
+                    sys.exit("%s: %s already exists with different content" % (f, new))
+                os.remove(os.path.join(dirpath, f))
+                renamed += 1
+                print("  %-46s stale duplicate of %s, removed" % (f, new))
+                continue
             os.rename(os.path.join(dirpath, f), target)
             renamed += 1
             print("  %-46s -> %s" % (f, new))

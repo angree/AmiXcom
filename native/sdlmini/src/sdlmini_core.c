@@ -11,6 +11,7 @@
 #include "SDL.h"
 #include "sdlmini.h"
 #include "amiga_gfx.h"
+#include "amiga_watchdog.h"
 
 static Uint32 s_initialised;
 static char   s_error[256];
@@ -105,6 +106,7 @@ void SDL_QuitSubSystem(Uint32 flags)
 	/* Audio first: Paula is holding channels and audio.device requests, and
 	 * those are the ones the OS does not take back on its own. Closing the
 	 * screen first would leave them allocated for the rest of the session. */
+	amiga_watchdog_stop();    /* quitting takes time, and is not a hang */
 	if ((flags & SDL_INIT_AUDIO) && (s_initialised & SDL_INIT_AUDIO)) {
 		extern void Mix_CloseAudio(void);
 		Mix_CloseAudio();

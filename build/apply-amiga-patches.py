@@ -1675,11 +1675,11 @@ def main():
         '#define OPENXCOM_VERSION_LONG "1.0.0.0"\n'
         '#define OPENXCOM_VERSION_NUMBER 1,0,0,0\n',
         '#ifdef AMIGA_FPU_BUILD\n'
-        '#define OPENXCOM_VERSION_SHORT "0.9.11 FPU"\n'
+        '#define OPENXCOM_VERSION_SHORT "0.9.12 FPU"\n'
         '#else\n'
-        '#define OPENXCOM_VERSION_SHORT "0.9.11"\n'
+        '#define OPENXCOM_VERSION_SHORT "0.9.12"\n'
         '#endif\n'
-        '#define OPENXCOM_VERSION_LONG "0.9.11.0"\n'
+        '#define OPENXCOM_VERSION_LONG "0.9.12.0"\n'
         '#define OPENXCOM_VERSION_NUMBER 0,9,3,0\n'
         '#define OPENXCOM_VERSION_GIT ""\n',
         "port version")))
@@ -8735,6 +8735,49 @@ def main():
         "#endif\n"
         "\t\t_screen = SDL_SetVideoMode(width, height, _bpp, _flags);\n",
         "amiga video mode")))
+
+    # 6amW. Loading-screen style (Options -> Amiga). A player sent 8-bit
+    #       redraws of the six loading pictures; they ship as a second set
+    #       (data/common/splash/retro_N.spl, paired with modern_N.spl by scene,
+    #       build/prep_retro_intro.py) and the player picks one. Modern stays
+    #       the default. native/amiga_splash.c reads the choice from
+    #       AmigaSplash_Style, which must be set before the first
+    #       SDL_SetVideoMode - the splash opens with the screen - so it is set
+    #       where the display standard is (6amN). Takes effect at the next start.
+    results.append(("Options.inc.h (splash style)", edit(
+        os.path.join(src, "Engine", "Options.inc.h"),
+        "OPT bool amigaLangAuto; /* take the language from locale.library */\n",
+        "OPT bool amigaLangAuto; /* take the language from locale.library */\n"
+        "OPT int amigaSplashStyle; /* loading screen: 0 modern, 1 retro */\n",
+        "splash style var")))
+    results.append(("Options.cpp (splash style info)", edit(
+        os.path.join(src, "Engine", "Options.cpp"),
+        "\t_info.push_back(OptionInfo(\"amigaLangAuto\", &amigaLangAuto, true));\n",
+        "\t_info.push_back(OptionInfo(\"amigaLangAuto\", &amigaLangAuto, true));\n"
+        "\t_info.push_back(OptionInfo(\"amigaSplashStyle\", &amigaSplashStyle, 0));\n",
+        "splash style info")))
+    results.append(("en-US.yml (splash style strings)", edit(
+        os.path.join(src, "..", "bin", "common", "Language", "en-US.yml"),
+        # after the last line another patch added, so no one's block is split
+        "  STR_AMIGA_SPLIT_WALK_DESC: \"Spreads the visibility and lighting work of every step across the whole walk animation instead of freezing at each tile. Off = original behaviour.\"\n",
+        "  STR_AMIGA_SPLIT_WALK_DESC: \"Spreads the visibility and lighting work of every step across the whole walk animation instead of freezing at each tile. Off = original behaviour.\"\n"
+        "  STR_AMIGA_SPLASH: \"LOADING SCREEN\"\n"
+        "  STR_AMIGA_SPLASH_DESC: \"The pictures shown while the game loads. Modern are the port's own; Retro are 8-bit style redraws of the same scenes, by Banter. Takes effect at the next start.\"\n"
+        "  STR_AMIGA_SPLASH_MODERN: \"Modern\"\n"
+        "  STR_AMIGA_SPLASH_RETRO: \"Retro\"\n",
+        "splash style strings")))
+    results.append(("Screen.cpp (splash style extern)", edit(
+        os.path.join(src, "Engine", "Screen.cpp"),
+        "extern \"C\" int SDLmini_video_mode;   /* 0 auto, 1 PAL, 2 NTSC */\n",
+        "extern \"C\" int SDLmini_video_mode;   /* 0 auto, 1 PAL, 2 NTSC */\n"
+        "extern \"C\" int AmigaSplash_Style;    /* 0 modern, 1 retro (amiga_splash.c) */\n",
+        "splash style extern")))
+    results.append(("Screen.cpp (splash style)", edit(
+        os.path.join(src, "Engine", "Screen.cpp"),
+        "\t\tSDLmini_video_mode = Options::amigaVideoMode;\n",
+        "\t\tSDLmini_video_mode = Options::amigaVideoMode;\n"
+        "\t\tAmigaSplash_Style = Options::amigaSplashStyle;\n",
+        "splash style before the first screen")))
 
     # 6amK. Play the tunes (0.9.0). Upstream turns a GM.CAT entry into a MIDI
     #       file for SDL_mixer; there is no MIDI device here, so the raw stream

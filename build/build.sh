@@ -84,8 +84,11 @@ fi
 log "mirroring native/ into the Linux filesystem"
 mkdir -p "$NATIVE"
 cp -r "$REPO/native/." "$NATIVE/"
-# splash backgrounds/logo embedded in the binary (build/gen_splash.py)
-python3 "$REPO/build/gen_splash.py" "$REPO/intro" "$NATIVE/amiga_splash_data.c"
+# splash: the logo is embedded in the binary, the backgrounds (two styles,
+# modern and retro) are data files the game reads one at a time
+# (build/gen_splash.py)
+python3 "$REPO/build/gen_splash.py" "$REPO/intro" "$NATIVE/amiga_splash_data.c" \
+	"$DEPLOY/data/common/splash"
 
 # AMIGA_NO_PATCH=1 skips the patch step and the yaml restore. The tree is
 # already patched; re-running the patcher on it fails (some patches consume
@@ -242,13 +245,15 @@ done
 # Kickstart 3.1 (Guru 8000000B on the first float division - see PROGRESS.md
 # and the header of fp_single.c). Linking these objects ahead of -lm binds
 # the symbols here; libm's stub members are never pulled in.
+# amiga_watchdog.c: a process that writes the game task's stack to
+# PROGDIR:hang.log when no frame has come for 30 s (trapmap.py reads it).
 # amiga_trap.c: task-level CPU exception handler; a Guru becomes a log line
 # with the faulting PC (armed in main.cpp by the patch script).
 # libnix_fixes.c: libc routines libnix gets wrong (wmemcpy copies half of a
 # wide string; that garbled every std::wstring in the game).
 for f in amiga_gfx.c amiga_audio.c amiga_adpcm.c amiga_startup.c amiga_stack.c \
          fp_conv.c fp_single.c fp_double.c amiga_trap.c amiga_locale.c libnix_fixes.c amiga_splash.c amiga_splash_data.c amiga_uclock.c \
-         amiga_music.c; do
+         amiga_music.c amiga_watchdog.c; do
 	NATIVE_OBJS="$NATIVE_OBJS $(compile_c "$NATIVE" "$f")"
 done
 
