@@ -4,7 +4,7 @@ Read this, then `CLAUDE.md` (rules), then the top entry of `PROGRESS.md` (proofs
 
 ## STAN: 0.9.14 WYDANE. Dziesiec wydan, wszystkie z pomiarem.
 
-https://github.com/angree/AmiXcom/releases - kod `3c4522c`.
+https://github.com/angree/AmiXcom/releases - kod `f562103`.
 
 0.9.4  gcc przepisal nasze `floorf`/`sqrtf`/`ceilf` na wywolania samych siebie
        (`(float)floor((double)x)` to tozsamosc zawezajaca, ktora zna). Kazda
