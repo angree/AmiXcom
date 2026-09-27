@@ -2,6 +2,120 @@
 
 Newest first. Facts and measurements only; plans live in `PORT_RESEARCH.md`.
 
+## 2026-09-26 - 0.9.13 i 0.9.14: dlaczego cisza, AdLib, konfigurator
+
+### 0.9.13 - gra mowi, czemu nie ma muzyki (WYDANE? NIE - zbudowane i sprawdzone)
+
+ZGLOSZENIE: "nie ma muzy i nie konwertuje mu jej". Nie bylo z czego wnioskowac:
+gdy utworow brak, `amigaPrerenderMusic()` wychodzi po cichu na `todo == 0`.
+Muzyka ma cztery sposoby zejscia do zera i gracz widzi tylko ostatni.
+
+6amX: powod ustalany zaraz po zbudowaniu mapy plikow (poczatek `Mod::loadAll`,
+czyli minuty przed menu) i wypisywany NA PLANSZY LADOWANIA na 10 sekund, z
+linia do zacytowania w zgloszeniu. Kolejnosc rozstrzygania: `Options::mute` ->
+brak GM.CAT i ADLIB.CAT -> muzyka wylaczona -> brak `music.bnk` -> glosnosc 0.
+Gdy wszystko gra - cisza, zadnego komunikatu.
+
+`AmigaSplash_Note()` (native/amiga_splash.c) rysuje tekst czcionka systemowa
+do NASZEGO bufora (jednoplanowy RastPort czytany bit po bicie), a nie na ekran:
+dziala tak samo na AGA, RTG i w oknie Workbencha, a wiersze pod spodem wracaja
+z kopii, ktora splash i tak trzyma. Znika po 10 s albo razem z plansza.
+
+ZMIERZONE: schowany GM.CAT -> "NO MUSIC: SOUND/GM.CAT not found" + linia
+`cat=NO bank=yes done=32 m=2 v=128`; po 10 s obraz wraca bez sladu; z GM.CAT na
+miejscu `cat=yes` i zadnego komunikatu.
+
+### 0.9.14 - AdLib jako drugie zrodlo muzyki
+
+Nic do dociagania: kazdy utwor w ADLIB.CAT NIESIE SWOJE BARWY
+(`adlplayer.cpp: adl_gv_samples_addr = music_ptr+1`), a emulator YM3812
+(`Engine/Adlib/fmopl.cpp`, LGPL) jest w drzewie od upstreamu. Zadnego banku
+brzmien, zadnej licencji do sprawdzania.
+
+TRZY BLEDY PO DRODZE, WSZYSTKIE ZMIERZONE:
+
+1. CISZA. Render szedl do konca i dawal same zera. Na hoscie ten sam utwor i
+   ten sam kod GRAL (szczyt 65536). Sonda w renderze: `poly=0 peakA=0` na
+   kazdym ticku - odtwarzacz nie zagral ani jednej nuty. Przyczyna:
+   `to_add = *((unsigned short*)music_ptr)` w `init_music_data` - surowy
+   odczyt 16-bitowej dlugosci z danych PC. Na 68k bajty sa odwrotnie, wiec
+   wskazniki na podutwory i instrumenty lecialy w kosmos. BLAD UPSTREAMU,
+   niewidoczny na PC. Poprawka 6amZ: `p[0] | (p[1] << 8)`.
+2. WOLNO. 0,74x czasu rzeczywistego. `outd[0] *= volume` w `YM3812UpdateOne`
+   to mnozenie zmiennoprzecinkowe NA KAZDA PROBKE, a my liczymy programowo.
+   Pominiete przy glosnosci 1.0 -> 1,34x, czyli 81% szybciej za jedno
+   porownanie.
+3. 320 MB. Utwory AdLiba zapetlaja sie w nieskonczonosc -
+   `func_is_music_playing()` nigdy nie klamie, wiec render szedl do limitu
+   osmiu minut. Odtwarzacz wie jednak, gdzie jest: kazdy glos trzyma
+   `cur_address` wzgledem `start_address`. 6amZb eksportuje te pozycje jako
+   jedna liczbe i render konczy sie na pierwszym powtorzeniu. Zmierzone na
+   hoscie dla wszystkich 22 sciezek: 15-200 s kazda, RAZEM 36 MB - tyle samo,
+   co wersja z sampli.
+
+POZIOM: suma obu ukladow siega 65536, wiec >>10 (RMS 22 z 127) - tyle samo, co
+nasze sample (RMS 17-35), bez obcinania. Przy >>9 obcinalo 6,9% probek.
+
+CZAS KONWERSJI na maszynie referencyjnej (040/40, bez JIT, -70%): 1,34x czasu
+rzeczywistego, czyli ~20 min na caly zestaw; na prawdziwym 040/40 ~7 min.
+
+### 0.9.14 - plansze retro domyslnie
+
+`amigaSplashStyle` domyslnie 1, a migracja configu do wersji 3 wymusza retro
+RAZ na przenoszonym options.cfg (i przy okazji wskaznik systemowy,
+`amigaCursor = 1`). Co gracz ustawi pozniej, zostaje jego. Zmierzone: plik z
+`amigaSplashStyle: 0` i `amigaCfgVersion: 2` -> po starcie plansza retro.
+
+### 0.9.14 - napisy w konfiguratorze czytelne pod kazda paleta
+
+ZGLOSZENIE (autor): zielony stan muzyki zlewal sie z szarym tlem Workbencha.
+GadTools TEXT_KIND umie tylko wybrac kolor tekstu, wiec przy przestawionej
+palecie kazdy pojedynczy kolor moze zniknac. Cztery wiersze opisu i podpisy
+opcji przestaly wiec byc gadzetami TEXT_KIND: rysujemy je sami, dwa razy -
+CZARNY CIEN o piksel nizej i w prawo, na nim JASNY napis. Ktorykolwiek z tych
+dwoch kolorow odcina sie od tla, napis da sie przeczytac.
+
+Stan muzyki dostal mocna zielen (0x00CC11) albo czerwien (0xFF3322) - z czarnym
+obrysem widac go z drugiego konca pokoju. Pierwsze podejscie mialo to odwrotnie
+(jasny cien, ciemny napis) i autor slusznie je odrzucil.
+
+Napisy sa nasze, wiec Intuition ich nie odtworzy: rysowane po GT_RefreshWindow
+i po kazdym IDCMP_REFRESHWINDOW, a przy zmianie tekstu czyszczone prostokatem
+w kolorze tla (inaczej krotszy tekst zostawia ogon).
+
+ZMIERZONE na 640x512: "Converted music: 32 tunes." zielono, po schowaniu
+user/music "Converted music: NONE..." czerwono, oba z cieniem.
+
+PRZY OKAZJI, ten sam plik: "Delete music" szukal jeszcze muzyka/#?.wav z portu
+Master of Magic, a ta gra trzyma user/music/#?.raw - przycisk nie znajdowal
+NICZEGO do skasowania. Po poprawce TESTDELETE liczy 32 pliki (i nic nie kasuje).
+
+SPRAWDZONY TEZ ZAPIS Z OKNA (byl niesprawdzony): TESTSAVE konczy okno tak, jak
+przycisk Save - options.cfg przepisany, bajt w bajt taki sam, bo wartosci sie
+nie zmienily.
+
+### 0.9.14 - AmiXcomPrefs (native/amixcom-prefs.c)
+
+Skopiowany z portu Master of Magic (`Ami_ReMoM/native/remom/remom-prefs.c`) i
+dopasowany: okno GadTools + linia polecen, ale pisze do PLIKU GRY
+(`PROGDIR:user/options.cfg`) - linia po linii, podmieniajac tylko swoje klucze,
+reszta przepisywana bez zmian, brakujace dopisywane pod `options:`.
+
+Jeden wiersz "Music:" ustawia DWA klucze naraz (zrodlo + tryb): Off, Samples
+live, AdLib live, Samples converted, AdLib converted. "Convert music" jest
+wyszarzone poza trybami converted. Konwersja uruchamia gre z
+`-amigaConvertOnly 1` (6bmA) - nazwy utworow sa w rulesetach, wiec tylko gra
+wie, co konwertowac; drugi parser rulesetow byloby szalenstwem.
+`user/music/source.txt` (6bmB) mowi, z czego powstaly pliki, i konfigurator to
+pokazuje.
+
+WPADKI: bez `-noixemul` argumenty przychodzily jako `(null)` (inny startup niz
+libnix). `amigaCursor` to w grze `OPT int`, nie bool - zapisane `true` gra
+odrzuca i bierze domyslna. I moja wlasna: options.cfg gracza mial BOM i CRLF,
+bo edytowalem go PowerShellem (`Set-Content -Encoding utf8`) - gra to znosi,
+konfigurator nie. Plik naprawiony, konfigurator BOM-oodporny, a options.cfg
+NIGDY wiecej PowerShellem.
+
 ## 2026-09-18 - 0.9.12 (cd.): styl ekranu ładowania, obrazy poza binarką
 
 RETRO. Gracz przysłał 8-bitowe przeróbki sześciu obrazów ładowania (NEWGFX/,

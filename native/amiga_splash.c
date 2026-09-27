@@ -26,6 +26,8 @@
 #include <string.h>
 
 #include <proto/graphics.h>
+#include <graphics/gfxbase.h>
+#include <graphics/rastport.h>
 
 #include "amiga_gfx.h"
 
@@ -65,6 +67,130 @@ static int s_bar2 = -1;
 int AmigaSplash_Active(void)
 {
 	return s_active;
+}
+
+/* ------------------------------------------------------------ the note -- */
+
+/* A short message ON the loading picture - the only place the port can talk
+ * to the player before the game's own text exists. It is used when the music
+ * cannot work (no GM.CAT, no instrument bank, nothing to convert): that used
+ * to be a silent nothing, and "no music" is impossible to report without it.
+ *
+ * Drawn with the system font into OUR chunky buffer (a one-plane RastPort,
+ * read back bit by bit) rather than onto the screen, so it works the same on
+ * AGA, RTG and the Workbench window, and so the rows underneath can be put
+ * back from the copy the splash already keeps.
+ *
+ * It clears itself after NOTE_MS, or when the splash ends - whichever comes
+ * first, which on a fast machine is the end of loading. */
+#define NOTE_MS        10000
+#define NOTE_MAXLINES  8
+#define NOTE_PAD       3
+#define NOTE_PEN       229          /* the amber of the second bar */
+
+static int   s_note_y0, s_note_y1;   /* rows the note covers; y1 = 0: none */
+static unsigned long s_note_until;
+static unsigned char *s_note_save;   /* what was under it */
+
+static void copy_to_chunky(int y0, int y1);
+void AmigaSplash_NoteClear(void);
+
+static void note_line(const char *s, int len, int y, int pen)
+{
+	struct BitMap bm;
+	struct RastPort rp;
+	PLANEPTR plane;
+	int bpr, x, row, th;
+
+	if (len <= 0) return;
+	plane = AllocRaster(SPLASH_W, 8);
+	if (plane == NULL) return;
+	InitBitMap(&bm, 1, SPLASH_W, 8);
+	bm.Planes[0] = plane;
+	InitRastPort(&rp);
+	rp.BitMap = &bm;
+	SetFont(&rp, GfxBase->DefaultFont);
+	SetRast(&rp, 0);
+	SetAPen(&rp, 1);
+	SetDrMd(&rp, JAM1);
+	th = rp.TxBaseline;
+	if (th > 7) th = 7;
+	Move(&rp, NOTE_PAD, th);
+	Text(&rp, (CONST_STRPTR)s, (ULONG)len);
+
+	bpr = ((SPLASH_W + 15) / 16) * 2;
+	for (row = 0; row < 8 && y + row < SPLASH_H; row++) {
+		const unsigned char *src = (const unsigned char *)plane + (long)row * bpr;
+		unsigned char *dst = s_image + (long)(y + row) * SPLASH_W;
+		for (x = 0; x < SPLASH_W; x++)
+			if (src[x >> 3] & (0x80 >> (x & 7))) dst[x] = (unsigned char)pen;
+	}
+	FreeRaster(plane, SPLASH_W, 8);
+}
+
+/* text: lines separated by '\n'. Replaces any note already up. */
+void AmigaSplash_Note(const char *text)
+{
+	const char *p = text;
+	int nlines = 0, y, i;
+	long rows;
+
+	if (!s_active || s_image == NULL || text == NULL) return;
+	AmigaSplash_NoteClear();
+
+	for (p = text; *p; p++) if (*p == '\n') nlines++;
+	nlines++;
+	if (nlines > NOTE_MAXLINES) nlines = NOTE_MAXLINES;
+
+	s_note_y0 = 8;
+	s_note_y1 = s_note_y0 + nlines * 8 + 2 * NOTE_PAD;
+	if (s_note_y1 > BAND_Y) s_note_y1 = BAND_Y;
+	rows = (long)(s_note_y1 - s_note_y0) * SPLASH_W;
+	s_note_save = (unsigned char *)malloc((size_t)rows);
+	if (s_note_save == NULL) { s_note_y1 = 0; return; }
+	memcpy(s_note_save, s_image + (long)s_note_y0 * SPLASH_W, (size_t)rows);
+
+	/* a black band behind it: the pictures are busy and text over them is
+	 * unreadable exactly when it matters */
+	memset(s_image + (long)s_note_y0 * SPLASH_W, IDX_BLACK, (size_t)rows);
+
+	p = text;
+	y = s_note_y0 + NOTE_PAD;
+	for (i = 0; i < nlines; i++) {
+		const char *nl = strchr(p, '\n');
+		int len = nl ? (int)(nl - p) : (int)strlen(p);
+		note_line(p, len, y, NOTE_PEN);
+		y += 8;
+		if (!nl) break;
+		p = nl + 1;
+	}
+
+	copy_to_chunky(s_note_y0, s_note_y1);
+	amigagfx_blit(0, s_note_y0, SPLASH_W, s_note_y1 - s_note_y0);
+	s_note_until = amigagfx_millis() + NOTE_MS;
+}
+
+/* Put the picture back. Called on the timer, and when the splash ends. */
+void AmigaSplash_NoteClear(void)
+{
+	if (s_note_y1 == 0) return;
+	if (s_note_save != NULL && s_image != NULL) {
+		memcpy(s_image + (long)s_note_y0 * SPLASH_W, s_note_save,
+		       (size_t)(s_note_y1 - s_note_y0) * SPLASH_W);
+		if (s_active) {
+			copy_to_chunky(s_note_y0, s_note_y1);
+			amigagfx_blit(0, s_note_y0, SPLASH_W, s_note_y1 - s_note_y0);
+		}
+	}
+	free(s_note_save);
+	s_note_save = NULL;
+	s_note_y1 = 0;
+}
+
+static void note_tick(void)
+{
+	if (s_note_y1 == 0) return;
+	if ((long)(amigagfx_millis() - s_note_until) >= 0) AmigaSplash_NoteClear();
 }
 
 static void set_scaled_palette(int num, int den)
@@ -182,6 +308,7 @@ void AmigaSplash_Progress(int percent)
 {
 	int y, fillw;
 	if (!s_active || s_image == NULL) return;
+	note_tick();               /* the message has its ten seconds */
 	if (percent < 0) percent = 0;
 	if (percent > 100) percent = 100;
 	if (percent <= s_percent) return;
@@ -213,6 +340,7 @@ void AmigaSplash_Progress2(int percent)
 {
 	int y, fillw;
 	if (!s_active || s_image == NULL) return;
+	note_tick();
 	if (percent < 0) percent = 0;
 	if (percent > 100) percent = 100;
 	if (percent == s_bar2) return;
@@ -243,6 +371,7 @@ void AmigaSplash_End(void)
 {
 	int i;
 	if (!s_active) return;
+	AmigaSplash_NoteClear();   /* loading is over: the message goes with it */
 	AmigaSplash_Progress(100);
 	for (i = 11; i >= 0; i--) {
 		WaitTOF();

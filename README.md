@@ -10,7 +10,7 @@ for **real classic hardware**: 68020+ without FPU, AGA chipset. Not PiStorm-, Va
 or Emu68-only. No SDL: the SDL 1.2 API the game expects is a small shim
 (`native/sdlmini/`) on top of a bare-metal Amiga graphics/audio layer.
 
-## Status: 0.9.12 — alpha
+## Status: 0.9.14 — alpha
 
 The whole game runs on the Amiga: main menu, Geoscape, bases, Battlescape, and both
 rulesets (UFO and TFTD). It has been tested for hours, not played to the end, so expect
@@ -23,6 +23,19 @@ itself never leaves your own data. It needs about **36 MB of free disk**, becaus
 default every tune is mixed to disk once at first start and simply played back after
 that. Mixing live while you play is an option too (*Options → Amiga*), but on a slow
 machine it costs a quarter of an 030/50 and breaks up whenever the game stops drawing.
+
+Since 0.9.14 the music can also come from your `ADLIB.CAT` instead: the game's own AdLib
+scores played through the YM3812 emulator that OpenXcom already carries, converted to
+disk the same way (also about 36 MB). Nothing extra is needed - every AdLib tune carries
+its own instruments. If there is no music, the loading screen now says why for ten
+seconds, with a line to quote in a bug report.
+
+**AmiXcomPrefs** (0.9.14), next to the game, sets what has to be decided before the
+game starts: music (off / samples or AdLib, live or converted), mixing quality, loading
+screen, display standard, title bar, pointer and language. It can convert or delete the
+music and shows in green or red whether converted music is on disk and what it was made
+from. It edits the game's own `user/options.cfg` and leaves every other line alone.
+From a Shell: `AmiXcomPrefs SHOW`, `AmiXcomPrefs MUSIC=AdLibconverted`, `AmiXcomPrefs ?`.
 
 Speed, compared to the first version that ran at all: startup about 2.7x faster,
 Geoscape ~50 fps, Battlescape idle ~35 fps on an 040/40, unit step 6 s to 0.3 s, alien
@@ -141,5 +154,6 @@ included or distributed here — including the music, which is rendered on your 
 machine from your own `GM.CAT`. The c2p routines are Mikael Kalms'; the graphics/audio
 platform layer comes from the author's OpenTTD Amiga port (MIT). The instrument samples
 in `data/common/music.bnk` come from Frank Wen's FluidR3 soundfont, MIT licensed — see
-`data/common/FluidR3_License.txt`. The "Retro" loading pictures (Options → Amiga →
-Loading screen) are 8-bit style redraws of the port's own by **Banter** — thank you.
+`data/common/FluidR3_License.txt`. The "Retro" loading pictures (the default since
+0.9.14; Options → Amiga → Loading screen) are 8-bit style redraws of the port's own by
+**Banter** — thank you.

@@ -1675,11 +1675,11 @@ def main():
         '#define OPENXCOM_VERSION_LONG "1.0.0.0"\n'
         '#define OPENXCOM_VERSION_NUMBER 1,0,0,0\n',
         '#ifdef AMIGA_FPU_BUILD\n'
-        '#define OPENXCOM_VERSION_SHORT "0.9.12 FPU"\n'
+        '#define OPENXCOM_VERSION_SHORT "0.9.14 FPU"\n'
         '#else\n'
-        '#define OPENXCOM_VERSION_SHORT "0.9.12"\n'
+        '#define OPENXCOM_VERSION_SHORT "0.9.14"\n'
         '#endif\n'
-        '#define OPENXCOM_VERSION_LONG "0.9.12.0"\n'
+        '#define OPENXCOM_VERSION_LONG "0.9.14.0"\n'
         '#define OPENXCOM_VERSION_NUMBER 0,9,3,0\n'
         '#define OPENXCOM_VERSION_GIT ""\n',
         "port version")))
@@ -4821,7 +4821,7 @@ def main():
         "\t\t}\n"
         "#ifdef __AMIGA__\n"
         "\t\t{\n"
-        "\t\t\tconst int AMIGA_CFG_VERSION = 2;\n"
+        "\t\t\tconst int AMIGA_CFG_VERSION = 3;\n"
         "\t\t\tif (amigaCfgVersion < 1)\n"
         "\t\t\t{\n"
         "\t\t\t\t/* 0.6.0: on this machine a bullet step and a scroll step each cost\n"
@@ -4836,6 +4836,16 @@ def main():
         "\t\t\t\t * carried options.cfg - the alien turn then flips straight into hidden\n"
         "\t\t\t\t * movement with no click. Force it on once. */\n"
         "\t\t\t\tskipNextTurnScreen = false;\n"
+        "\t\t\t}\n"
+        "\t\t\tif (amigaCfgVersion < 3)\n"
+        "\t\t\t{\n"
+        "\t\t\t\t/* 0.9.14: the retro loading pictures become the default. A\n"
+        "\t\t\t\t * carried options.cfg gets them once; whatever the player\n"
+        "\t\t\t\t * picks after that is theirs and is never touched again. */\n"
+        "\t\t\t\tamigaSplashStyle = 1;\n"
+        "\t\t\t\t/* and the Amiga pointer: hardware-drawn, smooth at 50 Hz,\n"
+        "\t\t\t\t * which is what an Amiga player expects to see. */\n"
+        "\t\t\t\tamigaCursor = 1;\n"
         "\t\t\t}\n"
         "\t\t\tAmigaPerfLog = amigaPerfLog;\n"
         "\t\t\tif (amigaCfgVersion < AMIGA_CFG_VERSION)\n"
@@ -8306,8 +8316,8 @@ def main():
         "  STR_AMIGA_MUSIC_PRE: \"Pre-rendered\"\n"
         "  STR_AMIGA_MUSIC_QUALITY: \"MUSIC QUALITY\"\n"
         "  STR_AMIGA_MUSIC_QUALITY_DESC: \"High interpolates between sample points: cleaner treble, about twice the mixing cost. The default follows your processor (High on 040/060, Low on 020/030). Ignored when music is pre-rendered, which always renders at high quality.\"\n"
-        "  STR_AMIGA_QUALITY_LOW: \"Low\"\n"
-        "  STR_AMIGA_QUALITY_HIGH: \"High\"\n"
+        "  STR_AMIGA_QUALITY_LOW: \"22 kHz plain\"\n"
+        "  STR_AMIGA_QUALITY_HIGH: \"22 kHz smooth\"\n"
         "  STR_AMIGA_VIDEO: \"DISPLAY STANDARD\"\n"
         "  STR_AMIGA_VIDEO_DESC: \"Which screen the game opens. Auto follows the machine, which is right on almost every Amiga; force PAL or NTSC if your monitor or flicker fixer disagrees with it. Takes effect when you leave this screen. Paula's sample clock follows the same setting.\"\n"
         "  STR_AMIGA_VIDEO_AUTO: \"Auto\"\n"
@@ -8754,7 +8764,7 @@ def main():
         os.path.join(src, "Engine", "Options.cpp"),
         "\t_info.push_back(OptionInfo(\"amigaLangAuto\", &amigaLangAuto, true));\n",
         "\t_info.push_back(OptionInfo(\"amigaLangAuto\", &amigaLangAuto, true));\n"
-        "\t_info.push_back(OptionInfo(\"amigaSplashStyle\", &amigaSplashStyle, 0));\n",
+        "\t_info.push_back(OptionInfo(\"amigaSplashStyle\", &amigaSplashStyle, 1));\n",
         "splash style info")))
     results.append(("en-US.yml (splash style strings)", edit(
         os.path.join(src, "..", "bin", "common", "Language", "en-US.yml"),
@@ -9122,6 +9132,455 @@ def main():
     #    game is switched to the stdio-backed replacements, which behave the
     #    same way from the caller's point of view.
     swapped = []
+    # 6amY. Music from the AdLib card (0.9.14). Until now the port played
+    #       only GM.CAT through its own wavetable mixer; X-COM also ships
+    #       ADLIB.CAT, which is what a real 1994 Amiga owner never had and a
+    #       PC owner did. Nothing extra is needed for it: every ADLIB.CAT
+    #       track carries its own OPL2 timbres (adlplayer.cpp:
+    #       adl_gv_samples_addr = music_ptr+1), and the YM3812 emulator
+    #       (Engine/Adlib/fmopl.cpp, LGPL) already ships with OpenXcom. So no
+    #       instrument bank, no soundfont, nothing to download.
+    #
+    #       Rendered to the same user/music/<NAME>.raw as the sampled tunes
+    #       (8-bit signed mono, 22050 Hz) - live OPL emulation would not keep
+    #       up on an 020, and rendering costs nothing at play time. The tick
+    #       rate is the card's own 70 Hz: 314 samples per tick at 22050.
+    results.append(("Options.inc.h (music source)", edit(
+        os.path.join(src, "Engine", "Options.inc.h"),
+        "OPT int amigaSplashStyle; /* loading screen: 0 modern, 1 retro */\n",
+        "OPT int amigaSplashStyle; /* loading screen: 0 modern, 1 retro */\n"
+        "OPT int amigaMusicSource; /* 0 GM.CAT samples, 1 ADLIB.CAT (OPL2) */\n",
+        "music source var")))
+    results.append(("Options.cpp (music source info)", edit(
+        os.path.join(src, "Engine", "Options.cpp"),
+        "\t_info.push_back(OptionInfo(\"amigaSplashStyle\", &amigaSplashStyle, 1));\n",
+        "\t_info.push_back(OptionInfo(\"amigaSplashStyle\", &amigaSplashStyle, 1));\n"
+        "\t_info.push_back(OptionInfo(\"amigaMusicSource\", &amigaMusicSource, 0));\n",
+        "music source info")))
+    results.append(("en-US.yml (music source strings)", edit(
+        os.path.join(src, "..", "bin", "common", "Language", "en-US.yml"),
+        "  STR_AMIGA_SPLASH_RETRO: \"Retro\"\n",
+        "  STR_AMIGA_SPLASH_RETRO: \"Retro\"\n"
+        "  STR_AMIGA_MUSIC_SRC: \"MUSIC SOURCE\"\n"
+        "  STR_AMIGA_MUSIC_SRC_DESC: \"Which of your X-COM music files to use. Samples plays SOUND/GM.CAT through this port's own mixer; AdLib plays SOUND/ADLIB.CAT through an emulated AdLib card, which is the FM sound a PC made in 1994. Both are converted to disk once. Takes effect at the next start; delete user/music to convert again.\"\n"
+        "  STR_AMIGA_MUSIC_SRC_SAMPLES: \"Samples (GM.CAT)\"\n"
+        "  STR_AMIGA_MUSIC_SRC_ADLIB: \"AdLib (ADLIB.CAT)\"\n",
+        "music source strings")))
+    # the format choice, with the other one as the fallback when a CAT is missing
+    results.append(("Mod.cpp (music source order)", edit(
+        os.path.join(src, "Mod", "Mod.cpp"),
+        "\t\tMusicFormat priority[] = { MUSIC_MIDI };\n",
+        "\t\t/* 6amY: the player's choice first, the other one as a fallback -\n"
+        "\t\t * a machine with only one of the two CATs still gets music. */\n"
+        "\t\tMusicFormat priority[2] = { MUSIC_MIDI, MUSIC_ADLIB };\n"
+        "\t\tif (Options::amigaMusicSource == 1)\n"
+        "\t\t{ priority[0] = MUSIC_ADLIB; priority[1] = MUSIC_MIDI; }\n",
+        "music source order")))
+    results.append(("Mod.cpp (adlib bit depth)", edit(
+        os.path.join(src, "Mod", "Mod.cpp"),
+        "\t\t\tif (adlibcat && Options::audioBitDepth == 16)\n",
+        "#ifdef __AMIGA__\n"
+        "\t\t\t/* the port renders the OPL output itself; the mixer's bit\n"
+        "\t\t\t * depth has nothing to say about it */\n"
+        "\t\t\tif (adlibcat)\n"
+        "#else\n"
+        "\t\t\tif (adlibcat && Options::audioBitDepth == 16)\n"
+        "#endif\n",
+        "adlib bit depth")))
+    # Music: let a subclass see where its rendered stream went
+    # One float multiply per sample, on a machine that has no FPU: measured
+    # on the reference 040/40, removing it at volume 1.0 took the render from
+    # 0.74x to 1.34x real time - an 81% speedup for one comparison.
+    results.append(("fmopl.cpp (no float multiply at 1.0)", edit(
+        os.path.join(src, "Engine", "Adlib", "fmopl.cpp"),
+        "\t\toutd[0] *= volume;\n",
+        "\t\tif (volume != 1.0f) outd[0] *= volume;   /* AMIGA-PORT: soft-float; the render asks for 1.0 */\n",
+        "fmopl float multiply")))
+    results.append(("Music.h (rendered path getter)", edit(
+        os.path.join(src, "Engine", "Music.h"),
+        "\tvoid amigaSetRenderPath(const std::string &path) { _amigaPath = path; }\n",
+        "\tvoid amigaSetRenderPath(const std::string &path) { _amigaPath = path; }\n"
+        "\tconst std::string &amigaRenderPath() const { return _amigaPath; }\n",
+        "rendered path getter")))
+    results.append(("AdlibMusic.h (render decl)", edit(
+        os.path.join(src, "Engine", "AdlibMusic.h"),
+        "\tvoid play(int loop = -1) const;\n",
+        "\tvoid play(int loop = -1) const;\n"
+        "#ifdef __AMIGA__\n"
+        "\t/// Mixes this track to a file the port can stream (0.9.14).\n"
+        "\tbool amigaRender(const std::string &path,\n"
+        "\t\tvoid (*prog)(unsigned long done, unsigned long total)) const;\n"
+        "#endif\n",
+        "adlib render decl")))
+    results.append(("AdlibMusic.cpp (render body)", edit(
+        os.path.join(src, "Engine", "AdlibMusic.cpp"),
+        "void AdlibMusic::play(int) const\n{\n",
+        "#ifdef __AMIGA__\n"
+        "extern \"C\" {\n"
+        "void SDLmini_Log(const char *msg);\n"
+        "int AmigaMusic_PlayFile(const char *path, int loop);\n"
+        "}\n"
+        "\n"
+        "/**\n"
+        " * The card, mixed to disk once. 70 Hz ticks (the AdLib rate), 314\n"
+        " * samples each at 22050 Hz, two chips summed to mono because this port\n"
+        " * plays one Paula channel pair and the second chip is Volutar's extra\n"
+        " * polyphony, not a second speaker. 8-bit signed, like every other\n"
+        " * rendered tune here.\n"
+        " */\n"
+        "bool AdlibMusic::amigaRender(const std::string &path,\n"
+        "\tvoid (*prog)(unsigned long done, unsigned long total)) const\n"
+        "{\n"
+        "\tconst int PER_TICK = 314;                 /* 22050 / 70.2 */\n"
+        "\tconst unsigned long CAP = 8UL * 60UL * 22050UL;\n"
+        "\tINT16 a[314], b[314];\n"
+        "\tsigned char out[314];\n"
+        "\tunsigned long done = 0;\n"
+        "\tunsigned long pos0 = 0;\n"
+        "\tint first = 1;\n"
+        "\tFILE *f;\n"
+        "\tif (_data == 0 || _size == 0 || opl[0] == 0 || opl[1] == 0) return false;\n"
+        "\tf = fopen(path.c_str(), \"wb\");\n"
+        "\tif (f == 0) return false;\n"
+        "\tfunc_setup_music((unsigned char*)_data, _size);\n"
+        "\tfunc_set_music_volume(127);\n"
+        "\twhile (func_is_music_playing() && done < CAP)\n"
+        "\t{\n"
+        "\t\tint k;\n"
+        "\t\tfunc_play_tick();\n"
+        "\t\tYM3812UpdateOne(opl[0], a, PER_TICK, 1, 1.0f);\n"
+        "\t\tYM3812UpdateOne(opl[1], b, PER_TICK, 1, 1.0f);\n"
+        "\t\tfor (k = 0; k < PER_TICK; ++k)\n"
+        "\t\t{\n"
+        "\t\t\t/* both chips reach full scale (measured: peak 32768 each), so\n"
+        "\t\t\t * the sum needs 10 bits: that lands on RMS 22 of 127, the level of the sampled tunes */\n"
+        "\t\t\tint v = ((int)a[k] + (int)b[k]) >> 10;\n"
+        "\t\t\tif (v > 127) v = 127; else if (v < -128) v = -128;\n"
+        "\t\t\tout[k] = (signed char)v;\n"
+        "\t\t}\n"
+        "\t\tif (fwrite(out, 1, PER_TICK, f) != (size_t)PER_TICK) { fclose(f); return false; }\n"
+        "\t\tdone += PER_TICK;\n"
+        "\t\tif (prog) prog(done, CAP);\n"
+        "\t\t/* the score loops for ever; one pass is all that goes to disk\n"
+        "\t\t * (measured: 15 s to 200 s per tune, 36 MB for the set) */\n"
+        "\t\t{\n"
+        "\t\t\tunsigned long pos = func_amiga_position();\n"
+        "\t\t\tif (first) { pos0 = pos; first = 0; }\n"
+        "\t\t\telse if (done > 5UL * 22050UL && pos == pos0) break;\n"
+        "\t\t}\n"
+        "\t}\n"
+        "\tfunc_mute();\n"
+        "\tfclose(f);\n"
+        "\treturn done > 0;\n"
+        "}\n"
+        "#endif\n"
+        "\n"
+        "void AdlibMusic::play(int) const\n{\n"
+        "#ifdef __AMIGA__\n"
+        "\t/* a rendered file is the only way this plays here: emulating the\n"
+        "\t * card while the game runs is far too slow on a 68020 */\n"
+        "\tif (!amigaRenderPath().empty() && !Options::mute && Options::musicVolume > 0)\n"
+        "\t{\n"
+        "\t\tif (AmigaMusic_PlayFile(amigaRenderPath().c_str(), 1)) return;\n"
+        "\t}\n"
+        "\treturn;\n"
+        "#endif\n",
+        "adlib render body")))
+    results.append(("AdlibMusic.cpp (stdio)", edit(
+        os.path.join(src, "Engine", "AdlibMusic.cpp"),
+        "#include \"AdlibMusic.h\"\n",
+        "#include \"AdlibMusic.h\"\n"
+        "#include <cstdio>\n",
+        "adlib stdio")))
+    # pre-render: the AdLib tracks go through the same loop
+    results.append(("Mod.cpp (prerender adlib count)", edit(
+        os.path.join(src, "Mod", "Mod.cpp"),
+        "\t\tif (i->second != 0 && i->second->amigaHasTune()) todo++;\n",
+        "\t\tif (i->second != 0 && (i->second->amigaHasTune()\n"
+        "\t\t\t|| dynamic_cast<AdlibMusic*>(i->second) != 0)) todo++;\n",
+        "prerender adlib count")))
+    results.append(("Mod.cpp (prerender adlib render)", edit(
+        os.path.join(src, "Mod", "Mod.cpp"),
+        "\t\tMusic *m = i->second;\n"
+        "\t\tstd::string path;\n"
+        "\t\tif (m == 0 || !m->amigaHasTune()) continue;\n"
+        "\t\tpath = dir + \"/\" + i->first + \".raw\";\n"
+        "\t\tm->amigaSetRenderPath(path);\n",
+        "\t\tMusic *m = i->second;\n"
+        "\t\tAdlibMusic *am = dynamic_cast<AdlibMusic*>(m);\n"
+        "\t\tstd::string path;\n"
+        "\t\tif (m == 0 || (!m->amigaHasTune() && am == 0)) continue;\n"
+        "\t\tpath = dir + \"/\" + i->first + \".raw\";\n"
+        "\t\tm->amigaSetRenderPath(path);\n"
+        "\t\tif (am != 0)\n"
+        "\t\t{\n"
+        "\t\t\tif (!AmigaMusic_HaveRendered(path.c_str()))\n"
+        "\t\t\t{\n"
+        "\t\t\t\tsnprintf(mb_, sizeof mb_, \"mus: adlib rendering %s\", i->first.c_str());\n"
+        "\t\t\t\tSDLmini_Log(mb_);\n"
+        "\t\t\t\tif (!am->amigaRender(path, amigaMusProg_))\n"
+        "\t\t\t\t{\n"
+        "\t\t\t\t\tsnprintf(mb_, sizeof mb_, \"mus: adlib render FAILED for %s\", i->first.c_str());\n"
+        "\t\t\t\t\tSDLmini_Log(mb_);\n"
+        "\t\t\t\t\tm->amigaSetRenderPath(\"\");\n"
+        "\t\t\t\t}\n"
+        "\t\t\t}\n"
+        "\t\t\tamigaMusIdx_++;\n"
+        "\t\t\tamigaMusProg_(1, 1);\n"
+        "\t\t\tcontinue;\n"
+        "\t\t}\n",
+        "prerender adlib render")))
+
+    # 6amZ. The AdLib player was never run on a big-endian machine. It reads
+    #       the length of every subtrack and every instrument block straight
+    #       out of the PC data with `*((unsigned short*)p)`, which on a 68k
+    #       gives the two bytes the other way round: the pointers it then
+    #       builds land nowhere, no instrument is ever set up, and the card
+    #       plays nothing at all. Measured before the fix: the render ran to
+    #       the end with `poly=0 peakA=0 peakB=0` on every tick, while the
+    #       same track and the same player produced sound on the host.
+    #       Read the two bytes by hand instead. (Upstream bug; it cannot show
+    #       on a PC.)
+    results.append(("adlplayer.cpp (little-endian lengths)", edit(
+        os.path.join(src, "Engine", "Adlib", "adlplayer.cpp"),
+        "\t\tto_add = *((unsigned short*)music_ptr); //reading 16bit length\n"
+        "\t\tadl_gv_subtracks[i] = music_ptr+4; //store subtrack pointers\n",
+        "\t\tto_add = (unsigned int)music_ptr[0] | ((unsigned int)music_ptr[1] << 8);\n"
+        "\t\tadl_gv_subtracks[i] = music_ptr+4; //store subtrack pointers\n",
+        "adlib subtrack length")))
+    results.append(("adlplayer.cpp (little-endian instrument lengths)", edit(
+        os.path.join(src, "Engine", "Adlib", "adlplayer.cpp"),
+        "\t\tto_add = *((unsigned short*)music_ptr); //reading 16bit length\n"
+        "\t\tif (adl_gv_FORMAT==1) \n",
+        "\t\tto_add = (unsigned int)music_ptr[0] | ((unsigned int)music_ptr[1] << 8);\n"
+        "\t\tif (adl_gv_FORMAT==1) \n",
+        "adlib instrument length")))
+
+    # 6amZb. X-COM's AdLib tracks never end: func_is_music_playing() stays
+    #        true for ever, because the score loops inside the player. The
+    #        first render therefore ran to the 8-minute cap - 10 MB per tune,
+    #        320 MB for the set, against 36 MB for the sampled ones. The
+    #        player does know where it is, though: every voice keeps
+    #        cur_address against start_address, and when all of them are back
+    #        where they started, the score has looped. That position is
+    #        exported and the renderer stops at the first repeat; the game
+    #        loops the file itself.
+    results.append(("adlplayer.h (position decl)", edit(
+        os.path.join(src, "Engine", "Adlib", "adlplayer.h"),
+        "bool func_is_music_playing();\n",
+        "bool func_is_music_playing();\n"
+        "/* AMIGA-PORT: one number for \"where every voice is\", to spot the loop */\n"
+        "unsigned long func_amiga_position();\n",
+        "adlib position decl")))
+    results.append(("adlplayer.cpp (position)", edit(
+        os.path.join(src, "Engine", "Adlib", "adlplayer.cpp"),
+        "//MAIN FUNCTION - initialize fade procedure\n",
+        "/* AMIGA-PORT: the offset of every voice into its own track, mixed into\n"
+        " * one number. Same number twice = the score is back at the start. */\n"
+        "unsigned long func_amiga_position()\n"
+        "{\n"
+        "\tunsigned long h = 0;\n"
+        "\tint i;\n"
+        "\tfor (i = 0; i < 16; ++i)\n"
+        "\t{\n"
+        "\t\tunsigned long off = 0;\n"
+        "\t\tif (instruments[i].start_address != 0 && instruments[i].cur_address != 0)\n"
+        "\t\t\toff = (unsigned long)(instruments[i].cur_address - instruments[i].start_address);\n"
+        "\t\th = h * 131UL + off + (unsigned long)instruments[i].cur_delay;\n"
+        "\t}\n"
+        "\treturn h;\n"
+        "}\n"
+        "\n"
+        "//MAIN FUNCTION - initialize fade procedure\n",
+        "adlib position")))
+
+    # 6bmA. Convert and quit. AmiXcomPrefs (native/amixcom-prefs.c) offers
+    #       "Convert music" before the game is ever started, but the tunes are
+    #       named in the rulesets - only the game knows what to convert. So the
+    #       button runs the game with -amigaConvertOnly 1, which does the
+    #       normal load, the normal pre-render with its progress bar, and then
+    #       quits instead of showing the menu.
+    results.append(("Options.inc.h (convert only)", edit(
+        os.path.join(src, "Engine", "Options.inc.h"),
+        "OPT int amigaMusicSource; /* 0 GM.CAT samples, 1 ADLIB.CAT (OPL2) */\n",
+        "OPT int amigaMusicSource; /* 0 GM.CAT samples, 1 ADLIB.CAT (OPL2) */\n"
+        "OPT int amigaConvertOnly; /* -amigaConvertOnly 1: render the music, then quit */\n",
+        "convert only var")))
+    results.append(("Options.cpp (convert only info)", edit(
+        os.path.join(src, "Engine", "Options.cpp"),
+        "\t_info.push_back(OptionInfo(\"amigaMusicSource\", &amigaMusicSource, 0));\n",
+        "\t_info.push_back(OptionInfo(\"amigaMusicSource\", &amigaMusicSource, 0));\n"
+        "\t_info.push_back(OptionInfo(\"amigaConvertOnly\", &amigaConvertOnly, 0));\n",
+        "convert only info")))
+    results.append(("StartState.cpp (convert only quit)", edit(
+        os.path.join(src, "Menu", "StartState.cpp"),
+        "\t\tLog(LOG_INFO) << \"OpenXcom started successfully!\";\n",
+        "#ifdef __AMIGA__\n"
+        "\t\tif (Options::amigaConvertOnly)\n"
+        "\t\t{\n"
+        "\t\t\tSDLmini_Log(\"convert: music done, quitting\");\n"
+        "\t\t\tSDLmini_SplashFinish();\n"
+        "\t\t\t_game->quit();\n"
+        "\t\t\treturn;\n"
+        "\t\t}\n"
+        "#endif\n"
+        "\t\tLog(LOG_INFO) << \"OpenXcom started successfully!\";\n",
+        "convert only quit")))
+
+    # 6bmB. What is on disk, and where it came from. The converted tunes are
+    #       just .raw files: nothing in them says whether they came from
+    #       GM.CAT or ADLIB.CAT, or at what quality - and after changing the
+    #       setting the player has no way to tell whether the files still
+    #       match it. One line in user/music/source.txt does, and
+    #       AmiXcomPrefs prints it (green when the music is there, red when
+    #       it is not).
+    results.append(("Mod.cpp (converted-from marker)", edit(
+        os.path.join(src, "Mod", "Mod.cpp"),
+        "\tAmigaSplash_Progress2End();\n",
+        "\t{\n"
+        "\t\tstd::string mark = dir + \"/source.txt\";\n"
+        "\t\tFILE *mf = fopen(mark.c_str(), \"w\");\n"
+        "\t\tif (mf != 0)\n"
+        "\t\t{\n"
+        "\t\t\tif (Options::amigaMusicSource == 1)\n"
+        "\t\t\t\tfprintf(mf, \"AdLib (ADLIB.CAT), 22 kHz\\n\");\n"
+        "\t\t\telse\n"
+        "\t\t\t\tfprintf(mf, \"samples (GM.CAT), 22 kHz %s\\n\",\n"
+        "\t\t\t\t\tOptions::amigaMusicQuality ? \"smooth\" : \"plain\");\n"
+        "\t\t\tfclose(mf);\n"
+        "\t\t}\n"
+        "\t}\n"
+        "\tAmigaSplash_Progress2End();\n",
+        "converted-from marker")))
+
+    # 6amX. "No music, and it does not convert either." A player reported
+    #       that and there was nothing to go on: when the tunes are missing
+    #       the port simply stays quiet - amigaPrerenderMusic() returns at
+    #       `todo == 0` without a word, and the log line it does write is on
+    #       the Amiga, not in the report. The music has four ways of coming to
+    #       nothing, and the player can only see the last one:
+    #         * Options::mute - the loader skips the whole music block;
+    #         * no SOUND/GM.CAT in the data (the tunes are the player's own);
+    #         * music switched off, or the volume at 0;
+    #         * data/common/music.bnk missing, so nothing can be rendered.
+    #       So the reason is worked out as soon as the file map exists (top of
+    #       Mod::loadAll, minutes before the menu) and written ON the loading
+    #       picture for ten seconds, with a short line the player can quote.
+    results.append(("Mod.h (music check decl)", edit(
+        os.path.join(src, "Mod", "Mod.h"),
+        "\tvoid amigaPrerenderMusic();\n",
+        "\tvoid amigaPrerenderMusic();\n"
+        "\t/// Tells the player on the loading screen why music will be silent.\n"
+        "\tvoid amigaMusicCheck();\n",
+        "music check decl")))
+    results.append(("Mod.cpp (music check body)", edit(
+        os.path.join(src, "Mod", "Mod.cpp"),
+        "void Mod::loadAll(const std::vector< std::pair< std::string, std::vector<std::string> > > &mods)\n{\n",
+        "#ifdef __AMIGA__\n"
+        "/**\n"
+        " * Why the music will be silent, said out loud. Runs once, right after\n"
+        " * the file map is built and long before the menu, so the note gets its\n"
+        " * ten seconds while the rulesets load. Silent when all is well.\n"
+        " */\n"
+        "void Mod::amigaMusicCheck()\n"
+        "{\n"
+        "\tconst std::set<std::string> &sf(FileMap::getVFolderContents(\"SOUND\"));\n"
+        "\tbool haveCat = sf.find(\"gm.cat\") != sf.end();\n"
+        "\tbool haveAdl = sf.find(\"adlib.cat\") != sf.end();\n"
+        "\tbool wantAdl = Options::amigaMusicSource == 1;\n"
+        "\tstd::string bank = CrossPlatform::searchDataFile(\"common/music.bnk\");\n"
+        "\tbool haveBank = CrossPlatform::fileExists(bank);\n"
+        "\tstd::string dir = Options::getUserFolder() + \"music\";\n"
+        "\tint done = 0;\n"
+        "\tchar rep[96];\n"
+        "\tstd::string msg;\n"
+        "\n"
+        "\tif (CrossPlatform::folderExists(dir))\n"
+        "\t\tdone = (int)CrossPlatform::getFolderContents(dir, \"raw\").size();\n"
+        "\tsnprintf(rep, sizeof rep, \"cat=%s adl=%s bank=%s done=%d m=%d s=%d v=%d%s\",\n"
+        "\t\thaveCat ? \"yes\" : \"NO\", haveAdl ? \"yes\" : \"NO\",\n"
+        "\t\thaveBank ? \"yes\" : \"NO\", done,\n"
+        "\t\tOptions::amigaMusic, Options::amigaMusicSource, Options::musicVolume,\n"
+        "\t\tOptions::mute ? \" MUTE\" : \"\");\n"
+        "\tSDLmini_Log((std::string(\"mus: check \") + rep).c_str());\n"
+        "\n"
+        "\t/* in the order that decides it: the first one that bites is the\n"
+        "\t * one worth telling the player about */\n"
+        "\tif (Options::mute)\n"
+        "\t\tmsg = \"NO SOUND: everything is muted.\\n\"\n"
+        "\t\t      \"Options - Audio - turn the sound on.\";\n"
+        "\telse if (!haveCat && !haveAdl)\n"
+        "\t\tmsg = \"NO MUSIC: no GM.CAT and no ADLIB.CAT.\\n\"\n"
+        "\t\t      \"The tunes are your own X-COM files:\\n\"\n"
+        "\t\t      \"copy the whole SOUND folder from the\\n\"\n"
+        "\t\t      \"DOS game into data/UFO (or data/TFTD).\";\n"
+        "\telse if (wantAdl && !haveAdl)\n"
+        "\t\tmsg = \"ADLIB.CAT is missing - playing the\\n\"\n"
+        "\t\t      \"sampled tunes (GM.CAT) instead.\";\n"
+        "\telse if (!wantAdl && !haveCat)\n"
+        "\t\tmsg = \"GM.CAT is missing - playing the AdLib\\n\"\n"
+        "\t\t      \"tunes (ADLIB.CAT) instead.\";\n"
+        "\telse if (Options::amigaMusic == 0)\n"
+        "\t\tmsg = \"MUSIC IS OFF in Options - Amiga.\";\n"
+        "\telse if (Options::amigaMusic == 2 && !haveBank)\n"
+        "\t\tmsg = \"NO MUSIC: data/common/music.bnk is\\n\"\n"
+        "\t\t      \"missing, so nothing can be converted.\\n\"\n"
+        "\t\t      \"It ships with the port - unpack the\\n\"\n"
+        "\t\t      \"archive again over this folder.\";\n"
+        "\telse if (Options::musicVolume == 0)\n"
+        "\t\tmsg = \"NO MUSIC: music volume is 0.\\n\"\n"
+        "\t\t      \"Options - Audio - raise MUSIC VOLUME.\";\n"
+        "\telse\n"
+        "\t\treturn;                      /* nothing to complain about */\n"
+        "\n"
+        "\tmsg += \"\\n\\nIf you report this, send this line\\n\"\n"
+        "\t       \"and Work:sdlmini.log:\\n\";\n"
+        "\tmsg += rep;\n"
+        "\tSDLmini_Log((std::string(\"mus: \") + msg.substr(0, msg.find('\\n'))).c_str());\n"
+        "\tAmigaSplash_Note(msg.c_str());\n"
+        "}\n"
+        "#endif\n"
+        "\n"
+        "void Mod::loadAll(const std::vector< std::pair< std::string, std::vector<std::string> > > &mods)\n{\n",
+        "music check body")))
+    results.append(("Mod.cpp (music check call)", edit(
+        os.path.join(src, "Mod", "Mod.cpp"),
+        "\tif (AmigaSplashTotal_ < 1) AmigaSplashTotal_ = 1;\n",
+        "\tif (AmigaSplashTotal_ < 1) AmigaSplashTotal_ = 1;\n"
+        "\tamigaMusicCheck();   /* while there is still a loading screen to say it on */\n",
+        "music check call")))
+    results.append(("Mod.cpp (splash note decl)", edit(
+        os.path.join(src, "Mod", "Mod.cpp"),
+        "void AmigaSplash_Progress2End(void);\n",
+        "void AmigaSplash_Progress2End(void);\n"
+        "void AmigaSplash_Note(const char *text);\n",
+        "splash note decl")))
+    # the two ways the conversion itself can fail, said the same way
+    results.append(("Mod.cpp (prerender bank note)", edit(
+        os.path.join(src, "Mod", "Mod.cpp"),
+        "\t\t\t\t\tSDLmini_Log(\"mus: no instrument bank, cannot pre-render\");\n",
+        "\t\t\t\t\tSDLmini_Log(\"mus: no instrument bank, cannot pre-render\");\n"
+        "\t\t\t\t\tAmigaSplash_Note(\"NO MUSIC: data/common/music.bnk is\\n\"\n"
+        "\t\t\t\t\t                 \"missing, so nothing can be converted.\\n\"\n"
+        "\t\t\t\t\t                 \"It ships with the port - unpack the\\n\"\n"
+        "\t\t\t\t\t                 \"archive again over this folder.\");\n",
+        "prerender bank note")))
+    results.append(("Mod.cpp (prerender fail note)", edit(
+        os.path.join(src, "Mod", "Mod.cpp"),
+        "\t\t\t\tsnprintf(mb_, sizeof mb_, \"mus: render FAILED for %s\", i->first.c_str());\n"
+        "\t\t\t\tSDLmini_Log(mb_);\n",
+        "\t\t\t\tsnprintf(mb_, sizeof mb_, \"mus: render FAILED for %s\", i->first.c_str());\n"
+        "\t\t\t\tSDLmini_Log(mb_);\n"
+        "\t\t\t\t{\n"
+        "\t\t\t\t\tchar nb_[160];\n"
+        "\t\t\t\t\tsnprintf(nb_, sizeof nb_,\n"
+        "\t\t\t\t\t\t\"MUSIC: could not write %s.\\n\"\n"
+        "\t\t\t\t\t\t\"Is the disk full, or user/music\\n\"\n"
+        "\t\t\t\t\t\t\"write protected? The game plays on.\", i->first.c_str());\n"
+        "\t\t\t\t\tAmigaSplash_Note(nb_);\n"
+        "\t\t\t\t}\n",
+        "prerender fail note")))
+
     for root, _dirs, files in os.walk(src):
         for fn in files:
             if not fn.endswith((".cpp", ".h")):

@@ -329,6 +329,19 @@ link_variant aga 0     # AGA screen + chunky-to-planar
 link_variant rtg 1     # 8-bit CyberGraphX / Picasso96 screen
 link_variant ask -1    # Intuition requester at startup
 
+# AmiXcomPrefs (native/amixcom-prefs.c): the settings that have to be made
+# BEFORE the game runs - the display standard decides whether the screen opens
+# at all, and converting the music takes minutes at the first start. A plain C
+# Intuition/GadTools program; it edits the game's own user/options.cfg.
+log "compiling AmiXcomPrefs"
+# -noixemul like the game: with ixemul's startup instead of libnix's, argv
+# came through as NULL and every argument printed as "(null)".
+m68k-amigaos-gcc -O1 -mcpu=68020 -msoft-float -noixemul -fomit-frame-pointer -Wall \
+	-o "$WORK/AmiXcomPrefs" "$NATIVE/amixcom-prefs.c" || {
+	log "BUILD FAILED: amixcom-prefs.c"; exit 1; }
+cp "$WORK/AmiXcomPrefs" "$DEPLOY/AmiXcomPrefs"
+ls -la "$WORK/AmiXcomPrefs"
+
 # The game's own data (rulesets, languages, shaders) lives in bin/ upstream and
 # is what "PROGDIR:data/" resolves to on the Amiga side. Copied without
 # overwriting, so the original X-COM files the player drops into data/UFO and

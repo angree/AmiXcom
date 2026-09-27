@@ -37,6 +37,7 @@ enum
 	AMIGA_ROW_SPLITWALK,
 	AMIGA_ROW_MUSIC,
 	AMIGA_ROW_MUSICQ,
+	AMIGA_ROW_MUSICSRC,
 	AMIGA_ROW_VIDEO,
 	AMIGA_ROW_LANGAUTO,
 	AMIGA_ROW_SPLASH,
@@ -52,6 +53,7 @@ static const char *amigaRowLabel_[AMIGA_ROW_COUNT] =
 	"STR_AMIGA_SPLIT_WALK",
 	"STR_AMIGA_MUSIC",
 	"STR_AMIGA_MUSIC_QUALITY",
+	"STR_AMIGA_MUSIC_SRC",
 	"STR_AMIGA_VIDEO",
 	"STR_AMIGA_LANG_AUTO",
 	"STR_AMIGA_SPLASH"
@@ -66,13 +68,14 @@ static const char *amigaRowDesc_[AMIGA_ROW_COUNT] =
 	"STR_AMIGA_SPLIT_WALK_DESC",
 	"STR_AMIGA_MUSIC_DESC",
 	"STR_AMIGA_MUSIC_QUALITY_DESC",
+	"STR_AMIGA_MUSIC_SRC_DESC",
 	"STR_AMIGA_VIDEO_DESC",
 	"STR_AMIGA_LANG_AUTO_DESC",
 	"STR_AMIGA_SPLASH_DESC"
 };
 
 /* how many values each row cycles through */
-static const int amigaRowVals_[AMIGA_ROW_COUNT] = { 2, 2, 3, 2, 2, 3, 2, 3, 2, 2 };
+static const int amigaRowVals_[AMIGA_ROW_COUNT] = { 2, 2, 3, 2, 2, 3, 2, 2, 3, 2, 2 };
 
 /* pre-rendered music always renders at high quality: the switch is dead */
 static bool amigaRowDisabled_(size_t row)
@@ -91,6 +94,7 @@ static int amigaRowGet_(size_t row)
 	case AMIGA_ROW_SPLITWALK: return Options::amigaSplitWalk ? 1 : 0;
 	case AMIGA_ROW_MUSIC:     return Options::amigaMusic;
 	case AMIGA_ROW_MUSICQ:    return Options::amigaMusicQuality ? 1 : 0;
+	case AMIGA_ROW_MUSICSRC:  return Options::amigaMusicSource ? 1 : 0;
 	case AMIGA_ROW_VIDEO:     return Options::amigaVideoMode;
 	case AMIGA_ROW_LANGAUTO:  return Options::amigaLangAuto ? 1 : 0;
 	case AMIGA_ROW_SPLASH:    return Options::amigaSplashStyle ? 1 : 0;
@@ -109,6 +113,9 @@ static void amigaRowSet_(size_t row, int v)
 	case AMIGA_ROW_SPLITWALK: Options::amigaSplitWalk = (v == 1); break;
 	case AMIGA_ROW_MUSIC:     Options::amigaMusic = v; break;
 	case AMIGA_ROW_MUSICQ:    Options::amigaMusicQuality = v; break;
+	/* The tunes are converted at the next start; the ones already in
+	 * user/music stay as they are until that folder is emptied. */
+	case AMIGA_ROW_MUSICSRC:  Options::amigaMusicSource = v; break;
 	/* Only stored here. The screen is reopened on the way out of the
 	 * options screen (Screen::resetDisplay -> SDL_SetVideoMode), never
 	 * while the row is being cycled. */
@@ -137,6 +144,8 @@ static const char *amigaRowValue_(size_t row, int v)
 		     : (v == 1 ? "STR_AMIGA_MUSIC_LIVE" : "STR_AMIGA_MUSIC_OFF");
 	case AMIGA_ROW_MUSICQ:
 		return v == 1 ? "STR_AMIGA_QUALITY_HIGH" : "STR_AMIGA_QUALITY_LOW";
+	case AMIGA_ROW_MUSICSRC:
+		return v == 1 ? "STR_AMIGA_MUSIC_SRC_ADLIB" : "STR_AMIGA_MUSIC_SRC_SAMPLES";
 	case AMIGA_ROW_SPLASH:
 		return v == 1 ? "STR_AMIGA_SPLASH_RETRO" : "STR_AMIGA_SPLASH_MODERN";
 	case AMIGA_ROW_VIDEO:

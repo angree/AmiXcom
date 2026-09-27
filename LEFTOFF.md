@@ -2,7 +2,7 @@
 
 Read this, then `CLAUDE.md` (rules), then the top entry of `PROGRESS.md` (proofs).
 
-## STAN: 0.9.12 WYDANE. Dziewiec wydan, wszystkie z pomiarem.
+## STAN: 0.9.14 WYDANE. Dziesiec wydan, wszystkie z pomiarem.
 
 https://github.com/angree/AmiXcom/releases - kod `3c4522c`.
 
@@ -56,6 +56,21 @@ https://github.com/angree/AmiXcom/releases - kod `3c4522c`.
        HARNESS: WinUAE uruchomione przez run-oxc.ps1 przejmuje fokus
        klawiatury - tekst pisany przez uzytkownika w innym oknie trafia do
        gry. Work:run tylko z LF.
+
+0.9.13 Gra mowi, CZEMU nie ma muzyki: powod ustalany po zbudowaniu mapy
+       plikow i wypisywany na planszy ladowania przez 10 sekund, z linia do
+       zacytowania w zgloszeniu. Weszlo w calosci w 0.9.14, osobnego wydania
+       nie bylo.
+0.9.14 **AdLib jako drugie zrodlo muzyki** - kazdy utwor w ADLIB.CAT niesie
+       swoje barwy, emulator YM3812 byl w drzewie od upstreamu, wiec zadnych
+       obcych danych. Trzy bledy po drodze, wszystkie zmierzone: cisza (upstream
+       czytal 16-bitowe dlugosci po kolejnosci bajtow PC), 0,74x czasu
+       rzeczywistego (mnozenie float na kazda probke) i 320 MB (utwory
+       zapetlaja sie bez konca - render konczy sie na pierwszym powtorzeniu,
+       razem 36 MB). Do tego plansze retro domyslnie (jednorazowa migracja
+       configu) i **AmiXcomPrefs** - okno GadTools plus linia polecen, piszace
+       do user/options.cfg gry; napisy z czarnym cieniem, zielono/czerwono
+       widac, czy muzyka jest i z czego zrobiona.
 
 ## CO ZOSTAWIONE NA MASZYNIE UZYTKOWNIKA (do uporzadkowania)
 
@@ -579,3 +594,20 @@ convention from `Amiga_Remote_Play`. The zip holds the repo without `winuae/work
 game (`-mcpu=68020 -msoft-float -O1 -noixemul -I native ... native/amiga_trap.c
 native/fp_conv.c native/fp_single.c -lamiga -lm`), copy to `Work:`, point `Work:run` at it,
 restore `run` afterwards (`C:\temp\amiga_oxcom\probe.sh` builds fptest2 both ways).
+
+## 2026-09-26: 0.9.14 WYDANE - co zostalo
+
+0.9.14 (komunikat o braku muzyki, AdLib jako drugie zrodlo, plansze retro
+domyslnie, AmiXcomPrefs z cieniem pod napisami) jest wydane. 0.9.13 weszlo w
+nia w calosci - nigdy nie bylo osobnego wydania. Pomiary: gorny wpis w
+PROGRESS.md.
+
+ZOSTALO NA NASTEPNY RAZ:
+1. MIDI przez camd.library - do skopiowania z portu OpenTTD
+   (`I:/GITHUB/Amiga_OpenTTD/native/openttd/amiga_camd.c`, 908 linii, plus
+   `camd-include/`). W AmiXcomie tego NIE MA (sprawdzone - to nie jest tylko
+   zapomniana pozycja w ustawieniach). Bylby to szosty tryb muzyki: nuty ida
+   do zewnetrznego syntezatora zamiast do Pauli. UWAGA: bez camd.library w
+   HDF-ie nie ma jak tego przetestowac u nas.
+2. Zwis z 17.09 wciaz niepowtorzony - czeka na hang.log od gracza.
+3. "Kleknij nie przerysowuje" z 0.9.11 - nadal otwarte.
